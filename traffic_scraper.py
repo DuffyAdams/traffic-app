@@ -15,7 +15,7 @@ import uuid
 from flask import Flask, jsonify, send_from_directory, request, make_response
 from flask_cors import CORS
 from dotenv import load_dotenv
-from openai import OpenAI
+from google import genai
 
 # -----------------------------------
 # Configuration and Setup
@@ -28,6 +28,9 @@ DB_FILE = os.path.join(BASE_DIR, "traffic_data.db")
 MAP_GENERATOR = os.path.join(BASE_DIR, "generate_map.py")
 
 os.makedirs(TARGET_DIR, exist_ok=True)
+
+# Configure Gemini API
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
@@ -195,31 +198,27 @@ def get_or_create_uuid(request):
 # Scraper Functions
 # -----------------------------------
 def generate_description(data):
-    """Generate a tweet-friendly description using OpenAI GPT."""
+    """Generate a tweet-friendly description using Google's Gemini Flash 2.0 API."""
     try:
-        client_gpt = OpenAI(api_key=os.getenv("GPT_KEY"))
         prompt = (
             f"Neighborhood: {data['Neighborhood']}\n"
             f"Location: {data['Location']} - {data['Location Desc.']}\n"
             f"Type: {data['Type']}\n"
             f"Details: {', '.join(data['Details'])}\n"
         )
-        response = client_gpt.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": (
-                    "Provide a factual, tweet-length summary using only the details given. "
-                    "Do not add any warnings, advice, hashtags, or extra commentary. "
-                    "Interpret abbreviations like 'No' as Northbound, 'So' as Southbound, 'OOG' as out of gas, etc. "
-                    "Keep the summary under 200 characters."
-                    "You may add related emojis."
-                )},
-                {"role": "user", "content": f"Summarize this traffic incident:\n{prompt}"}
-            ],
-            max_tokens=50,
-            temperature=0.4
+        
+        system_prompt = """Provide a factual, tweet-length summary using only the details given.
+        Do not add any warnings, advice, hashtags, or extra commentary.
+        Interpret abbreviations like 'No' as Northbound, 'So' as Southbound, 'OOG' as out of gas, etc.
+        Keep the summary under 200 characters.
+        You may add related emojis."""
+        
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=f"{system_prompt}\n\nSummarize this traffic incident:\n{prompt}"
         )
-        return response.choices[0].message.content
+        
+        return response.text.strip()
     except Exception as e:
         print(f"Error generating description: {e}")
         return "Traffic incident reported."
@@ -360,6 +359,7 @@ def run_map_generator(merged_data):
         merged_data["MapFilename"] = os.path.basename(filename)
     except subprocess.CalledProcessError as e:
         print(f"Error running map generator: {e}")
+
 def monitor_traffic_data(interval=60):
     """Monitor traffic data and process new incidents."""
     print("Starting continuous traffic monitoring...")
