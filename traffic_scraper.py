@@ -207,15 +207,16 @@ def generate_description(data):
             f"Details: {', '.join(data['Details'])}\n"
         )
         
-        system_prompt = """Provide a factual, tweet-length summary using only the details given.
+        system_prompt = """Provide a factual, tweet-length summary using the details given.
         Do not add any warnings, advice, hashtags, or extra commentary.
-        Interpret abbreviations like 'No' as Northbound, 'So' as Southbound, 'OOG' as out of gas, etc.
+        Interpret abbreviations like 'No' and  as North, 'So' as South, 'OOG' as out of gas, etc.
         Keep the summary under 200 characters.
-        You may add related emojis."""
-        
+        Format the sentence in the following order: [Details] in [Location] on [Road/Highway] [Additional info].
+        You may add related emojis related to the incident, but the sentence should remain structured and clear."""
+
         response = client.models.generate_content(
             model="gemini-2.0-flash",
-            contents=f"{system_prompt}\n\nSummarize this traffic incident:\n{prompt}"
+            contents=f"{system_prompt}\n\nSummarize this traffic incident and make one fluent sentence.\n{prompt}"
         )
         
         return response.text.strip()
