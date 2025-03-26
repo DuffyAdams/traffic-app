@@ -15,8 +15,7 @@ import uuid
 from flask import Flask, jsonify, send_from_directory, request, make_response
 from flask_cors import CORS
 from dotenv import load_dotenv
-from google import genai
-
+import google.generativeai as genai
 # -----------------------------------
 # Configuration and Setup
 # -----------------------------------
@@ -30,7 +29,7 @@ MAP_GENERATOR = os.path.join(BASE_DIR, "generate_map.py")
 os.makedirs(TARGET_DIR, exist_ok=True)
 
 # Configure Gemini API
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
@@ -214,16 +213,16 @@ def generate_description(data):
         Format the sentence in the following order: [Details] in [Location] on [Road/Highway] [Additional info].
         You may add related emojis related to the incident, but the sentence should remain structured and clear."""
 
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=f"{system_prompt}\n\nSummarize this traffic incident and make one fluent sentence.\n{prompt}"
+        model = genai.GenerativeModel('gemini-2.0-flash-lite')
+        response = model.generate_content(
+            f"{system_prompt}\n\nSummarize this traffic incident and make one fluent sentence.\n{prompt}"
         )
         
         return response.text.strip()
     except Exception as e:
         print(f"Error generating description: {e}")
         return "Traffic incident reported."
-
+    
 def scrape_table():
     """Scrape the first row of the incident table, skipping 'Media Log'."""
     try:
