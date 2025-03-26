@@ -4,16 +4,16 @@
   import { flip } from 'svelte/animate';
 
   let posts = [];
-  let allPosts = []; // Store all posts
+  let allPosts = [];
   let loading = true;
   let darkMode = false;
   let currentUsername = '';
-  let lastToggleTime = 0; // To prevent double-clicks
-  let postsPerPage = 20; // Number of posts to load at once
-  let currentPage = 1; // Current page of posts
-  let loadingMore = false; // Flag to indicate if more posts are being loaded
-  let allPostsLoaded = false; // Flag to indicate if all posts have been loaded
-  let scrollContainer; // Reference to the scrollable container
+  let lastToggleTime = 0;
+  let postsPerPage = 20;
+  let currentPage = 1;
+  let loadingMore = false;
+  let allPostsLoaded = false;
+  let scrollContainer;
 
   const adjectives = ['Cool', 'Happy', 'Swift', 'Brave', 'Clever', 'Lucky'];
   const nouns = ['Panda', 'Tiger', 'Eagle', 'Fox', 'Wolf', 'Bear'];
@@ -33,7 +33,6 @@
 
   async function fetchIncidents() {
     try {
-      const prevLoading = loading;
       loading = true;
       console.log("Fetching incidents from /api/incidents...");
       const res = await fetch('/api/incidents');
@@ -47,19 +46,15 @@
       const incidents = await res.json();
       console.log(`Retrieved ${incidents.length} incidents`);
       
-      // Deduplicate incidents by incident_no AND date
       const uniqueIncidents = [];
       const seenKeys = new Set();
       
       for (const incident of incidents) {
-        // Create a composite key using incident_no and date (from timestamp if available)
-        // If timestamp is not available, use incident_no only
         const date = incident.timestamp ? new Date(incident.timestamp).toLocaleDateString() : '';
         const compositeKey = `${incident.incident_no}-${date}`;
         
         if (!seenKeys.has(compositeKey)) {
           seenKeys.add(compositeKey);
-          // Add a compositeId field that we'll use for the each block key
           incident.compositeId = compositeKey;
           uniqueIncidents.push(incident);
         }
@@ -67,27 +62,27 @@
       
       console.log(`After deduplication: ${uniqueIncidents.length} unique incidents`);
       
-      const processedPosts = uniqueIncidents.map(incident => ({
-        id: incident.incident_no,
-        compositeId: incident.compositeId, // Store the composite ID for use in the each block
-        time: formatTimestamp(incident.timestamp),
-        description: incident.description,
-        location: incident.location,
-        image: incident.map_filename ? `/maps/${incident.map_filename}` : '/default_map.png',
-        likes: incident.likes,
-        comments: incident.comments || [],
-        newComment: "",
-        showComments: false,
-        type: incident.type || "Traffic Incident",
-        likeError: "",
-        commentError: "",
-        likeErrorAnimation: false
-      }));
+      const processedPosts = uniqueIncidents
+        .filter(incident => incident.map_filename) 
+        .map(incident => ({
+          id: incident.incident_no,
+          compositeId: incident.compositeId,
+          time: formatTimestamp(incident.timestamp),
+          description: incident.description,
+          location: incident.location,
+          image: `/maps/${incident.map_filename}`,
+          likes: incident.likes,
+          comments: incident.comments || [],
+          newComment: "",
+          showComments: false,
+          type: incident.type || "Traffic Incident",
+          likeError: "",
+          commentError: "",
+          likeErrorAnimation: false,
+          active: incident.active // include active flag
+        }));
 
-      // Store all processed posts
       allPosts = processedPosts;
-      
-      // Reset pagination and load the first page
       currentPage = 1;
       allPostsLoaded = false;
       loadPostsPage();
@@ -100,9 +95,7 @@
   }
   
   function loadPostsPage() {
-    // Calculate the end index for the current page
     const endIndex = currentPage * postsPerPage;
-    // Load posts up to the current page
     const postsToShow = allPosts.slice(0, endIndex);
     
     posts = postsToShow.map(newPost => {
@@ -112,18 +105,14 @@
         : newPost;
     });
     
-    // Check if all posts are loaded
     allPostsLoaded = endIndex >= allPosts.length;
     loadingMore = false;
   }
   
   function loadMorePosts() {
     if (loadingMore || allPostsLoaded) return;
-    
     loadingMore = true;
     currentPage++;
-    
-    // Set a small timeout to prevent rapid load requests
     setTimeout(() => {
       loadPostsPage();
     }, 300);
@@ -131,12 +120,8 @@
   
   function handleScroll() {
     if (!scrollContainer || loadingMore || allPostsLoaded) return;
-    
-    // Calculate when we're near the bottom of the container
     const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
     const scrollBottom = scrollHeight - scrollTop - clientHeight;
-    
-    // If we're within 400px of the bottom, load more posts
     if (scrollBottom < 500) {
       loadMorePosts();
     }
@@ -156,8 +141,6 @@
 
   async function likePost(postId) {
     try {
-      const post = posts.find(p => p.id === postId);
-      // Add a class to indicate like error attempt
       posts = posts.map(p =>
         p.id === postId ? { ...p, likeError: "", likeErrorAnimation: false } : p
       );
@@ -169,11 +152,9 @@
           p.id === postId ? { ...p, likes: data.likes, likeError: "" } : p
         );
       } else {
-        // Apply shake animation instead of error message
         posts = posts.map(p =>
           p.id === postId ? { ...p, likeErrorAnimation: true } : p
         );
-        
         setTimeout(() => {
           posts = posts.map(p =>
             p.id === postId ? { ...p, likeErrorAnimation: false } : p
@@ -182,11 +163,9 @@
       }
     } catch (err) {
       console.error("Error liking post:", err);
-      // Apply shake animation for network errors too
       posts = posts.map(p =>
         p.id === postId ? { ...p, likeErrorAnimation: true } : p
       );
-      
       setTimeout(() => {
         posts = posts.map(p =>
           p.id === postId ? { ...p, likeErrorAnimation: false } : p
@@ -196,11 +175,9 @@
   }
 
   function toggleComments(postId) {
-    // Prevent multiple rapid toggles (debounce)
     const now = Date.now();
     if (now - lastToggleTime < 200) return;
     lastToggleTime = now;
-    
     posts = posts.map(post =>
       post.id === postId ? { ...post, showComments: !post.showComments } : post
     );
@@ -209,12 +186,10 @@
   async function submitComment(postId) {
     const post = posts.find(p => p.id === postId);
     if (!post || post.newComment.trim() === "") return;
-    
     const newCommentObj = {
       username: currentUsername,
       comment: post.newComment
     };
-
     try {
       const res = await fetch(`/api/incidents/${postId}/comment`, {
         method: 'POST',
@@ -280,15 +255,10 @@
 
     fetchIncidents();
     const refreshInterval = setInterval(fetchIncidents, 20000);
-    
-    // Update the refresh info text
     document.querySelector('.refresh-info').textContent = 'Refreshing automatically every 20 seconds';
-    
-    // Set up scroll event listener
     if (scrollContainer) {
       scrollContainer.addEventListener('scroll', handleScroll);
     }
-    
     onDestroy(() => {
       clearInterval(refreshInterval);
       if (scrollContainer) {
@@ -332,6 +302,9 @@
                 <span class="incident-icon">{getIconForIncidentType(post.type)}</span>
                 <span class="incident-type">{post.type}</span>
               </div>
+              {#if post.active}
+                <div class="active-badge">Active</div>
+              {/if}
               <img src={post.image} alt="Incident location map" class="post-image" loading="lazy" />
             </div>
             
@@ -431,14 +404,12 @@
     max-width: 100%;
     position: relative;
   }
-
   :global(body) {
     font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
     transition: background-color 0.3s, color 0.3s;
     background-color: var(--bg-color);
     color: var(--text-color);
   }
-
   :global(body:not(.dark-mode)) {
     --primary-color: #3182ce;
     --primary-dark: #2c5282;
@@ -446,7 +417,6 @@
     --primary-lightest: #ebf8ff;
     --accent-color: #f6ad55;
     --accent-dark: #dd6b20;
-    
     --bg-color: #f9fafb;
     --text-color: #1a202c;
     --card-bg: white;
@@ -465,7 +435,6 @@
     --error-color: #e53e3e;
     --success-color: #38a169;
   }
-
   :global(body.dark-mode) {
     --primary-color: #4299e1;
     --primary-dark: #3182ce;
@@ -473,7 +442,6 @@
     --primary-lightest: #1a365d;
     --accent-color: #ed8936;
     --accent-dark: #c05621;
-    
     --bg-color: #171923;
     --text-color: #edf2f7;
     --card-bg: #2d3748;
@@ -492,7 +460,6 @@
     --error-color: #fc8181;
     --success-color: #48bb78;
   }
-
   .container {
     max-width: 1280px;
     margin: 0 auto;
@@ -502,7 +469,6 @@
     overflow-x: hidden;
     position: relative;
   }
-
   .header {
     text-align: center;
     margin-bottom: 2rem;
@@ -510,12 +476,10 @@
     background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
     color: white;
     border-radius: 16px;
-    box-shadow: 0 10px 25px -5px rgba(var(--primary-dark), 0.1), 
-                0 10px 10px -5px rgba(var(--primary-dark), 0.04);
+    box-shadow: 0 10px 25px -5px rgba(var(--primary-dark), 0.1), 0 10px 10px -5px rgba(var(--primary-dark), 0.04);
     position: relative;
     overflow: hidden;
   }
-
   .header::before {
     content: "";
     position: absolute;
@@ -528,7 +492,6 @@
     transform: rotate(30deg);
     pointer-events: none;
   }
-
   .header-content {
     text-align: center;
     cursor: pointer;
@@ -542,11 +505,9 @@
     color: white;
     width: 100%;
   }
-
   .header-content:active {
     transform: scale(0.98);
   }
-
   .header h1 {
     margin: 0 0 0.5rem 0;
     font-size: 2rem;
@@ -554,14 +515,12 @@
     letter-spacing: -0.025em;
     text-shadow: 0 1px 2px rgba(0,0,0,0.1);
   }
-
   .header p {
     margin: 0;
     font-size: 1.1rem;
     opacity: 0.9;
     font-weight: 500;
   }
-
   .loading-container {
     display: flex;
     flex-direction: column;
@@ -569,7 +528,6 @@
     justify-content: center;
     padding: 3rem 0;
   }
-
   .loading-spinner {
     width: 40px;
     height: 40px;
@@ -579,24 +537,20 @@
     animation: spin 1s linear infinite;
     margin-bottom: 1rem;
   }
-
   @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
   }
-
   .empty-state {
     text-align: center;
     padding: 3rem 0;
     color: var(--text-muted);
   }
-
   .empty-icon {
     font-size: 3.5rem;
     margin-bottom: 1.5rem;
     opacity: 0.8;
   }
-
   .feed {
     display: flex;
     flex-wrap: wrap;
@@ -605,7 +559,6 @@
     width: 100%;
     box-sizing: border-box;
   }
-
   .post {
     flex: 0 0 calc(33.333% - 1.5rem);
     min-width: 300px;
@@ -613,8 +566,7 @@
     box-sizing: border-box;
     background: var(--card-bg);
     border-radius: 18px;
-    box-shadow: 0 4px 20px var(--shadow-color), 
-                0 0 0 1px rgba(0,0,0,0.03);
+    box-shadow: 0 4px 20px var(--shadow-color), 0 0 0 1px rgba(0,0,0,0.03);
     transition: all 0.25s ease-out;
     position: relative;
     display: flex;
@@ -622,15 +574,12 @@
     margin-bottom: 2rem;
     width: 100%;
     overflow: hidden;
-    transform: translateZ(0); /* Force GPU acceleration */
+    transform: translateZ(0);
   }
-
   .post:hover {
-    box-shadow: 0 12px 28px var(--shadow-color), 
-                0 0 0 1px rgba(0,0,0,0.03);
+    box-shadow: 0 12px 28px var(--shadow-color), 0 0 0 1px rgba(0,0,0,0.03);
     transform: translateY(-3px);
   }
-
   .post-content {
     padding: 0;
     display: flex;
@@ -638,7 +587,6 @@
     height: 100%;
     position: relative;
   }
-
   .post-image-container {
     position: relative;
     width: 100%;
@@ -646,7 +594,6 @@
     overflow: hidden;
     border-radius: 18px 18px 0 0;
   }
-
   .post-badge {
     position: absolute;
     top: 1rem;
@@ -665,29 +612,38 @@
     box-shadow: 0 2px 10px rgba(0,0,0,0.2);
     border: 1px solid rgba(255,255,255,0.1);
   }
-
   .incident-icon {
     font-size: 1.1rem;
   }
-
+  .active-badge {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background-color: #38a169;
+    color: white;
+    padding: 0.5rem 0.9rem;
+    border-radius: 30px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    z-index: 1;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+  }
   .post-image {
     width: 100%;
     height: 100%;
     object-fit: cover;
     transition: transform 0.5s ease;
   }
-
   .post:hover .post-image {
     transform: scale(1.05);
   }
-
   .post-info {
     padding: 1.4rem;
     flex-grow: 1;
     display: flex;
     flex-direction: column;
   }
-
   .post-header {
     display: flex;
     justify-content: space-between;
@@ -695,7 +651,6 @@
     margin-bottom: 1rem;
     font-size: 0.9rem;
   }
-
   .post-time {
     color: var(--text-muted);
     font-weight: 500;
@@ -703,12 +658,10 @@
     align-items: center;
     gap: 0.3rem;
   }
-
   .post-time::before {
     content: "🕒";
     font-size: 0.8rem;
   }
-
   .post-location {
     color: var(--primary-color);
     font-weight: 600;
@@ -716,19 +669,16 @@
     align-items: center;
     gap: 0.3rem;
   }
-
   .post-location::before {
     content: "📍";
     font-size: 0.9rem;
   }
-
   .post-description {
     font-size: 1rem;
     line-height: 1.6;
     margin-bottom: 1.4rem;
     color: var(--text-darker);
   }
-
   .post-actions {
     display: flex;
     justify-content: space-between;
@@ -737,7 +687,6 @@
     margin-bottom: 0.5rem;
     gap: 0.5rem;
   }
-
   .action-button {
     display: flex;
     align-items: center;
@@ -755,7 +704,6 @@
     outline: none;
     flex: 1;
   }
-
   .like-button, .comment-button, .share-button {
     flex: 1;
     text-align: center;
@@ -763,7 +711,6 @@
     position: relative;
     overflow: hidden;
   }
-
   .action-button::after {
     content: "";
     position: absolute;
@@ -775,49 +722,39 @@
     transition: all 0.25s ease;
     transform: translateX(-50%);
   }
-
   .action-button:hover::after {
     width: 70%;
   }
-
   .action-button span:last-child {
     min-width: 24px;
     text-align: center;
   }
-
   .action-button:hover {
     background-color: var(--hover-bg);
     color: var(--primary-color);
   }
-
   .action-button:focus {
     outline: none;
   }
-
   .button-icon {
     font-size: 1.1rem;
   }
-
   .like-button.liked {
     color: #e53e3e;
   }
-
   .like-button.liked .button-icon {
     transform: scale(1.1);
     animation: heartbeat 0.6s;
   }
-
   @keyframes heartbeat {
     0%, 100% { transform: scale(1); }
     50% { transform: scale(1.3); }
   }
-
   .like-button.like-error {
     color: var(--error-color);
     animation: errorShake 0.4s;
     background-color: rgba(229, 62, 62, 0.1);
   }
-
   .comments-title {
     font-size: 1.1rem;
     font-weight: 700;
@@ -827,15 +764,13 @@
     align-items: center;
     gap: 0.5rem;
   }
-
   .comments-title::before {
     content: "💬";
     font-size: 1rem;
   }
-
   .comments-overlay {
     position: absolute;
-    top: 200px; /* Height of the image container */
+    top: 200px;
     left: 0;
     width: 100%;
     height: calc(100% - 200px);
@@ -850,7 +785,6 @@
     will-change: opacity;
     backface-visibility: hidden;
   }
-
   .close-comments {
     position: absolute;
     top: 0.8rem;
@@ -875,17 +809,14 @@
     box-shadow: 0 1px 3px var(--shadow-color);
     outline: none;
   }
-
   .close-comments:hover {
     opacity: 1;
     transform: scale(1.1);
     background: var(--error-color);
   }
-
   .close-comments:focus {
     outline: none;
   }
-
   .comments-container {
     flex: 1;
     overflow-y: auto;
@@ -893,21 +824,17 @@
     margin: 0.3rem 0;
     max-height: calc(100% - 90px);
   }
-
   .comments-container::-webkit-scrollbar {
     width: 4px;
   }
-
   .comments-container::-webkit-scrollbar-track {
     background: var(--border-color);
     border-radius: 10px;
   }
-
   .comments-container::-webkit-scrollbar-thumb {
     background: var(--primary-color);
     border-radius: 10px;
   }
-
   .no-comments {
     color: var(--text-muted);
     font-style: italic;
@@ -917,7 +844,6 @@
     border-radius: 10px;
     opacity: 0.8;
   }
-
   .comment {
     display: flex;
     flex-direction: column;
@@ -926,7 +852,6 @@
     opacity: 0;
     will-change: transform, opacity;
   }
-
   .comment-header {
     display: flex;
     align-items: center;
@@ -934,7 +859,6 @@
     margin-bottom: 0.2rem;
     padding-left: 0.1rem;
   }
-
   .comment-avatar {
     width: 24px;
     height: 24px;
@@ -948,14 +872,12 @@
     font-size: 0.75rem;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
   }
-
   .comment-username {
     font-weight: 600;
     color: var(--primary-color);
     font-size: 0.8rem;
     white-space: nowrap;
   }
-
   .comment-content {
     background-color: var(--comment-bg);
     padding: 0.6rem 0.8rem;
@@ -969,7 +891,6 @@
     border-top-left-radius: 2px;
     position: relative;
   }
-
   .comment-content::before {
     content: "";
     position: absolute;
@@ -982,18 +903,15 @@
     border-radius: 2px;
     z-index: -1;
   }
-
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(5px); }
     to { opacity: 1; transform: translateY(0); }
   }
-
   .add-comment {
     display: flex;
     gap: 0.5rem;
     margin-top: 0.8rem;
   }
-
   .add-comment input {
     flex: 1;
     padding: 0.7rem 1rem;
@@ -1004,17 +922,14 @@
     color: var(--text-darker);
     transition: all 0.2s;
   }
-
   .add-comment input:focus {
     outline: none;
     border-color: var(--primary-color);
     box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.15);
   }
-
   .add-comment input::placeholder {
     color: var(--text-muted);
   }
-
   .add-comment button {
     background-color: var(--primary-color);
     color: white;
@@ -1028,17 +943,14 @@
     outline: none;
     box-shadow: 0 2px 6px rgba(0,0,0,0.1);
   }
-
   .add-comment button:hover {
     background-color: var(--primary-dark);
     box-shadow: 0 4px 10px rgba(0,0,0,0.15);
     transform: translateY(-1px);
   }
-
   .add-comment button:active {
     transform: translateY(0);
   }
-
   .error-message {
     color: var(--error-color);
     background-color: var(--error-bg);
@@ -1049,7 +961,6 @@
     border-radius: 6px;
     animation: errorShake 0.4s;
   }
-
   .refresh-info {
     text-align: center;
     margin-top: 2rem;
@@ -1064,108 +975,87 @@
     box-shadow: 0 1px 3px var(--shadow-color);
     border: 1px solid var(--border-color);
   }
-
   @keyframes errorShake {
     0%, 100% { transform: translateX(0); }
     10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
     20%, 40%, 60%, 80% { transform: translateX(5px); }
   }
-
   @media (max-width: 1024px) {
     .post {
       flex: 0 0 calc(50% - 1.5rem);
     }
   }
-
   @media (max-width: 768px) {
     .container {
       padding: 0.5rem;
     }
-
     .feed {
       gap: 1rem;
       padding: 0;
     }
-
     .post {
       flex: 0 0 100%;
       max-width: 100%;
       margin: 0 0 1rem 0;
       border-radius: 16px;
     }
-
     .post-image-container {
       border-radius: 16px 16px 0 0;
     }
-
     .header {
       padding: 1rem;
       margin: 0 0 1rem 0;
       border-radius: 14px;
     }
-
     .header h1 {
       font-size: 1.5rem;
       margin-bottom: 0.3rem;
     }
-
     .header p {
       font-size: 0.9rem;
     }
   }
-
   @media (max-width: 480px) {
     .container {
       padding: 0.3rem;
     }
-
     .feed {
       gap: 0.75rem;
     }
-
     .post {
       margin: 0 0 0.75rem 0;
       border-radius: 14px;
     }
-
     .post-image-container {
       border-radius: 14px 14px 0 0;
     }
-
     .post-info {
       padding: 1rem;
     }
-
     .header {
       padding: 1rem;
       margin: 0 0 0.75rem 0;
       border-radius: 12px;
     }
-
     .post-actions {
       gap: 0.25rem;
     }
-
     .action-button {
       padding: 0.5rem 0.2rem;
       font-size: 0.85rem;
       gap: 0.2rem;
     }
-
     .action-button span:last-child {
       min-width: 20px;
     }
   }
-
   :global(button) {
     outline: none;
     -webkit-tap-highlight-color: transparent;
   }
-
   :global(*) {
     -webkit-tap-highlight-color: transparent;
   }
-
   .loading-more {
     width: 100%;
     display: flex;
@@ -1175,7 +1065,6 @@
     padding: 1.5rem 0;
     color: var(--text-muted);
   }
-  
   .loading-spinner-small {
     width: 30px;
     height: 30px;
@@ -1185,14 +1074,12 @@
     animation: spin 1s linear infinite;
     margin-bottom: 0.5rem;
   }
-  
   .load-more-container {
     width: 100%;
     display: flex;
     justify-content: center;
     padding: 1.5rem 0;
   }
-  
   .load-more-button {
     background-color: var(--primary-color);
     color: white;
@@ -1206,13 +1093,11 @@
     outline: none;
     box-shadow: 0 2px 6px rgba(0,0,0,0.1);
   }
-  
   .load-more-button:hover {
     background-color: var(--primary-dark);
     box-shadow: 0 4px 10px rgba(0,0,0,0.15);
     transform: translateY(-1px);
   }
-  
   .load-more-button:active {
     transform: translateY(0);
   }

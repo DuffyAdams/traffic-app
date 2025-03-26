@@ -1,17 +1,19 @@
+# traffic_scraper.py
+import os
+import re
+import sys
+import json
+import time
+import uuid
+import sqlite3
+import subprocess
+import threading
+from datetime import datetime
+
 import requests
 from bs4 import BeautifulSoup
-import re
 from geopy.geocoders import Nominatim
-import os
-import sqlite3
-import json
-from datetime import datetime
-import subprocess
-import time
-import sys
 import pytz
-import threading
-import uuid
 from flask import Flask, jsonify, send_from_directory, request, make_response
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -40,30 +42,32 @@ PARAMS = {"ddlComCenter": "BCCC"}
 SCRAPE_URL = "https://cad.chp.ca.gov/traffic.aspx?__EVENTTARGET=ddlComCenter&ddlComCenter=BCCC"
 
 # Regex patterns
-VIEWSTATE_PATTERN = re.compile(r'<input\s+type="hidden"\s+name="__VIEWSTATE"\s+id="__VIEWSTATE"\s+value="([^"]+)"\s*/?>')
+VIEWSTATE_PATTERN = re.compile(
+    r'<input\s+type="hidden"\s+name="__VIEWSTATE"\s+id="__VIEWSTATE"\s+value="([^"]+)"\s*/?>'
+)
 LAT_LON_PATTERN = re.compile(r"(\d+\.\d+ -\d+\.\d+)")
 BRACKETS_PATTERN = re.compile(r"\[.*?\]")
 EXCLUDED_DETAILS = {"Unit At Scene", "Unit Enroute", "Unit Assigned"}
 
 # Cookie settings
 COOKIE_NAME = "traffic_app_uuid"
-COOKIE_MAX_AGE = 60 * 60 * 24 * 365  # 1 year in seconds
+COOKIE_MAX_AGE = 60 * 60 * 24 * 365  # 1 year
 
 # Flask app setup
 app = Flask(__name__, static_folder=os.path.join(BASE_DIR, "traffic-app", "dist"))
 CORS(app, resources={r"/api/*": {"origins": "*"}, r"/maps/*": {"origins": "*"}})
 
+# Test mode flag
+TESTMODE = True
+
 # -----------------------------------
 # Database Functions
 # -----------------------------------
 def init_db():
-    """Initialize SQLite database with updated schema.
-       The incidents table uses a composite primary key (incident_no, date).
-       The comments table now allows multiple comments per incident.
-    """
+    """Initialize SQLite database with updated schema."""
     with sqlite3.connect(DB_FILE) as conn:
         cur = conn.cursor()
-        # Incidents table
+        # Incidents table with an extra 'active' column
         cur.execute("""
             CREATE TABLE IF NOT EXISTS incidents (
                 incident_no TEXT,
@@ -81,11 +85,11 @@ def init_db():
                 map_filename TEXT,
                 likes INTEGER DEFAULT 0,
                 comments TEXT DEFAULT '[]',
+                active INTEGER DEFAULT 1,
                 PRIMARY KEY (incident_no, date)
             )
         """)
-        
-        # Likes table (using device UUID)
+        # Likes table
         cur.execute("DROP TABLE IF EXISTS likes")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS likes (
@@ -95,8 +99,7 @@ def init_db():
                 PRIMARY KEY (device_uuid, incident_no)
             )
         """)
-        
-        # Comments table (allowing multiple comments per incident)
+        # Comments table
         cur.execute("DROP TABLE IF EXISTS comments")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS comments (
@@ -131,7 +134,7 @@ def read_incidents():
         return incidents
 
 def incident_exists(incident_no, date):
-    """Helper function to check if an incident exists in the database."""
+    """Check if an incident exists in the database."""
     with sqlite3.connect(DB_FILE) as conn:
         cur = conn.cursor()
         cur.execute("SELECT 1 FROM incidents WHERE incident_no = ? AND date = ?", (str(incident_no), date))
@@ -154,41 +157,36 @@ def generate_description(data):
             "Do not add any warnings, advice, hashtags, or extra commentary. "
             "Keep the summary under 200 characters."
         )
-        model = genai.GenerativeModel('gemini-2.0-flash-lite')
-        response = model.generate_content(f"{system_prompt}\n\nSummarize this traffic incident in one fluent sentence.\n{prompt}")
-        return response.text.strip()
+        if TESTMODE:
+            return f"{system_prompt}\n\nSummarize this traffic incident in one fluent sentence.\n{prompt}"
+        else:
+            model = genai.GenerativeModel('gemini-2.0-flash-lite')
+            response = model.generate_content(f"{system_prompt}\n\nSummarize this traffic incident in one fluent sentence.\n{prompt}")
+            return response.text.strip()
     except Exception as e:
         print(f"Error generating description: {e}")
         return "Traffic incident reported."
 
 def generate_details_update_comment(old_details, new_details):
-    """
-    Generate a tweet-length summary focused on the details update.
-    Only differences in the details field are considered.
-    """
     try:
         old_str = ', '.join(old_details)
         new_str = ', '.join(new_details)
         prompt = f"Old details: {old_str}\nNew details: {new_str}\nSummarize the update in one tweet-length comment."
         system_prompt = "Provide a tweet-length factual summary focusing on the details update."
-        model = genai.GenerativeModel('gemini-2.0-flash-lite')
-        response = model.generate_content(f"{system_prompt}\n\n{prompt}")
-        return response.text.strip()
+        if TESTMODE:
+            return f"{system_prompt}\n\n{prompt}"
+        else:
+            model = genai.GenerativeModel('gemini-2.0-flash-lite')
+            response = model.generate_content(f"{system_prompt}\n\n{prompt}")
+            return response.text.strip()
     except Exception as e:
         print(f"Error generating details update comment: {e}")
         return "Traffic incident update."
 
 # -----------------------------------
-# Save or Update Incident (only updating details)
+# Save or Update Incident
 # -----------------------------------
 def save_or_update_incident(data):
-    """
-    Insert a new incident or update an existing record if the details field has changed.
-    When updating, preserve all original information—including the timestamp—
-    and update only the details and the derived description.
-    Also, generate an update comment via Google AI (using only the details)
-    unless the comment indicates that no significant change occurred.
-    """
     if not data:
         return False
 
@@ -198,20 +196,16 @@ def save_or_update_incident(data):
         return False
 
     date = data.get("Date", datetime.now().strftime("%Y-%m-%d"))
-    # For new incidents, capture the timestamp; for updates, preserve existing timestamp.
     new_timestamp = data.get("Timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    # Preserve all non-updateable fields.
     city = data.get("City", "")
     neighborhood = data.get("Neighborhood", "")
     location = data.get("Location", "")
     location_desc = data.get("Location Desc.", "")
     type_field = data.get("Type", "")
-    # Only the details field is allowed to update.
     new_details = data.get("Details", [])
     if isinstance(new_details, str):
         new_details = [new_details]
     details_json = json.dumps(new_details)
-    # Generate a fresh description using the new details.
     new_description = generate_description(data)
     latitude = data.get("Latitude")
     longitude = data.get("Longitude")
@@ -224,9 +218,7 @@ def save_or_update_incident(data):
         existing = cur.fetchone()
         if existing:
             existing_data = dict(existing)
-            # Compare only the details field.
             if details_json != existing_data.get("details", ""):
-                # Generate an update comment based solely on the details change.
                 old_details = json.loads(existing_data.get("details", "[]"))
                 update_comment = generate_details_update_comment(old_details, new_details)
                 if "no change" in update_comment.lower():
@@ -241,10 +233,9 @@ def save_or_update_incident(data):
                         print(f"Update comment added for incident {incident_no}.")
                     except sqlite3.Error as e:
                         print(f"Error inserting update comment: {e}")
-                # Preserve all other fields (including timestamp and map filename) and update only details and description.
                 cur.execute("""
                     UPDATE incidents 
-                    SET details = ?, description = ?
+                    SET details = ?, description = ?, active = 1
                     WHERE incident_no = ? AND date = ?
                 """, (details_json, new_description, str(incident_no), date))
                 conn.commit()
@@ -254,12 +245,11 @@ def save_or_update_incident(data):
                 print(f"No changes in details for incident {incident_no}.")
                 return False
         else:
-            # For a new incident, generate a map (if applicable) and insert the full record.
             cur.execute("""
                 INSERT INTO incidents 
                 (incident_no, date, timestamp, city, neighborhood, location, location_desc, type, details, 
-                 description, latitude, longitude, map_filename, likes, comments)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 description, latitude, longitude, map_filename, likes, comments, active)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
             """, (str(incident_no), date, new_timestamp, city, neighborhood, location, location_desc, type_field,
                   details_json, new_description, latitude, longitude, new_map_filename, 0, '[]'))
             conn.commit()
@@ -270,7 +260,6 @@ def save_or_update_incident(data):
 # UUID Management
 # -----------------------------------
 def get_or_create_uuid(req):
-    """Get UUID from cookie or create a new one if not present."""
     device_uuid = req.cookies.get(COOKIE_NAME)
     if not device_uuid:
         device_uuid = str(uuid.uuid4())
@@ -283,12 +272,10 @@ def get_or_create_uuid(req):
 # Scraper Functions
 # -----------------------------------
 def get_viewstate(html_text):
-    """Extract __VIEWSTATE from HTML."""
     match = VIEWSTATE_PATTERN.search(html_text)
     return match.group(1) if match else None
 
 def extract_traffic_info(response_text):
-    """Extract coordinates and details from response text."""
     matches = LAT_LON_PATTERN.findall(response_text)
     details_pattern = re.compile(r'<td[^>]*colspan="6"[^>]*>(.*?)</td>', re.DOTALL)
     raw_details = details_pattern.findall(response_text)
@@ -304,7 +291,6 @@ def extract_traffic_info(response_text):
     return {}
 
 def get_location(lat, lon):
-    """Reverse geocode coordinates to obtain location details."""
     try:
         geolocator = Nominatim(user_agent="traffic_scraper")
         location = geolocator.reverse((lat, lon), exactly_one=True)
@@ -314,10 +300,6 @@ def get_location(lat, lon):
         return None
 
 def get_incident_details(row_index, viewstate):
-    """
-    For a given incident row (by its index in the table), perform a POST request
-    to get additional details (e.g. coordinates and extra details).
-    """
     try:
         data = {
             "__LASTFOCUS": "",
@@ -344,11 +326,6 @@ def get_incident_details(row_index, viewstate):
         return {}
 
 def scrape_all_incidents():
-    """
-    Scrape all rows from the incident table.
-    For each row, fetch the basic table data and then use a POST request (simulating a row click)
-    to get additional details such as coordinates.
-    """
     try:
         response = requests.get(SCRAPE_URL, headers=HEADERS)
         response.raise_for_status()
@@ -372,7 +349,6 @@ def scrape_all_incidents():
             table_data = dict(zip(headers, row_data))
             additional_details = get_incident_details(idx, viewstate)
             merged_data = {**table_data, **additional_details}
-            # Generate description using the new details.
             merged_data["Description"] = generate_description(merged_data)
             merged_data["Date"] = datetime.now().strftime("%Y-%m-%d")
             merged_data["Timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -382,15 +358,10 @@ def scrape_all_incidents():
         print("Error scraping incidents:", e)
         return []
 
-# -----------------------------------
-# Map Generator Function
-# -----------------------------------
 def run_map_generator(merged_data):
-    """Run map generator script and update data with a unique filename."""
     if not os.path.exists(MAP_GENERATOR):
         print(f"Map generator script not found at '{MAP_GENERATOR}'.")
         return
-
     try:
         lon = merged_data.get("Longitude")
         lat = merged_data.get("Latitude")
@@ -408,16 +379,7 @@ def run_map_generator(merged_data):
     except subprocess.CalledProcessError as e:
         print(f"Error running map generator: {e}")
 
-# -----------------------------------
-# Monitoring Function
-# -----------------------------------
 def monitor_traffic_data(interval=60):
-    """
-    Continuously scrape all incidents every `interval` seconds.
-    For each incident, either insert it into the database or update the existing record
-    if the details field has changed.
-    A new map image is generated only if the incident is new.
-    """
     print("Starting continuous traffic monitoring...")
     print(f"Data saved to: {DB_FILE}")
     print(f"Map generator: {MAP_GENERATOR}")
@@ -426,19 +388,32 @@ def monitor_traffic_data(interval=60):
         while True:
             print(f"\nChecking updates... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             incidents = scrape_all_incidents()
+            active_incident_ids = set()
             if incidents:
                 for incident in incidents:
                     incident_no = incident.get("No.") or incident.get("Incident No.")
                     if not incident_no:
                         print("WARNING: No incident number found. Skipping this entry.")
                         continue
-                    # Only generate a new map if the incident is new.
+                    active_incident_ids.add(str(incident_no))
                     if not incident_exists(incident_no, incident.get("Date", datetime.now().strftime("%Y-%m-%d"))):
                         if "Longitude" in incident and "Latitude" in incident:
                             run_map_generator(incident)
                     save_or_update_incident(incident)
             else:
                 print("No valid data retrieved.")
+
+            # Mark incidents as inactive if they are not in the current scrape.
+            with sqlite3.connect(DB_FILE) as conn:
+                cur = conn.cursor()
+                if active_incident_ids:
+                    placeholders = ",".join("?" for _ in active_incident_ids)
+                    query = f"UPDATE incidents SET active = 0 WHERE incident_no NOT IN ({placeholders})"
+                    cur.execute(query, tuple(active_incident_ids))
+                else:
+                    cur.execute("UPDATE incidents SET active = 0")
+                conn.commit()
+
             time.sleep(interval)
     except KeyboardInterrupt:
         print("\nMonitoring stopped by user.")
@@ -446,12 +421,8 @@ def monitor_traffic_data(interval=60):
         print(f"\nError: {e}")
         raise
 
-# -----------------------------------
-# Flask API Endpoints
-# -----------------------------------
 @app.route("/api/incidents")
 def get_incidents():
-    """Return all incidents and set UUID cookie if needed."""
     response = jsonify(read_incidents())
     if COOKIE_NAME not in request.cookies:
         device_uuid = str(uuid.uuid4())
@@ -471,7 +442,6 @@ def get_map(filename):
 
 @app.route("/api/incidents/<incident_id>/like", methods=["POST"])
 def like_incident(incident_id):
-    """Like an incident using UUID instead of IP address."""
     device_uuid = get_or_create_uuid(request)
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute("PRAGMA foreign_keys = ON")
@@ -489,7 +459,7 @@ def like_incident(incident_id):
             likes_count = result[0] if result else 0
         except sqlite3.IntegrityError:
             conn.rollback()
-            return jsonify({"error": "Could not process like. You may have already liked this post."}), 400
+            return jsonify({"error": "Could not process like."}), 400
     response = jsonify({"likes": likes_count})
     if COOKIE_NAME not in request.cookies:
         response.set_cookie(
@@ -504,7 +474,6 @@ def like_incident(incident_id):
 
 @app.route("/api/incidents/<incident_id>/comment", methods=["POST"])
 def comment_incident(incident_id):
-    """Comment on an incident using UUID instead of IP address."""
     device_uuid = get_or_create_uuid(request)
     new_comment = request.json.get("comment", "")
     username = request.json.get("username", "Anonymous")
@@ -537,7 +506,6 @@ def comment_incident(incident_id):
 
 @app.route("/api/user/check", methods=["GET"])
 def check_user():
-    """Check if user already has UUID and return it (for client-side use)."""
     device_uuid = get_or_create_uuid(request)
     response = jsonify({"uuid": device_uuid})
     if COOKIE_NAME not in request.cookies:
@@ -558,11 +526,7 @@ def serve_app(path):
         return send_from_directory(app.static_folder, path)
     return send_from_directory(app.static_folder, "index.html")
 
-# -----------------------------------
-# Main Execution
-# -----------------------------------
 def run_scraper_and_server():
-    """Run scraper in a thread and start Flask server."""
     init_db()
     scraper_thread = threading.Thread(target=monitor_traffic_data, daemon=True)
     scraper_thread.start()
