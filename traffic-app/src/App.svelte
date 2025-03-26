@@ -79,7 +79,7 @@
           likeError: "",
           commentError: "",
           likeErrorAnimation: false,
-          active: incident.active // include active flag
+          active: incident.active
         }));
 
       allPosts = processedPosts;
@@ -293,6 +293,7 @@
       {#each posts as post, i (post.compositeId)}
         <div 
           class="post"
+          class:active={post.active}
           in:slide={{ delay: Math.min(i % postsPerPage * 50, 300), duration: 200 }}
           animate:flip={{ duration: 200 }}
         >
@@ -302,9 +303,6 @@
                 <span class="incident-icon">{getIconForIncidentType(post.type)}</span>
                 <span class="incident-type">{post.type}</span>
               </div>
-              {#if post.active}
-                <div class="active-badge">Active</div>
-              {/if}
               <img src={post.image} alt="Incident location map" class="post-image" loading="lazy" />
             </div>
             
@@ -580,6 +578,28 @@
     box-shadow: 0 12px 28px var(--shadow-color), 0 0 0 1px rgba(0,0,0,0.03);
     transform: translateY(-3px);
   }
+  .post.active {
+  position: relative;
+  box-shadow: 0 0px 12px var(--shadow-color),
+              0 0 0 4px rgba(255, 99, 71, 0.4);
+  animation: outwardPulse 2s linear infinite;
+}
+
+@keyframes outwardPulse {
+  0% {
+    box-shadow: 0 6px 15px var(--shadow-color),
+                0 0 0 0px rgba(255, 99, 71, 0.512);
+  }
+  80% {
+    box-shadow: 0 0px 25px var(--shadow-color),
+                0 0 0 12px rgba(255, 99, 71, 0);
+  }
+  100% {
+    /* Quick reset to the starting state */
+    box-shadow: 0 0px 0px var(--shadow-color),
+                0 0 0 0px rgba(255, 99, 71, 0);
+  }
+}
   .post-content {
     padding: 0;
     display: flex;
@@ -614,20 +634,6 @@
   }
   .incident-icon {
     font-size: 1.1rem;
-  }
-  .active-badge {
-    position: absolute;
-    top: 1rem;
-    right: 1rem;
-    background-color: #38a169;
-    color: white;
-    padding: 0.5rem 0.9rem;
-    border-radius: 30px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    z-index: 1;
-    backdrop-filter: blur(8px);
-    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
   }
   .post-image {
     width: 100%;

@@ -169,10 +169,15 @@ def generate_description(data):
 
 def generate_details_update_comment(old_details, new_details):
     try:
-        old_str = ', '.join(old_details)
-        new_str = ', '.join(new_details)
-        prompt = f"Old details: {old_str}\nNew details: {new_str}\nSummarize the update in one tweet-length comment."
-        system_prompt = "Provide a tweet-length factual summary focusing on the details update."
+        # Calculate the added details (i.e. items present in new_details but not in old_details)
+        added_details = [detail for detail in new_details if detail not in old_details]
+        if not added_details:
+            # Return a marker that indicates no significant change
+            return "no change"
+        
+        added_str = ', '.join(added_details)
+        prompt = f"New details added: {added_str}\nSummarize this update in one tweet-length comment."
+        system_prompt = "Provide a tweet-length factual summary focusing on the update."
         if TESTMODE:
             return f"{system_prompt}\n\n{prompt}"
         else:
@@ -245,6 +250,16 @@ def save_or_update_incident(data):
                 print(f"No changes in details for incident {incident_no}.")
                 return False
         else:
+            # Duplicate prevention: check for other active incidents with the same coordinates
+            if latitude is not None and longitude is not None:
+                cur.execute("""
+                    SELECT 1 FROM incidents
+                    WHERE active = 1 AND latitude = ? AND longitude = ?
+                """, (latitude, longitude))
+                if cur.fetchone():
+                    print(f"Duplicate incident detected based on coordinates: {latitude}, {longitude}. Skipping insert.")
+                    return False
+
             cur.execute("""
                 INSERT INTO incidents 
                 (incident_no, date, timestamp, city, neighborhood, location, location_desc, type, details, 
