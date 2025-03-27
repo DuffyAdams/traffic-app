@@ -254,8 +254,8 @@
     console.log("Current username:", currentUsername);
 
     fetchIncidents();
-    const refreshInterval = setInterval(fetchIncidents, 20000);
-    document.querySelector('.refresh-info').textContent = 'Refreshing automatically every 20 seconds';
+    const refreshInterval = setInterval(fetchIncidents, 60000);
+    document.querySelector('.refresh-info').textContent = 'Refreshing automatically every 60 seconds';
     if (scrollContainer) {
       scrollContainer.addEventListener('scroll', handleScroll);
     }

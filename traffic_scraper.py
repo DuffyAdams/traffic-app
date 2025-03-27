@@ -166,7 +166,7 @@ def generate_description(data):
         system_prompt = (
             "Provide a factual, tweet-length summary using the details given. "
             "Do not add any warnings, advice, hashtags, or extra commentary. "
-            "Keep the summary under 200 characters."
+            "Keep the summary under 200 characters. Add related emojis."
         )
         user_message = f"Summarize this traffic incident in one fluent sentence.\n{prompt}"
 
@@ -187,33 +187,6 @@ def generate_description(data):
         print(f"Error generating description: {e}")
         return "Traffic incident reported."
 
-def generate_details_update_comment(old_details, new_details):
-    """Generate a tweet-length update comment using ChatGPT's GPT-4o-mini model."""
-    try:
-        # Identify details added in the update
-        added_details = [detail for detail in new_details if detail not in old_details]
-        if not added_details:
-            return "no change"
-
-        added_str = ', '.join(added_details)
-        prompt = f"{added_str}\nSummarize this in one tweet-length comment."
-        system_prompt = load_system_prompt('system_prompt.txt')
-
-        if TESTMODE:  # Ensure TESTMODE is defined elsewhere in your code
-            return f"{prompt}"
-        else:
-            # Use the new client.chat.completions.create method
-            response = client.chat.completions.create(
-                model="gpt-4o-mini-2024-07-18",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt},
-                ]
-            )
-            return response.choices[0].message.content.strip()
-    except Exception as e:
-        print(f"Error generating details update comment: {e}")
-        return "Traffic incident update."
 # -----------------------------------
 # Save or Update Incident
 # -----------------------------------
@@ -250,20 +223,6 @@ def save_or_update_incident(data):
         if existing:
             existing_data = dict(existing)
             if details_json != existing_data.get("details", ""):
-                old_details = json.loads(existing_data.get("details", "[]"))
-                update_comment = generate_details_update_comment(old_details, new_details)
-                if "no change" in update_comment.lower():
-                    print(f"No significant update for incident {incident_no}; skipping update comment.")
-                else:
-                    bot_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    try:
-                        cur.execute("""
-                            INSERT INTO comments (device_uuid, incident_no, username, comment, timestamp)
-                            VALUES (?, ?, ?, ?, ?)
-                        """, ("TrafficBot", str(incident_no), "TrafficBot🚦", update_comment, bot_timestamp))
-                        print(f"Update comment added for incident {incident_no}.")
-                    except sqlite3.Error as e:
-                        print(f"Error inserting update comment: {e}")
                 cur.execute("""
                     UPDATE incidents 
                     SET details = ?, description = ?, active = 1
