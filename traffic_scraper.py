@@ -17,8 +17,7 @@ import pytz
 from flask import Flask, jsonify, send_from_directory, request, make_response
 from flask_cors import CORS
 from dotenv import load_dotenv
-import google.generativeai as genai
-
+from openai import OpenAI
 # -----------------------------------
 # Configuration and Setup
 # -----------------------------------
@@ -31,8 +30,15 @@ MAP_GENERATOR = os.path.join(BASE_DIR, "generate_map.py")
 
 os.makedirs(TARGET_DIR, exist_ok=True)
 
-# Configure Gemini API
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+# Retrieve the API key from the environment
+GPT_KEY = os.getenv("GPT_KEY")
+
+# Check if the API key is loaded correctly
+if not GPT_KEY:
+    raise ValueError("GPT_KEY not found in environment variables. Ensure it is set in the .env file.")
+
+# Initialize the OpenAI client with the API key
+client = OpenAI(api_key=GPT_KEY)
 
 HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
@@ -143,8 +149,13 @@ def incident_exists(incident_no, date):
 # -----------------------------------
 # Google AI Helper Functions
 # -----------------------------------
+def load_system_prompt(filename):
+    with open(filename, 'r') as file:
+        return file.read().strip()
+
+
 def generate_description(data):
-    """Generate a tweet-friendly description using Google's Gemini Flash 2.0 API."""
+    """Generate a tweet-friendly description using ChatGPT's GPT-4o-mini model."""
     try:
         prompt = (
             f"Neighborhood: {data.get('Neighborhood')}\n"
@@ -157,37 +168,52 @@ def generate_description(data):
             "Do not add any warnings, advice, hashtags, or extra commentary. "
             "Keep the summary under 200 characters."
         )
-        if TESTMODE:
-            return f"{system_prompt}\n\nSummarize this traffic incident in one fluent sentence.\n{prompt}"
+        user_message = f"Summarize this traffic incident in one fluent sentence.\n{prompt}"
+
+        if TESTMODE:  # Ensure TESTMODE is defined elsewhere in your code
+            # Return the prompt for debugging in test mode
+            return f"{system_prompt}\n\n{user_message}"
         else:
-            model = genai.GenerativeModel('gemini-2.0-flash-lite')
-            response = model.generate_content(f"{system_prompt}\n\nSummarize this traffic incident in one fluent sentence.\n{prompt}")
-            return response.text.strip()
+            # Use the new client.chat.completions.create method
+            response = client.chat.completions.create(
+                model="gpt-4o-mini-2024-07-18",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message},
+                ]
+            )
+            return response.choices[0].message.content.strip()
     except Exception as e:
         print(f"Error generating description: {e}")
         return "Traffic incident reported."
 
 def generate_details_update_comment(old_details, new_details):
+    """Generate a tweet-length update comment using ChatGPT's GPT-4o-mini model."""
     try:
-        # Calculate the added details (i.e. items present in new_details but not in old_details)
+        # Identify details added in the update
         added_details = [detail for detail in new_details if detail not in old_details]
         if not added_details:
-            # Return a marker that indicates no significant change
             return "no change"
-        
+
         added_str = ', '.join(added_details)
-        prompt = f"New details added: {added_str}\nSummarize this update in one tweet-length comment."
-        system_prompt = "Provide a tweet-length factual summary focusing on the update."
-        if TESTMODE:
-            return f"{system_prompt}\n\n{prompt}"
+        prompt = f"{added_str}\nSummarize this in one tweet-length comment."
+        system_prompt = load_system_prompt('system_prompt.txt')
+
+        if TESTMODE:  # Ensure TESTMODE is defined elsewhere in your code
+            return f"{prompt}"
         else:
-            model = genai.GenerativeModel('gemini-2.0-flash-lite')
-            response = model.generate_content(f"{system_prompt}\n\n{prompt}")
-            return response.text.strip()
+            # Use the new client.chat.completions.create method
+            response = client.chat.completions.create(
+                model="gpt-4o-mini-2024-07-18",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt},
+                ]
+            )
+            return response.choices[0].message.content.strip()
     except Exception as e:
         print(f"Error generating details update comment: {e}")
         return "Traffic incident update."
-
 # -----------------------------------
 # Save or Update Incident
 # -----------------------------------
