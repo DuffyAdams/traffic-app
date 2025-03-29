@@ -117,6 +117,14 @@ def init_db():
                 timestamp TEXT
             )
         """)
+        
+        # Update existing traffic collision types to standardize naming
+        cur.execute("""
+            UPDATE incidents
+            SET type = 'Traffic Collision'
+            WHERE type LIKE 'Trfc Collision%'
+        """)
+        
         conn.commit()
 
 def read_incidents():
@@ -129,10 +137,10 @@ def read_incidents():
         for inc in incidents:
             incident_no = inc["incident_no"]
             cur.execute(
-                "SELECT username, comment FROM comments WHERE incident_no = ? ORDER BY timestamp ASC",
+                "SELECT username, comment, timestamp FROM comments WHERE incident_no = ? ORDER BY timestamp ASC",
                 (incident_no,)
             )
-            inc["comments"] = [{"username": row[0] or "Anonymous", "comment": row[1]} for row in cur.fetchall()]
+            inc["comments"] = [{"username": row[0] or "Anonymous", "comment": row[1], "timestamp": row[2]} for row in cur.fetchall()]
             try:
                 inc["Details"] = json.loads(inc["details"]) if inc["details"] else []
             except Exception:
@@ -477,18 +485,25 @@ def comment_incident(incident_id):
     device_uuid = get_or_create_uuid(request)
     new_comment = request.json.get("comment", "")
     username = request.json.get("username", "Anonymous")
+    timestamp = request.json.get("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     if not new_comment:
         return jsonify({"error": "Empty comment"}), 400
+    
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute("PRAGMA foreign_keys = ON")
         cur = conn.cursor()
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         try:
+            # Check if user has already commented twice on this post
+            cur.execute("SELECT COUNT(*) FROM comments WHERE incident_no = ? AND username = ?", (incident_id, username))
+            comment_count = cur.fetchone()[0]
+            if comment_count >= 2:
+                return jsonify({"error": "You can only leave 2 comments per post."}), 400
+
             cur.execute("INSERT INTO comments (incident_no, device_uuid, username, comment, timestamp) VALUES (?, ?, ?, ?, ?)",
                         (incident_id, device_uuid, username, new_comment, timestamp))
             conn.commit()
-            cur.execute("SELECT username, comment FROM comments WHERE incident_no = ? ORDER BY timestamp ASC", (incident_id,))
-            comments = [{"username": row[0] or "Anonymous", "comment": row[1]} for row in cur.fetchall()]
+            cur.execute("SELECT username, comment, timestamp FROM comments WHERE incident_no = ? ORDER BY timestamp ASC", (incident_id,))
+            comments = [{"username": row[0] or "Anonymous", "comment": row[1], "timestamp": row[2]} for row in cur.fetchall()]
         except sqlite3.IntegrityError:
             conn.rollback()
             return jsonify({"error": "Could not process comment."}), 400

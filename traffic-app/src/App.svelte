@@ -14,6 +14,7 @@
   let loadingMore = false;
   let allPostsLoaded = false;
   let scrollContainer;
+  let selectedType = null;
 
   const adjectives = ['Cool', 'Happy', 'Swift', 'Brave', 'Clever', 'Lucky'];
   const nouns = ['Panda', 'Tiger', 'Eagle', 'Fox', 'Wolf', 'Bear'];
@@ -29,6 +30,18 @@
     darkMode = !darkMode;
     document.body.classList.toggle('dark-mode', darkMode);
     localStorage.setItem('darkMode', darkMode.toString());
+  }
+
+  function getUniqueIncidentTypes() {
+    const types = new Set();
+    allPosts.forEach(post => types.add(post.type));
+    return Array.from(types);
+  }
+
+  function filterByType(type) {
+    selectedType = selectedType === type ? null : type;
+    currentPage = 1;
+    loadPostsPage();
   }
 
   async function fetchIncidents() {
@@ -96,7 +109,13 @@
   
   function loadPostsPage() {
     const endIndex = currentPage * postsPerPage;
-    const postsToShow = allPosts.slice(0, endIndex);
+    let postsToShow = allPosts;
+    
+    if (selectedType) {
+      postsToShow = allPosts.filter(post => post.type === selectedType);
+    }
+    
+    postsToShow = postsToShow.slice(0, endIndex);
     
     posts = postsToShow.map(newPost => {
       const existingPost = posts.find(p => p.compositeId === newPost.compositeId);
@@ -105,7 +124,7 @@
         : newPost;
     });
     
-    allPostsLoaded = endIndex >= allPosts.length;
+    allPostsLoaded = endIndex >= postsToShow.length;
     loadingMore = false;
   }
   
@@ -136,6 +155,40 @@
       hour: '2-digit',
       minute: '2-digit',
       hour12: true
+    });
+  }
+
+  function formatCommentTimestamp(timestamp) {
+    if (!timestamp) return "";
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    
+    // If less than 1 minute ago
+    if (diff < 60000) return "just now";
+    
+    // If less than 1 hour ago
+    if (diff < 3600000) {
+      const minutes = Math.floor(diff / 60000);
+      return `${minutes}m ago`;
+    }
+    
+    // If less than 24 hours ago
+    if (diff < 86400000) {
+      const hours = Math.floor(diff / 3600000);
+      return `${hours}h ago`;
+    }
+    
+    // If less than 7 days ago
+    if (diff < 604800000) {
+      const days = Math.floor(diff / 86400000);
+      return `${days}d ago`;
+    }
+    
+    // Otherwise show the date
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric'
     });
   }
 
@@ -186,9 +239,25 @@
   async function submitComment(postId) {
     const post = posts.find(p => p.id === postId);
     if (!post || post.newComment.trim() === "") return;
+
+    // Check if user has already commented twice on this post
+    const userComments = post.comments.filter(c => c.username === currentUsername);
+    if (userComments.length >= 2) {
+      posts = posts.map(p =>
+        p.id === postId ? { ...p, commentError: "You can only leave 2 comments per post." } : p
+      );
+      setTimeout(() => {
+        posts = posts.map(p =>
+          p.id === postId ? { ...p, commentError: "" } : p
+        );
+      }, 3000);
+      return;
+    }
+
     const newCommentObj = {
       username: currentUsername,
-      comment: post.newComment
+      comment: post.newComment,
+      timestamp: new Date().toISOString()
     };
     try {
       const res = await fetch(`/api/incidents/${postId}/comment`, {
@@ -303,6 +372,12 @@
                 <span class="incident-icon">{getIconForIncidentType(post.type)}</span>
                 <span class="incident-type">{post.type}</span>
               </div>
+              {#if post.active}
+                <div class="active-badge">
+                  <span class="active-icon">⚡</span>
+                  <span>Active</span>
+                </div>
+              {/if}
               <img src={post.image} alt="Incident location map" class="post-image" loading="lazy" />
             </div>
             
@@ -347,7 +422,10 @@
                         <div class="comment" style="animation-delay: {i * 20}ms">
                           <div class="comment-header">
                             <div class="comment-avatar">👤</div>
-                            <span class="comment-username">{comment.username}</span>
+                            <div class="comment-user-info">
+                              <span class="comment-username">{comment.username}</span>
+                              <span class="comment-timestamp">{formatCommentTimestamp(comment.timestamp)}</span>
+                            </div>
                           </div>
                           <div class="comment-content">
                             {comment.comment}
@@ -579,27 +657,9 @@
     transform: translateY(-3px);
   }
   .post.active {
-  position: relative;
-  box-shadow: 0 0px 12px var(--shadow-color),
-              0 0 0 4px rgba(255, 99, 71, 0.4);
-  animation: outwardPulse 2s linear infinite;
-}
-
-@keyframes outwardPulse {
-  0% {
-    box-shadow: 0 6px 15px var(--shadow-color),
-                0 0 0 0px rgba(255, 99, 71, 0.512);
+    position: relative;
+    box-shadow: 0 6px 15px var(--shadow-color);
   }
-  80% {
-    box-shadow: 0 0px 25px var(--shadow-color),
-                0 0 0 12px rgba(255, 99, 71, 0);
-  }
-  100% {
-    /* Quick reset to the starting state */
-    box-shadow: 0 0px 0px var(--shadow-color),
-                0 0 0 0px rgba(255, 99, 71, 0);
-  }
-}
   .post-content {
     padding: 0;
     display: flex;
@@ -632,8 +692,41 @@
     box-shadow: 0 2px 10px rgba(0,0,0,0.2);
     border: 1px solid rgba(255,255,255,0.1);
   }
+  .active-badge {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background-color: rgba(255, 99, 71, 0.85);
+    color: white;
+    padding: 0.4rem 0.8rem;
+    border-radius: 30px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    z-index: 1;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    border: 1px solid rgba(255,255,255,0.1);
+    animation: badgePulse 2s linear infinite;
+  }
+  @keyframes badgePulse {
+    0% {
+      box-shadow: 0 0 0 0 rgba(255, 99, 71, 0.4);
+    }
+    70% {
+      box-shadow: 0 0 0 10px rgba(255, 99, 71, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(255, 99, 71, 0);
+    }
+  }
   .incident-icon {
     font-size: 1.1rem;
+  }
+  .active-icon {
+    font-size: 0.9rem;
   }
   .post-image {
     width: 100%;
@@ -878,11 +971,30 @@
     font-size: 0.75rem;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
   }
+  .comment-user-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
   .comment-username {
     font-weight: 600;
     color: var(--primary-color);
     font-size: 0.8rem;
     white-space: nowrap;
+  }
+  .comment-timestamp {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    position: relative;
+    padding-left: 0.5rem;
+  }
+  .comment-timestamp::before {
+    content: "•";
+    position: absolute;
+    left: 0;
+    color: var(--text-muted);
+    opacity: 0.5;
   }
   .comment-content {
     background-color: var(--comment-bg);
@@ -896,6 +1008,15 @@
     word-break: break-word;
     border-top-left-radius: 2px;
     position: relative;
+  }
+  .comment-text {
+    margin-bottom: 0.3rem;
+  }
+  .comment-timestamp {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    text-align: right;
   }
   .comment-content::before {
     content: "";
@@ -1106,5 +1227,44 @@
   }
   .load-more-button:active {
     transform: translateY(0);
+  }
+  .type-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    padding: 0.5rem;
+    background-color: var(--card-bg);
+    border-radius: 12px;
+    box-shadow: 0 2px 8px var(--shadow-color);
+  }
+  .type-filter {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .type-filter:hover {
+    background-color: var(--hover-bg);
+    transform: translateY(-1px);
+  }
+  .type-filter.active {
+    background-color: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+  }
+  .filter-icon {
+    font-size: 1.1rem;
+  }
+  .filter-text {
+    white-space: nowrap;
   }
 </style>
