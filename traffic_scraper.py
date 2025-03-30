@@ -18,6 +18,7 @@ from flask import Flask, jsonify, send_from_directory, request, make_response
 from flask_cors import CORS
 from dotenv import load_dotenv
 from openai import OpenAI
+
 # -----------------------------------
 # Configuration and Setup
 # -----------------------------------
@@ -161,8 +162,12 @@ def load_system_prompt(filename):
     with open(filename, 'r') as file:
         return file.read().strip()
 
+call_count = 0
 
 def generate_description(data):
+    global call_count
+    call_count += 1
+    print("GPT API Calls:" + str(call_count))
     """Generate a tweet-friendly description using ChatGPT's GPT-4o-mini model."""
     try:
         prompt = (
@@ -178,11 +183,9 @@ def generate_description(data):
         )
         user_message = f"Summarize this traffic incident in one fluent sentence.\n{prompt}"
 
-        if TESTMODE:  # Ensure TESTMODE is defined elsewhere in your code
-            # Return the prompt for debugging in test mode
+        if TESTMODE:  # Return the prompt for debugging in test mode
             return f"{system_prompt}\n\n{user_message}"
         else:
-            # Use the new client.chat.completions.create method
             response = client.chat.completions.create(
                 model="gpt-4o-mini-2024-07-18",
                 messages=[
@@ -213,12 +216,17 @@ def save_or_update_incident(data):
     neighborhood = data.get("Neighborhood", "")
     location = data.get("Location", "")
     location_desc = data.get("Location Desc.", "")
+    
+    # Standardize traffic collision type
     type_field = data.get("Type", "")
+    if type_field and type_field.startswith("Trfc Collision"):
+        type_field = "Traffic Collision"
+    
     new_details = data.get("Details", [])
     if isinstance(new_details, str):
         new_details = [new_details]
     details_json = json.dumps(new_details)
-    new_description = generate_description(data)
+    
     latitude = data.get("Latitude")
     longitude = data.get("Longitude")
     new_map_filename = data.get("MapFilename", "")
@@ -231,6 +239,8 @@ def save_or_update_incident(data):
         if existing:
             existing_data = dict(existing)
             if details_json != existing_data.get("details", ""):
+                # Only generate a new description if details have changed
+                new_description = generate_description(data)
                 cur.execute("""
                     UPDATE incidents 
                     SET details = ?, description = ?, active = 1
@@ -243,16 +253,8 @@ def save_or_update_incident(data):
                 print(f"No changes in details for incident {incident_no}.")
                 return False
         else:
-            # Duplicate prevention: check for other active incidents with the same coordinates
-            if latitude is not None and longitude is not None:
-                cur.execute("""
-                    SELECT 1 FROM incidents
-                    WHERE active = 1 AND latitude = ? AND longitude = ?
-                """, (latitude, longitude))
-                if cur.fetchone():
-                    print(f"Duplicate incident detected based on coordinates: {latitude}, {longitude}. Skipping insert.")
-                    return False
-
+            # For new incidents, generate the description before inserting
+            new_description = generate_description(data)
             cur.execute("""
                 INSERT INTO incidents 
                 (incident_no, date, timestamp, city, neighborhood, location, location_desc, type, details, 
@@ -357,7 +359,7 @@ def scrape_all_incidents():
             table_data = dict(zip(headers, row_data))
             additional_details = get_incident_details(idx, viewstate)
             merged_data = {**table_data, **additional_details}
-            merged_data["Description"] = generate_description(merged_data)
+            # Remove the generate_description() call here to avoid duplicate API calls.
             merged_data["Date"] = datetime.now().strftime("%Y-%m-%d")
             merged_data["Timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             incidents_list.append(merged_data)
