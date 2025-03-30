@@ -47,7 +47,6 @@
   async function fetchIncidents() {
     try {
       loading = true;
-      console.log("Fetching incidents from /api/incidents...");
       const res = await fetch('/api/incidents');
       
       if (!res.ok) {
@@ -57,8 +56,6 @@
       }
       
       const incidents = await res.json();
-      console.log(`Retrieved ${incidents.length} incidents`);
-      
       const uniqueIncidents = [];
       const seenKeys = new Set();
       
@@ -72,8 +69,6 @@
           uniqueIncidents.push(incident);
         }
       }
-      
-      console.log(`After deduplication: ${uniqueIncidents.length} unique incidents`);
       
       const processedPosts = uniqueIncidents
         .filter(incident => incident.map_filename) 
@@ -164,28 +159,20 @@
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     
-    // If less than 1 minute ago
     if (diff < 60000) return "just now";
-    
-    // If less than 1 hour ago
     if (diff < 3600000) {
       const minutes = Math.floor(diff / 60000);
       return `${minutes}m ago`;
     }
-    
-    // If less than 24 hours ago
     if (diff < 86400000) {
       const hours = Math.floor(diff / 3600000);
       return `${hours}h ago`;
     }
-    
-    // If less than 7 days ago
     if (diff < 604800000) {
       const days = Math.floor(diff / 86400000);
       return `${days}d ago`;
     }
     
-    // Otherwise show the date
     return date.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric'
@@ -236,11 +223,28 @@
     );
   }
 
+  function sharePost(post) {
+    const text = `${post.description} - Location: ${post.location}. Check out more traffic incidents at San Diego Traffic Watch!`;
+    const url = window.location.origin;
+    
+    if (navigator.share) {
+      navigator.share({
+        title: 'San Diego Traffic Watch',
+        text: text,
+        url: url
+      })
+      .then(() => console.log('Successful share'))
+      .catch((error) => console.log('Error sharing:', error));
+    } else {
+      const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
+      window.open(twitterUrl, '_blank');
+    }
+  }
+
   async function submitComment(postId) {
     const post = posts.find(p => p.id === postId);
     if (!post || post.newComment.trim() === "") return;
 
-    // Check if user has already commented twice on this post
     const userComments = post.comments.filter(c => c.username === currentUsername);
     if (userComments.length >= 2) {
       posts = posts.map(p =>
@@ -320,7 +324,6 @@
     if (!localStorage.getItem('username')) {
       localStorage.setItem('username', currentUsername);
     }
-    console.log("Current username:", currentUsername);
 
     fetchIncidents();
     const refreshInterval = setInterval(fetchIncidents, 60000);
@@ -401,7 +404,7 @@
                   <span class="button-icon">💬</span>
                   <span>{post.comments.length > 0 ? post.comments.length : 'Comment'}</span>
                 </button>
-                <button class="action-button share-button">
+                <button class="action-button share-button" on:click={() => sharePost(post)}>
                   <span class="button-icon">🔗</span>
                   <span>Share</span>
                 </button>
@@ -467,8 +470,12 @@
   {/if}
   
   <div class="refresh-info" in:fade={{ delay: 300, duration: 150 }}>
-    Refreshing automatically every 20 seconds
+    Refreshing automatically every 60 seconds
   </div>
+  
+  <footer class="app-footer" in:fade={{ delay: 400, duration: 200 }}>
+    <p>Created and Developed by <a href="https://github.com/DuffyAdams" target="_blank" rel="noopener noreferrer">Duffy Adams</a></p>
+  </footer>
 </div>
 
 <style>
@@ -696,19 +703,19 @@
     position: absolute;
     top: 1rem;
     right: 1rem;
-    background-color: rgba(255, 99, 71, 0.85);
-    color: white;
-    padding: 0.4rem 0.8rem;
+    background-color: #c13117d9;
+    color: #fff;
+    padding: .4rem .8rem;
     border-radius: 30px;
-    font-size: 0.75rem;
+    font-size: .75rem;
     font-weight: 600;
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: .4rem;
     z-index: 1;
-    backdrop-filter: blur(8px);
-    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-    border: 1px solid rgba(255,255,255,0.1);
+    -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 2px 10px #0003;
+    border: 1px solid rgba(255, 255, 255, .1);
     animation: badgePulse 2s linear infinite;
   }
   @keyframes badgePulse {
@@ -1228,43 +1235,24 @@
   .load-more-button:active {
     transform: translateY(0);
   }
-  .type-filters {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-bottom: 1.5rem;
-    padding: 0.5rem;
-    background-color: var(--card-bg);
-    border-radius: 12px;
-    box-shadow: 0 2px 8px var(--shadow-color);
-  }
-  .type-filter {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    border: 1px solid var(--border-color);
-    border-radius: 20px;
-    background-color: var(--bg-color);
-    color: var(--text-color);
+  .app-footer {
+    text-align: center;
+    margin-top: 2rem;
+    padding: 0rem 0;
+    color: var(--text-muted);
     font-size: 0.9rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
+    border-top: 1px solid var(--border-color);
   }
-  .type-filter:hover {
-    background-color: var(--hover-bg);
-    transform: translateY(-1px);
+  
+  .app-footer a {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.2s ease;
   }
-  .type-filter.active {
-    background-color: var(--primary-color);
-    color: white;
-    border-color: var(--primary-color);
-  }
-  .filter-icon {
-    font-size: 1.1rem;
-  }
-  .filter-text {
-    white-space: nowrap;
+  
+  .app-footer a:hover {
+    color: var(--primary-dark);
+    text-decoration: underline;
   }
 </style>
