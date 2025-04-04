@@ -65,7 +65,7 @@ app = Flask(__name__, static_folder=os.path.join(BASE_DIR, "traffic-app", "dist"
 CORS(app, resources={r"/api/*": {"origins": "*"}, r"/maps/*": {"origins": "*"}})
 
 # Test mode flag
-TESTMODE = False
+TESTMODE = True
 
 # -----------------------------------
 # Database Functions
@@ -124,6 +124,31 @@ def init_db():
             UPDATE incidents
             SET type = 'Traffic Collision'
             WHERE type LIKE 'Trfc Collision%'
+        """)
+        
+        # Standardize other incident types
+        cur.execute("""
+            UPDATE incidents
+            SET type = 'Maintenance'
+            WHERE type = 'Assist CT with Maintenance'
+        """)
+        
+        cur.execute("""
+            UPDATE incidents
+            SET type = 'Road Conditions'
+            WHERE type = 'Road/Weather Conditions'
+        """)
+        
+        cur.execute("""
+            UPDATE incidents
+            SET type = 'Construction'
+            WHERE type = 'Assist with Construction'
+        """)
+        
+        # Filter out "Request CalTrans Notify" types
+        cur.execute("""
+            DELETE FROM incidents
+            WHERE type = 'Request CalTrans Notify'
         """)
         
         conn.commit()

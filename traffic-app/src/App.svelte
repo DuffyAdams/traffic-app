@@ -77,6 +77,7 @@
           compositeId: incident.compositeId,
           time: formatTimestamp(incident.timestamp),
           description: incident.description,
+          showFullDescription: false,
           location: incident.location,
           image: `/maps/${incident.map_filename}`,
           likes: incident.likes,
@@ -115,7 +116,7 @@
     posts = postsToShow.map(newPost => {
       const existingPost = posts.find(p => p.compositeId === newPost.compositeId);
       return existingPost
-        ? { ...newPost, likes: existingPost.likes, comments: existingPost.comments, showComments: existingPost.showComments, newComment: existingPost.newComment, likeError: existingPost.likeError, commentError: existingPost.commentError }
+        ? { ...newPost, likes: existingPost.likes, comments: existingPost.comments, showComments: existingPost.showComments, newComment: existingPost.newComment, likeError: existingPost.likeError, commentError: existingPost.commentError, showFullDescription: existingPost.showFullDescription }
         : newPost;
     });
     
@@ -136,7 +137,7 @@
     if (!scrollContainer || loadingMore || allPostsLoaded) return;
     const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
     const scrollBottom = scrollHeight - scrollTop - clientHeight;
-    if (scrollBottom < 500) {
+    if (scrollBottom < 300) {
       loadMorePosts();
     }
   }
@@ -314,6 +315,24 @@
     return types[type] || "🚨";
   }
 
+  function toggleDescription(postId) {
+    posts = posts.map(post =>
+      post.id === postId ? { ...post, showFullDescription: !post.showFullDescription } : post
+    );
+  }
+
+  function truncateDescription(text, length = 150) {
+    if (!text) return '';
+    if (text.length <= 200) return text;
+    
+    // Find the last space within the character limit
+    const lastSpaceIndex = text.lastIndexOf(' ', length);
+    if (lastSpaceIndex === -1) return text.substring(0, length);
+    
+    // Return text up to the last complete word
+    return text.substring(0, lastSpaceIndex);
+  }
+
   onMount(() => {
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const storedMode = localStorage.getItem('darkMode');
@@ -341,7 +360,7 @@
 </script>
 
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<div class="container" bind:this={scrollContainer}>
+<div class="container" bind:this={scrollContainer} on:scroll={handleScroll}>
   <div class="header">
     <button class="header-content" on:click={toggleDarkMode} type="button">
       <h1>San Diego Traffic Watch</h1>
@@ -389,7 +408,18 @@
                 <span class="post-time">{post.time}</span>
                 <span class="post-location">{post.location}</span>
               </div>
-              <div class="post-description">{post.description}</div>
+              <div class="post-description">
+                {#if post.description}
+                  {post.showFullDescription ? post.description : truncateDescription(post.description)}
+                  {#if post.description.length > 200}
+                    <button class="more-button" on:click={() => toggleDescription(post.id)}>
+                      {post.showFullDescription ? 'less' : 'more'}
+                    </button>
+                  {/if}
+                {:else}
+                  No description available.
+                {/if}
+              </div>
               <div class="post-actions">
                 <button 
                   class="action-button like-button" 
@@ -460,10 +490,13 @@
           <p>Loading more incidents...</p>
         </div>
       {:else if !allPostsLoaded}
-        <div class="load-more-container" in:fade={{ duration: 150 }}>
-          <button class="load-more-button" on:click={loadMorePosts}>
-            Load More
-          </button>
+        <div class="scroll-indicator" in:fade={{ duration: 150 }}>
+          <div class="scroll-dots">
+            <span class="dot"></span>
+            <span class="dot"></span>
+            <span class="dot"></span>
+          </div>
+          <p>Scroll for more</p>
         </div>
       {/if}
     </div>
@@ -554,7 +587,7 @@
   }
   .header {
     text-align: center;
-    margin-bottom: 2rem;
+    margin-bottom: 1.5rem;
     padding: 1.5rem;
     background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
     color: white;
@@ -683,38 +716,38 @@
   }
   .post-badge {
     position: absolute;
-    top: 1rem;
-    left: 1rem;
+    top: 0.8rem;
+    left: 0.8rem;
     background-color: rgba(0, 0, 0, 0.65);
     color: white;
-    padding: 0.5rem 0.9rem;
-    border-radius: 30px;
-    font-size: 0.8rem;
+    padding: 0.4rem 0.7rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
     font-weight: 600;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.4rem;
     z-index: 1;
     backdrop-filter: blur(8px);
-    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
     border: 1px solid rgba(255,255,255,0.1);
   }
   .active-badge {
     position: absolute;
-    top: 1rem;
-    right: 1rem;
+    top: 0.8rem;
+    right: 0.8rem;
     background-color: #c13117d9;
     color: #fff;
-    padding: .4rem .8rem;
-    border-radius: 30px;
-    font-size: .75rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 16px;
+    font-size: 0.65rem;
     font-weight: 600;
     display: flex;
     align-items: center;
-    gap: .4rem;
+    gap: 0.25rem;
     z-index: 1;
     -webkit-backdrop-filter: blur(8px);
-    box-shadow: 0 2px 10px #0003;
+    box-shadow: 0 2px 6px #0003;
     border: 1px solid rgba(255, 255, 255, .1);
     animation: badgePulse 2s linear infinite;
   }
@@ -723,17 +756,17 @@
       box-shadow: 0 0 0 0 rgba(255, 99, 71, 0.4);
     }
     70% {
-      box-shadow: 0 0 0 10px rgba(255, 99, 71, 0);
+      box-shadow: 0 0 0 6px rgba(255, 99, 71, 0);
     }
     100% {
       box-shadow: 0 0 0 0 rgba(255, 99, 71, 0);
     }
   }
   .incident-icon {
-    font-size: 1.1rem;
+    font-size: 1rem;
   }
   .active-icon {
-    font-size: 0.9rem;
+    font-size: 0.7rem;
   }
   .post-image {
     width: 100%;
@@ -781,9 +814,10 @@
   }
   .post-description {
     font-size: 1rem;
-    line-height: 1.6;
-    margin-bottom: 1.4rem;
+    line-height: 1.5;
+    margin-bottom: 1.2rem;
     color: var(--text-darker);
+    position: relative;
   }
   .post-actions {
     display: flex;
@@ -1130,16 +1164,16 @@
     .post {
       flex: 0 0 100%;
       max-width: 100%;
-      margin: 0 0 1rem 0;
-      border-radius: 16px;
+      margin: 0 0 0.8rem 0;
+      border-radius: 14px;
     }
     .post-image-container {
-      border-radius: 16px 16px 0 0;
+      border-radius: 14px 14px 0 0;
     }
     .header {
-      padding: 1rem;
-      margin: 0 0 1rem 0;
-      border-radius: 14px;
+      padding: 0.8rem;
+      margin-bottom: 0.8rem;
+      border-radius: 12px;
     }
     .header h1 {
       font-size: 1.5rem;
@@ -1148,39 +1182,56 @@
     .header p {
       font-size: 0.9rem;
     }
+    .post-info {
+      padding: 1rem 1rem 0.6rem;
+    }
+    .post-description {
+      font-size: 0.95rem;
+      line-height: 1.4;
+      margin-bottom: 1rem;
+    }
   }
   @media (max-width: 480px) {
     .container {
-      padding: 0.3rem;
+      padding: 0.15rem;
     }
     .feed {
-      gap: 0.75rem;
+      gap: 0.5rem;
     }
     .post {
-      margin: 0 0 0.75rem 0;
-      border-radius: 14px;
-    }
-    .post-image-container {
-      border-radius: 14px 14px 0 0;
-    }
-    .post-info {
-      padding: 1rem;
-    }
-    .header {
-      padding: 1rem;
-      margin: 0 0 0.75rem 0;
+      margin: 0 0 0.5rem 0;
       border-radius: 12px;
     }
+    .post-image-container {
+      border-radius: 12px 12px 0 0;
+    }
+    .post-info {
+      padding: 0.7rem 0.7rem 0.5rem;
+    }
+    .post-header {
+      margin-bottom: 0.7rem;
+    }
+    .post-description {
+      font-size: 0.9rem;
+      line-height: 1.35;
+      margin-bottom: 0.8rem;
+    }
+    .header {
+      padding: 0.7rem;
+      margin-bottom: 0.7rem;
+      border-radius: 10px;
+    }
     .post-actions {
-      gap: 0.25rem;
+      gap: 0.2rem;
+      padding-top: 0.7rem;
     }
     .action-button {
-      padding: 0.5rem 0.2rem;
+      padding: 0.4rem 0.2rem;
       font-size: 0.85rem;
       gap: 0.2rem;
     }
     .action-button span:last-child {
-      min-width: 20px;
+      min-width: 18px;
     }
   }
   :global(button) {
@@ -1208,32 +1259,37 @@
     animation: spin 1s linear infinite;
     margin-bottom: 0.5rem;
   }
-  .load-more-container {
+  .scroll-indicator {
     width: 100%;
     display: flex;
-    justify-content: center;
-    padding: 1.5rem 0;
+    flex-direction: column;
+    align-items: center;
+    padding: 1rem 0;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    opacity: 0.7;
   }
-  .load-more-button {
-    background-color: var(--primary-color);
-    color: white;
-    border: none;
-    border-radius: 24px;
-    padding: 0.7rem 2rem;
-    font-weight: 600;
-    font-size: 0.95rem;
-    cursor: pointer;
-    transition: all 0.2s;
-    outline: none;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  .scroll-dots {
+    display: flex;
+    gap: 3px;
+    margin-bottom: 6px;
   }
-  .load-more-button:hover {
-    background-color: var(--primary-dark);
-    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
-    transform: translateY(-1px);
+  .dot {
+    width: 6px;
+    height: 6px;
+    background-color: var(--text-muted);
+    border-radius: 50%;
+    animation: bounce 1.4s infinite ease-in-out both;
   }
-  .load-more-button:active {
-    transform: translateY(0);
+  .dot:nth-child(1) {
+    animation-delay: -0.32s;
+  }
+  .dot:nth-child(2) {
+    animation-delay: -0.16s;
+  }
+  @keyframes bounce {
+    0%, 80%, 100% { transform: translateY(0); }
+    40% { transform: translateY(-8px); }
   }
   .app-footer {
     text-align: center;
@@ -1252,6 +1308,23 @@
   }
   
   .app-footer a:hover {
+    color: var(--primary-dark);
+    text-decoration: underline;
+  }
+  .more-button {
+    background: none;
+    border: none;
+    color: var(--primary-color);
+    padding: 0;
+    margin-left: 0.25rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    transition: color 0.2s ease;
+  }
+  .more-button:hover {
     color: var(--primary-dark);
     text-decoration: underline;
   }
