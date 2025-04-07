@@ -9,7 +9,7 @@
   let darkMode = false;
   let currentUsername = '';
   let lastToggleTime = 0;
-  let postsPerPage = 20;
+  let postsPerPage = 10;
   let currentPage = 1;
   let loadingMore = false;
   let allPostsLoaded = false;
@@ -111,6 +111,7 @@
       postsToShow = allPosts.filter(post => post.type === selectedType);
     }
     
+    const totalAvailable = postsToShow.length;
     postsToShow = postsToShow.slice(0, endIndex);
     
     posts = postsToShow.map(newPost => {
@@ -120,26 +121,43 @@
         : newPost;
     });
     
-    allPostsLoaded = endIndex >= postsToShow.length;
+    allPostsLoaded = endIndex >= totalAvailable;
     loadingMore = false;
+    
+    console.log(`Loaded ${posts.length} of ${totalAvailable} posts. All loaded: ${allPostsLoaded}`);
   }
   
   function loadMorePosts() {
     if (loadingMore || allPostsLoaded) return;
+    
+    console.log('Loading more posts...');
     loadingMore = true;
+    
     currentPage++;
-    setTimeout(() => {
-      loadPostsPage();
-    }, 300);
+    
+    loadPostsPage();
   }
   
   function handleScroll() {
     if (!scrollContainer || loadingMore || allPostsLoaded) return;
+    
     const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
     const scrollBottom = scrollHeight - scrollTop - clientHeight;
-    if (scrollBottom < 300) {
+    
+    // Only load more when very close to the bottom to minimize unnecessary loads
+    if (scrollBottom < 150) {
+      console.log("Triggering load more posts from scroll");
       loadMorePosts();
     }
+  }
+
+  // Modify the forceLoadMore function to be more conservative
+  function forceLoadMore() {
+    if (allPostsLoaded || loadingMore) return;
+    
+    console.log("Force loading more posts");
+    currentPage++;
+    loadPostsPage();
   }
 
   function formatTimestamp(timestamp) {
@@ -345,13 +363,28 @@
     }
 
     fetchIncidents();
-    const refreshInterval = setInterval(fetchIncidents, 60000);
-    document.querySelector('.refresh-info').textContent = 'Refreshing automatically every 60 seconds';
+    
+    // Less frequent check to minimize processing
+    const loadMoreInterval = setInterval(() => {
+      if (scrollContainer && !allPostsLoaded && posts.length > 0 && !loadingMore) {
+        const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+        // Only auto-load if viewport is not fully filled and user hasn't scrolled
+        if (scrollHeight <= clientHeight && scrollTop === 0) {
+          forceLoadMore();
+        }
+      }
+    }, 5000); // Check less frequently
+    
+    // Refresh at a reasonable interval
+    const refreshInterval = setInterval(fetchIncidents, 120000); // Every 2 minutes instead of 1
+    
     if (scrollContainer) {
       scrollContainer.addEventListener('scroll', handleScroll);
     }
+    
     onDestroy(() => {
       clearInterval(refreshInterval);
+      clearInterval(loadMoreInterval);
       if (scrollContainer) {
         scrollContainer.removeEventListener('scroll', handleScroll);
       }
@@ -487,24 +520,20 @@
       {#if loadingMore}
         <div class="loading-more" in:fade={{ duration: 150 }}>
           <div class="loading-spinner-small"></div>
-          <p>Loading more incidents...</p>
+          <p>Loading more...</p>
         </div>
-      {:else if !allPostsLoaded}
-        <div class="scroll-indicator" in:fade={{ duration: 150 }}>
+      {:else if !allPostsLoaded && posts.length > 0 && posts.length >= postsPerPage}
+        <div class="scroll-indicator" in:fade={{ duration: 150 }} on:click={forceLoadMore}>
           <div class="scroll-dots">
             <span class="dot"></span>
             <span class="dot"></span>
             <span class="dot"></span>
           </div>
-          <p>Scroll for more</p>
+          <p>More incidents available</p>
         </div>
       {/if}
     </div>
   {/if}
-  
-  <div class="refresh-info" in:fade={{ delay: 300, duration: 150 }}>
-    Refreshing automatically every 60 seconds
-  </div>
   
   <footer class="app-footer" in:fade={{ delay: 400, duration: 200 }}>
     <p>Created and Developed by <a href="https://github.com/DuffyAdams" target="_blank" rel="noopener noreferrer">Duffy Adams</a></p>
@@ -1267,7 +1296,17 @@
     padding: 1rem 0;
     color: var(--text-muted);
     font-size: 0.9rem;
-    opacity: 0.7;
+    opacity: 0.8;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin: 1rem 0;
+  }
+  .scroll-indicator:hover {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+  .scroll-indicator:active {
+    transform: translateY(0);
   }
   .scroll-dots {
     display: flex;
