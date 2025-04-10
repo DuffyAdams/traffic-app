@@ -9,7 +9,7 @@
   let darkMode = false;
   let currentUsername = '';
   let lastToggleTime = 0;
-  let postsPerPage = 10;
+  let postsPerPage = 12;
   let currentPage = 1;
   let loadingMore = false;
   let allPostsLoaded = false;
