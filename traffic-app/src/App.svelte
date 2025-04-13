@@ -17,6 +17,17 @@
   let selectedType = null;
   let condensedView = false;
   let expandedPostId = null;
+  
+  // Touch/swipe handling variables
+  let touchStartX = 0;
+  let touchEndX = 0;
+  let touchStartY = 0;
+  let touchEndY = 0;
+  let swipeInProgress = false;
+  let swipeIndicator = false;
+  let swipeDirection = '';
+  let swipeThreshold = 80; // minimum distance for a swipe
+  let verticalThreshold = 50; // maximum vertical movement allowed for horizontal swipe
 
   const adjectives = ['Cool', 'Happy', 'Swift', 'Brave', 'Clever', 'Lucky'];
   const nouns = ['Panda', 'Tiger', 'Eagle', 'Fox', 'Wolf', 'Bear'];
@@ -382,6 +393,59 @@
     return text.substring(0, lastSpaceIndex);
   }
 
+  function handleTouchStart(e) {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    swipeInProgress = true;
+  }
+  
+  function handleTouchMove(e) {
+    if (!swipeInProgress) return;
+    
+    touchEndX = e.touches[0].clientX;
+    touchEndY = e.touches[0].clientY;
+    
+    // Calculate horizontal and vertical distance
+    const diffX = touchStartX - touchEndX;
+    const diffY = Math.abs(touchStartY - touchEndY);
+    
+    // Only show swipe indicator for primarily horizontal movements
+    if (Math.abs(diffX) > 20 && diffY < verticalThreshold) {
+      swipeIndicator = true;
+      swipeDirection = diffX > 0 ? 'left' : 'right';
+      
+      // Prevent scrolling when a valid swipe is detected
+      if (Math.abs(diffX) > 40) {
+        e.preventDefault();
+      }
+    } else {
+      swipeIndicator = false;
+    }
+  }
+  
+  function handleTouchEnd(e) {
+    if (!swipeInProgress) return;
+    
+    // Calculate horizontal and vertical distance
+    const diffX = touchStartX - touchEndX;
+    const diffY = Math.abs(touchStartY - touchEndY);
+    
+    // Only process as swipe if movement was primarily horizontal
+    if (Math.abs(diffX) > swipeThreshold && diffY < verticalThreshold) {
+      if (diffX > 0) {
+        // Swipe left - go to table view
+        if (!condensedView) condensedView = true;
+      } else {
+        // Swipe right - go to card view
+        if (condensedView) condensedView = false;
+      }
+    }
+    
+    // Reset
+    swipeInProgress = false;
+    swipeIndicator = false;
+  }
+
   onMount(() => {
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const storedMode = localStorage.getItem('darkMode');
@@ -411,6 +475,11 @@
     
     if (scrollContainer) {
       scrollContainer.addEventListener('scroll', handleScroll);
+      
+      // Add touch event listeners for swipe detection
+      scrollContainer.addEventListener('touchstart', handleTouchStart, { passive: true });
+      scrollContainer.addEventListener('touchmove', handleTouchMove, { passive: false });
+      scrollContainer.addEventListener('touchend', handleTouchEnd, { passive: true });
     }
     
     onDestroy(() => {
@@ -418,6 +487,11 @@
       clearInterval(loadMoreInterval);
       if (scrollContainer) {
         scrollContainer.removeEventListener('scroll', handleScroll);
+        
+        // Remove touch event listeners
+        scrollContainer.removeEventListener('touchstart', handleTouchStart);
+        scrollContainer.removeEventListener('touchmove', handleTouchMove);
+        scrollContainer.removeEventListener('touchend', handleTouchEnd);
       }
     });
   });
@@ -450,6 +524,23 @@
       </span>
     </button>
   </div>
+  
+  <button 
+    class="side-toggle" 
+    class:condensed={condensedView}
+    on:click={() => condensedView = !condensedView}
+    aria-label={condensedView ? "Expand to card view" : "Condense to table view"}
+  >
+    <span class="side-toggle-arrow">{condensedView ? "→" : "←"}</span>
+    <span class="side-toggle-text">{condensedView ? "Cards" : "Table"}</span>
+  </button>
+  
+  {#if swipeIndicator}
+    <div class="swipe-indicator {swipeDirection}" in:fade={{ duration: 100 }}>
+      <span class="swipe-arrow">{swipeDirection === 'left' ? '👈' : '👉'}</span>
+      <span class="swipe-text">{swipeDirection === 'left' ? 'Table View' : 'Card View'}</span>
+    </div>
+  {/if}
   
   {#if loading && posts.length === 0}
     <div class="loading-container" in:fade={{ duration: 150 }}>
@@ -549,6 +640,52 @@
                 </div>
               </div>
             </div>
+            
+            {#if post.showComments}
+              <div class="table-comments-overlay" transition:fade={{ duration: 150 }}>
+                <button class="close-comments" on:click={(e) => {
+                  e.stopPropagation();
+                  toggleComments(post.id);
+                }}>×</button>
+                <h3 class="comments-title">Comments ({post.comments.length})</h3>
+                {#if post.commentError}
+                  <p class="error-message">{post.commentError}</p>
+                {/if}
+                <div class="comments-container">
+                  {#if post.comments.length === 0}
+                    <p class="no-comments">Be the first to comment!</p>
+                  {:else}
+                    {#each post.comments as comment, i}
+                      <div class="comment" style="animation-delay: {i * 20}ms">
+                        <div class="comment-header">
+                          <div class="comment-avatar">👤</div>
+                          <div class="comment-user-info">
+                            <span class="comment-username">{comment.username}</span>
+                            <span class="comment-timestamp">{formatCommentTimestamp(comment.timestamp)}</span>
+                          </div>
+                        </div>
+                        <div class="comment-content">
+                          {comment.comment}
+                        </div>
+                      </div>
+                    {/each}
+                  {/if}
+                </div>
+                <div class="add-comment">
+                  <input
+                    type="text"
+                    bind:value={post.newComment}
+                    placeholder="Write a comment..."
+                    maxlength="150"
+                    on:keypress={(e) => e.key === 'Enter' && submitComment(post.id)}
+                  />
+                  <button on:click={(e) => {
+                    e.stopPropagation();
+                    submitComment(post.id);
+                  }}>Send</button>
+                </div>
+              </div>
+            {/if}
           </div>
         {/if}
       {/each}
@@ -1517,6 +1654,7 @@
     display: flex;
     justify-content: flex-end;
     margin-bottom: 1rem;
+    display: none; /* Hide the old button control */
   }
   
   .view-toggle-button {
@@ -1738,6 +1876,7 @@
     overflow: hidden;
     width: 100%;
     box-sizing: border-box;
+    position: relative;
   }
   
   .expanded-content {
@@ -1946,6 +2085,123 @@
     
     .table-header .status-cell {
       display: none;
+    }
+  }
+  
+  .swipe-indicator {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 1rem;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    z-index: 100;
+    pointer-events: none;
+    backdrop-filter: blur(4px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    width: 100px;
+    text-align: center;
+  }
+  
+  .swipe-indicator.left {
+    right: 20px;
+    animation: slideInRight 0.3s forwards;
+  }
+  
+  .swipe-indicator.right {
+    left: 20px;
+    animation: slideInLeft 0.3s forwards;
+  }
+  
+  .swipe-arrow {
+    font-size: 1.8rem;
+    margin-bottom: 0.5rem;
+  }
+  
+  .swipe-text {
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+  
+  @keyframes slideInRight {
+    from { opacity: 0; transform: translate(20px, -50%); }
+    to { opacity: 1; transform: translate(0, -50%); }
+  }
+  
+  @keyframes slideInLeft {
+    from { opacity: 0; transform: translate(-20px, -50%); }
+    to { opacity: 1; transform: translate(0, -50%); }
+  }
+
+  .side-toggle {
+    position: fixed;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 8px 0 0 8px;
+    padding: 0.8rem 0.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    z-index: 100;
+    box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+  }
+
+  .side-toggle:hover {
+    background-color: var(--primary-dark);
+    transform: translateY(-50%) translateX(-5px);
+  }
+
+  .side-toggle.condensed {
+    right: 0;
+  }
+
+  .side-toggle-arrow {
+    font-size: 1.5rem;
+    font-weight: bold;
+    line-height: 1;
+  }
+
+  .side-toggle-text {
+    font-size: 0.8rem;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .table-comments-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: var(--card-bg);
+    display: flex;
+    flex-direction: column;
+    padding: 1.2rem;
+    z-index: 20;
+    border-radius: 0 0 16px 16px;
+    box-sizing: border-box;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    will-change: opacity;
+    backface-visibility: hidden;
+  }
+
+  @media (max-width: 768px) {
+    .side-toggle {
+      display: none; /* Hide the side toggle on mobile - use swipe instead */
     }
   }
 </style>
