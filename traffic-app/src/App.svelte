@@ -15,6 +15,8 @@
   let allPostsLoaded = false;
   let scrollContainer;
   let selectedType = null;
+  let condensedView = false;
+  let expandedPostId = null;
 
   const adjectives = ['Cool', 'Happy', 'Swift', 'Brave', 'Clever', 'Lucky'];
   const nouns = ['Panda', 'Tiger', 'Eagle', 'Fox', 'Wolf', 'Bear'];
@@ -75,6 +77,7 @@
         .map(incident => ({
           id: incident.incident_no,
           compositeId: incident.compositeId,
+          timestamp: incident.timestamp,
           time: formatTimestamp(incident.timestamp),
           description: incident.description,
           showFullDescription: false,
@@ -166,6 +169,16 @@
     return date.toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  }
+
+  function formatTimeOnly(timestamp) {
+    if (!timestamp) return "Recent";
+    const date = new Date(timestamp);
+    return date.toLocaleString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
       hour12: true
@@ -322,16 +335,34 @@
   }
 
   function getIconForIncidentType(type) {
-    const types = {
-      "Accident": "🚗",
-      "Traffic Hazard": "⚠️",
-      "Road Closure": "🚧",
-      "Fire": "🔥",
-      "Police": "👮‍♂️",
-      "Weather": "🌧️"
-    };
-    return types[type] || "🚨";
-  }
+  const types = {
+    "Aircraft Emergency": "🛩️",
+    "Animal Hazard": "🐾",
+    "Assist CT with Maintenance": "🔧",
+    "CLOSURE of a Road": "🚧",
+    "Car Fire": "🔥",
+    "Construction": "🏗️",
+    "Defective Traffic Signals": "🚦",
+    "Fatality": "☠️",
+    "Hit and Run No Injuries": "🚗💨",
+    "JUMPER": "🧍‍♂️",
+    "Live or Dead Animal": "🦌",
+    "Maintenance": "🛠️",
+    "Object Flying From Veh": "📦",
+    "Provide Traffic Control": "🚓",
+    "Report of Fire": "🔥",
+    "Request CalTrans Notify": "📞",
+    "Road Conditions": "🛣️",
+    "SIG Alert": "📢",
+    "SPINOUT": "↩️",
+    "Traffic Break": "✋",
+    "Traffic Collision": "🚘",
+    "Traffic Hazard": "⚠️",
+    "Wrong Way Driver": "↪️"
+  };
+  return types[type] || "🚨";
+}
+
 
   function toggleDescription(postId) {
     posts = posts.map(post =>
@@ -401,6 +432,25 @@
     </button>
   </div>
   
+  <div class="view-controls">
+    <button 
+      class="view-toggle-button" 
+      on:click={() => condensedView = !condensedView}
+      aria-label={condensedView ? "Expand to card view" : "Condense to table view"}
+      aria-pressed={condensedView}
+      role="switch"
+      tabindex="0"
+      on:keydown={(e) => e.key === 'Enter' && (condensedView = !condensedView)}
+    >
+      <span class="toggle-icon">{condensedView ? "🔍" : "📋"}</span>
+      <span class="toggle-text">{condensedView ? "Expand View" : "Condense View"}</span>
+      <span class="toggle-description">{condensedView ? "Show details" : "Show as table"}</span>
+      <span class="toggle-state" aria-hidden="true">
+        <span class="toggle-indicator"></span>
+      </span>
+    </button>
+  </div>
+  
   {#if loading && posts.length === 0}
     <div class="loading-container" in:fade={{ duration: 150 }}>
       <div class="loading-spinner"></div>
@@ -411,6 +461,113 @@
       <div class="empty-icon">🔍</div>
       <p>No incidents to display at the moment.</p>
       <p>Check back soon for updates.</p>
+    </div>
+  {:else if condensedView}
+    <div class="incidents-table" in:fade={{ duration: 200 }}>
+      <div class="table-header">
+        <div class="table-cell type-cell">Type</div>
+        <div class="table-cell time-cell">Time</div>
+        <div class="table-cell location-cell">Location</div>
+        <div class="table-cell status-cell">Status</div>
+      </div>
+      
+      {#each posts as post, i (post.compositeId)}
+        <div 
+          class="table-row" 
+          class:active={post.active}
+          class:expanded={expandedPostId === post.id}
+          on:click={() => expandedPostId = expandedPostId === post.id ? null : post.id}
+          in:slide={{ delay: Math.min(i * 30, 300), duration: 150 }}
+        >
+          <div class="table-cell type-cell">
+            <span class="incident-icon-small">{getIconForIncidentType(post.type)}</span>
+            <span class="incident-type-small">{post.type}</span>
+          </div>
+          <div class="table-cell time-cell">
+            <span class="full-time">{post.time}</span>
+            <span class="mobile-time">{formatTimeOnly(post.timestamp)}</span>
+          </div>
+          <div class="table-cell location-cell">{post.location}</div>
+          <div class="table-cell status-cell">
+            {#if post.active}
+              <span class="status-badge active">Active</span>
+            {:else}
+              <span class="status-badge">Inactive</span>
+            {/if}
+          </div>
+        </div>
+        
+        {#if expandedPostId === post.id}
+          <div class="expanded-details" transition:slide={{ duration: 200 }}>
+            <div class="expanded-content">
+              <div class="expanded-image">
+                <img src={post.image} alt="Incident location map" loading="lazy" />
+              </div>
+              <div class="expanded-info">
+                <div class="post-description">
+                  {#if post.description}
+                    {post.showFullDescription ? post.description : truncateDescription(post.description)}
+                    {#if post.description.length > 200}
+                      <button class="more-button" on:click={(e) => {
+                        e.stopPropagation();
+                        toggleDescription(post.id);
+                      }}>
+                        {post.showFullDescription ? 'less' : 'more'}
+                      </button>
+                    {/if}
+                  {:else}
+                    No description available.
+                  {/if}
+                </div>
+                <div class="expanded-actions">
+                  <button 
+                    class="action-button like-button" 
+                    class:liked={post.likes > 0}
+                    class:like-error={post.likeErrorAnimation}
+                    on:click={(e) => {
+                      e.stopPropagation();
+                      likePost(post.id);
+                    }}
+                  >
+                    <span class="button-icon">❤️</span>
+                    <span>{post.likes > 0 ? post.likes : 'Like'}</span>
+                  </button>
+                  <button class="action-button comment-button" on:click={(e) => {
+                    e.stopPropagation();
+                    toggleComments(post.id);
+                  }}>
+                    <span class="button-icon">💬</span>
+                    <span>{post.comments.length > 0 ? post.comments.length : 'Comment'}</span>
+                  </button>
+                  <button class="action-button share-button" on:click={(e) => {
+                    e.stopPropagation();
+                    sharePost(post);
+                  }}>
+                    <span class="button-icon">🔗</span>
+                    <span>Share</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        {/if}
+      {/each}
+      
+      {#if loadingMore}
+        <div class="loading-more" in:fade={{ duration: 150 }}>
+          <div class="loading-spinner-small"></div>
+          <p>Loading more...</p>
+        </div>
+      {:else if !allPostsLoaded && posts.length > 0 && posts.length >= postsPerPage}
+        <div class="scroll-indicator" in:fade={{ duration: 150 }} on:click={forceLoadMore}>
+          <div class="scroll-dots">
+            <span class="dot"></span>
+            <span class="dot"></span>
+            <span class="dot"></span>
+          </div>
+          <p>More incidents available</p>
+        </div>
+      {/if}
     </div>
   {:else}
     <div class="feed">
@@ -779,17 +936,6 @@
     box-shadow: 0 2px 6px #0003;
     border: 1px solid rgba(255, 255, 255, .1);
     animation: badgePulse 2s linear infinite;
-  }
-  @keyframes badgePulse {
-    0% {
-      box-shadow: 0 0 0 0 rgba(255, 99, 71, 0.4);
-    }
-    70% {
-      box-shadow: 0 0 0 6px rgba(255, 99, 71, 0);
-    }
-    100% {
-      box-shadow: 0 0 0 0 rgba(255, 99, 71, 0);
-    }
   }
   .incident-icon {
     font-size: 1rem;
@@ -1366,5 +1512,440 @@
   .more-button:hover {
     color: var(--primary-dark);
     text-decoration: underline;
+  }
+  .view-controls {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 1rem;
+  }
+  
+  .view-toggle-button {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background-color: var(--primary-lightest);
+    color: var(--primary-color);
+    border: 1px solid var(--primary-light);
+    border-radius: 24px;
+    padding: 0.6rem 1.2rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .view-toggle-button:hover {
+    background-color: var(--primary-light);
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+  }
+  
+  .view-toggle-button:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.4);
+  }
+  
+  .view-toggle-button:active {
+    transform: translateY(0);
+  }
+  
+  .toggle-icon {
+    font-size: 1.2rem;
+    position: relative;
+    z-index: 2;
+  }
+  
+  .toggle-text {
+    font-weight: 700;
+    position: relative;
+    z-index: 2;
+  }
+  
+  .toggle-description {
+    font-size: 0.8rem;
+    font-weight: 400;
+    opacity: 0.8;
+    position: relative;
+    z-index: 2;
+  }
+  
+  .toggle-state {
+    position: absolute;
+    height: 100%;
+    width: 24px;
+    right: 12px;
+    top: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .toggle-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: var(--primary-color);
+    transition: all 0.3s;
+  }
+  
+  @media (max-width: 768px) {
+    .toggle-description {
+      display: none;
+    }
+    
+    .view-toggle-button {
+      padding: 0.5rem 1rem;
+    }
+  }
+  
+  @media (max-width: 480px) {
+    .toggle-text {
+      display: none;
+    }
+    
+    .view-toggle-button {
+      padding: 0.5rem 0.7rem;
+      justify-content: center;
+    }
+  }
+  
+  .incidents-table {
+    width: 100%;
+    background: var(--card-bg);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px var(--shadow-color), 0 0 0 1px rgba(0,0,0,0.03);
+    margin-bottom: 2rem;
+    box-sizing: border-box;
+    max-width: 100%;
+    min-width: 100%;
+  }
+  
+  .table-header {
+    display: flex;
+    background-color: var(--primary-color);
+    color: white;
+    font-weight: 600;
+    padding: 1rem;
+    border-bottom: 1px solid var(--border-color);
+    width: 100%;
+    box-sizing: border-box;
+  }
+  
+  .table-row {
+    display: flex;
+    padding: 0.8rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  
+  .table-row:hover {
+    background-color: var(--hover-bg);
+    transform: translateX(2px);
+    box-shadow: 0 2px 8px var(--shadow-color);
+    z-index: 1;
+  }
+  
+  .table-row.active {
+    border-left: 4px solid #c13117;
+  }
+  
+  .table-row.expanded {
+    background-color: var(--primary-lightest);
+    border-bottom: none;
+    box-shadow: 0 2px 8px var(--shadow-color);
+  }
+  
+  .table-row::after {
+    content: "▼";
+    position: absolute;
+    right: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    transition: transform 0.2s ease;
+  }
+  
+  .table-row.expanded::after {
+    transform: translateY(-50%) rotate(180deg);
+  }
+  
+  .table-cell {
+    padding: 0.2rem 0.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  
+  .type-cell {
+    flex: 0 0 18%;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  
+  .time-cell {
+    flex: 0 0 22%;
+  }
+  
+  .location-cell {
+    flex: 1;
+  }
+  
+  .status-cell {
+    flex: 0 0 12%;
+    text-align: center;
+  }
+  
+  .incident-icon-small {
+    font-size: 1rem;
+    display: inline-block;
+    margin-right: 0.3rem;
+  }
+  
+  .incident-type-small {
+    font-weight: 500;
+  }
+  
+  .status-badge {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background-color: var(--border-color);
+    color: var(--text-dark);
+  }
+  
+  .status-badge.active {
+    background-color: #c13117;
+    color: white;
+    animation: badgePulse 2s linear infinite;
+  }
+  
+  .expanded-details {
+    background-color: var(--primary-lightest);
+    padding: 0 1rem 1rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+    overflow: hidden;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  
+  .expanded-content {
+    display: flex;
+    gap: 1rem;
+  }
+  
+  .expanded-image {
+    flex: 0 0 30%;
+    max-width: 300px;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  }
+  
+  .expanded-image img {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+  }
+  
+  .expanded-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .expanded-actions {
+    display: flex;
+    justify-content: flex-start;
+    gap: 1rem;
+    margin-top: 1rem;
+  }
+  
+  .expanded-actions .action-button {
+    background-color: var(--card-bg);
+    padding: 0.5rem 0.8rem;
+    border-radius: 8px;
+    max-width: none;
+  }
+  
+  @media (max-width: 768px) {
+    .expanded-content {
+      flex-direction: column;
+    }
+    
+    .expanded-image {
+      max-width: 100%;
+      margin-bottom: 1rem;
+    }
+    
+    .type-cell {
+      flex: 0 0 25%;
+    }
+    
+    .time-cell {
+      flex: 0 0 25%;
+    }
+    
+    .status-cell {
+      flex: 0 0 20%;
+    }
+    
+    .view-toggle-button span:not(.toggle-icon):not(.arrow-icon) {
+      display: none;
+    }
+    
+    .view-toggle-button {
+      padding: 0.5rem;
+    }
+  }
+  
+  @media (max-width: 480px) {
+    .table-header {
+      padding: 0.7rem 0.5rem;
+    }
+    
+    .table-row {
+      padding: 0.6rem 0.5rem;
+    }
+    
+    .table-cell {
+      padding: 0.1rem 0.2rem;
+      font-size: 0.85rem;
+    }
+    
+    .incident-type-small {
+      display: none;
+    }
+    
+    .type-cell {
+      flex: 0 0 10%;
+      justify-content: center;
+    }
+    
+    .time-cell {
+      flex: 0 0 30%;
+    }
+    
+    .status-cell {
+      flex: 0 0 20%;
+    }
+    
+    .status-badge {
+      display: none;
+    }
+    
+    .table-header .status-cell {
+      display: none;
+    }
+  }
+  
+  @keyframes badgePulse {
+    0% {
+      box-shadow: 0 0 0 0 rgba(255, 99, 71, 0.4);
+    }
+    70% {
+      box-shadow: 0 0 0 6px rgba(255, 99, 71, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(255, 99, 71, 0);
+    }
+  }
+  
+  .full-time {
+    display: inline;
+  }
+  
+  .mobile-time {
+    display: none;
+  }
+  
+  @media (max-width: 768px) {
+    .expanded-content {
+      flex-direction: column;
+    }
+    
+    .expanded-image {
+      max-width: 100%;
+      margin-bottom: 1rem;
+    }
+    
+    .type-cell {
+      flex: 0 0 25%;
+    }
+    
+    .time-cell {
+      flex: 0 0 25%;
+    }
+    
+    .status-cell {
+      flex: 0 0 20%;
+    }
+    
+    .view-toggle-button span:not(.toggle-icon):not(.arrow-icon) {
+      display: none;
+    }
+    
+    .view-toggle-button {
+      padding: 0.5rem;
+    }
+  }
+  
+  @media (max-width: 480px) {
+    .full-time {
+      display: none;
+    }
+    
+    .mobile-time {
+      display: inline;
+    }
+    
+    .table-header {
+      padding: 0.7rem 0.5rem;
+    }
+    
+    .table-row {
+      padding: 0.6rem 0.5rem;
+    }
+    
+    .table-cell {
+      padding: 0.1rem 0.2rem;
+      font-size: 0.85rem;
+    }
+    
+    .incident-type-small {
+      display: none;
+    }
+    
+    .type-cell {
+      flex: 0 0 10%;
+      justify-content: center;
+    }
+    
+    .time-cell {
+      flex: 0 0 30%;
+    }
+    
+    .status-cell {
+      flex: 0 0 20%;
+    }
+    
+    .status-badge {
+      display: none;
+    }
+    
+    .table-header .status-cell {
+      display: none;
+    }
   }
 </style>
