@@ -1135,21 +1135,21 @@
     display: flex;
     justify-content: space-between;
     border-top: 1px solid var(--border-color);
-    padding-top: 1rem;
+    padding-top: 0.7rem;
     margin-bottom: 0.5rem;
-    gap: 0.5rem;
+    gap: 0.3rem; /* reduced from 0.5rem for closer buttons */
   }
   .action-button {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.4rem;
+    gap: 0.25rem; /* reduced from 0.4rem for closer icon/text */
     background: none;
     border: none;
     color: var(--text-muted);
     font-size: 0.9rem;
     font-weight: 600;
-    padding: 0.6rem 0;
+    padding: 0.45rem 0; /* reduced padding for tighter look */
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s;
@@ -1176,10 +1176,6 @@
   }
   .action-button:hover::after {
     width: 70%;
-  }
-  .action-button span:last-child {
-    min-width: 24px;
-    text-align: center;
   }
   .action-button:hover {
     background-color: var(--hover-bg);
@@ -1233,7 +1229,7 @@
     z-index: 10;
     border-radius: 0 0 18px 18px;
     box-sizing: border-box;
-    box-shadow: inset 0 4px 6px -1px var(--shadow-color);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
     will-change: opacity;
     backface-visibility: hidden;
   }
@@ -1912,8 +1908,6 @@
   }
   
   .expanded-actions .action-button {
-    background-color: var(--card-bg);
-    padding: 0.5rem 0.8rem;
     border-radius: 8px;
     max-width: none;
   }
