@@ -1,6 +1,6 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
-  import { fade, slide } from 'svelte/transition';
+  import { fade, slide, fly } from 'svelte/transition';
   import { flip } from 'svelte/animate';
 
   let posts = [];
@@ -567,7 +567,14 @@
           class="table-row" 
           class:active={post.active}
           class:expanded={expandedPostId === post.id}
-          on:click={() => expandedPostId = expandedPostId === post.id ? null : post.id}
+          on:click={() => {
+            // If closing the currently expanded row and its comments are open, close comments first
+            if (expandedPostId === post.id && post.showComments) {
+              posts = posts.map(p => p.id === post.id ? { ...p, showComments: false } : p);
+            }
+            // Toggle expanded state
+            expandedPostId = expandedPostId === post.id ? null : post.id;
+          }}
           in:slide={{ delay: Math.min(i * 30, 300), duration: 150 }}
         >
           <div class="table-cell type-cell">
@@ -642,7 +649,11 @@
             </div>
             
             {#if post.showComments}
-              <div class="table-comments-overlay" transition:fade={{ duration: 150 }}>
+              <div
+                class="table-comments-overlay"
+                in:fly="{{ y: 200, duration: 300 }}"
+                out:fly="{{ y: 200, duration: 200 }}"
+              >
                 <button class="close-comments" on:click={(e) => {
                   e.stopPropagation();
                   toggleComments(post.id);
@@ -768,7 +779,11 @@
               </div>
 
               {#if post.showComments}
-                <div class="comments-overlay" transition:fade={{ duration: 100 }}>
+                <div
+                  class="comments-overlay"
+                  in:fly="{{ y: 200, duration: 300 }}"
+                  out:fly="{{ y: 200, duration: 200 }}"
+                >
                   <button class="close-comments" on:click={() => toggleComments(post.id)}>×</button>
                   <h3 class="comments-title">Comments ({post.comments.length})</h3>
                   {#if post.commentError}
@@ -1218,16 +1233,16 @@
   }
   .comments-overlay {
     position: absolute;
-    top: 200px;
+    top: 50px; /* Leave 50px space at the top */
     left: 0;
     width: 100%;
-    height: calc(100% - 200px);
+    height: calc(100% - 50px); /* Fill remaining height */
     background-color: var(--card-bg);
     display: flex;
     flex-direction: column;
     padding: 1.2rem;
     z-index: 10;
-    border-radius: 0 0 18px 18px;
+    border-radius: 18px 18px 0 0; /* Round only top corners */
     box-sizing: border-box;
     box-shadow: 0 4px 10px rgba(0,0,0,0.2);
     will-change: opacity;
@@ -2177,16 +2192,16 @@
 
   .table-comments-overlay {
     position: absolute;
-    top: 0;
+    top: 20px; /* Reduced space at the top */
     left: 0;
     width: 100%;
-    height: 100%;
+    height: calc(100% - 20px); /* Adjust height accordingly */
     background-color: var(--card-bg);
     display: flex;
     flex-direction: column;
     padding: 1.2rem;
     z-index: 20;
-    border-radius: 0 0 16px 16px;
+    border-radius: 16px 16px 0 0; /* Round only top corners */
     box-sizing: border-box;
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
     will-change: opacity;

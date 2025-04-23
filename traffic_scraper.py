@@ -65,7 +65,7 @@ app = Flask(__name__, static_folder=os.path.join(BASE_DIR, "traffic-app", "dist"
 CORS(app, resources={r"/api/*": {"origins": "*"}, r"/maps/*": {"origins": "*"}})
 
 # Test mode flag
-TESTMODE = False
+TESTMODE = True
 
 # -----------------------------------
 # Database Functions
