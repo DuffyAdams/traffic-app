@@ -105,11 +105,42 @@
           active: incident.active
         }));
 
-      allPosts = processedPosts;
-      currentPage = 1;
-      allPostsLoaded = false;
+      // Merge new incidents with existing ones without resetting pagination
+      // Assuming processedPosts contains the latest data from the API
+      const existingPostsMap = new Map(allPosts.map(post => [post.compositeId, post]));
+      const newPostsMap = new Map(processedPosts.map(post => [post.compositeId, post]));
+
+      // Update existing posts and add new ones
+      const mergedPosts = allPosts.map(post => {
+          const updatedPost = newPostsMap.get(post.compositeId);
+          return updatedPost ? { ...post, ...updatedPost } : post;
+      });
+
+      // Add any completely new posts that weren't in the original allPosts
+      processedPosts.forEach(newPost => {
+          if (!existingPostsMap.has(newPost.compositeId)) {
+              mergedPosts.push(newPost);
+          }
+      });
+
+      // Sort mergedPosts by timestamp if necessary, or maintain existing order if API provides sorted data
+      // Sort mergedPosts by timestamp descending
+      mergedPosts.sort((a, b) => {
+          const dateA = new Date(a.timestamp);
+          const dateB = new Date(b.timestamp);
+          if (dateB < dateA) {
+              return -1;
+          }
+          if (dateB > dateA) {
+              return 1;
+          }
+          return 0;
+      });
+
+      allPosts = mergedPosts;
+      // Do NOT reset currentPage or allPostsLoaded here
       loadPostsPage();
-      
+
     } catch (err) {
       console.error("Error fetching incidents:", err);
     } finally {
@@ -153,14 +184,17 @@
   }
   
   function handleScroll() {
-    if (!scrollContainer || loadingMore || allPostsLoaded) return;
+    // Use window/document scroll properties for overall page scroll
+    const scrollTop = window.scrollY || document.documentElement.scrollTop;
+    const scrollHeight = document.documentElement.scrollHeight;
+    const clientHeight = window.innerHeight;
     
-    const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
     const scrollBottom = scrollHeight - scrollTop - clientHeight;
     
     // Only load more when very close to the bottom to minimize unnecessary loads
-    if (scrollBottom < 150) {
-      console.log("Triggering load more posts from scroll");
+    // Using a threshold that works with overall page scroll
+    if (scrollBottom < 600 && !loadingMore && !allPostsLoaded) { /* Adjusted threshold for window scroll */
+      console.log("Triggering load more posts from scroll (window scroll)");
       loadMorePosts();
     }
   }
@@ -459,24 +493,14 @@
 
     fetchIncidents();
     
-    // Less frequent check to minimize processing
-    const loadMoreInterval = setInterval(() => {
-      if (scrollContainer && !allPostsLoaded && posts.length > 0 && !loadingMore) {
-        const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
-        // Only auto-load if viewport is not fully filled and user hasn't scrolled
-        if (scrollHeight <= clientHeight && scrollTop === 0) {
-          forceLoadMore();
-        }
-      }
-    }, 5000); // Check less frequently
-    
     // Refresh at a reasonable interval
     const refreshInterval = setInterval(fetchIncidents, 120000); // Every 2 minutes instead of 1
     
+    // Attach scroll listener to the window
+    window.addEventListener('scroll', handleScroll);
+    
+    // Add touch event listeners for swipe detection on the scroll container
     if (scrollContainer) {
-      scrollContainer.addEventListener('scroll', handleScroll);
-      
-      // Add touch event listeners for swipe detection
       scrollContainer.addEventListener('touchstart', handleTouchStart, { passive: true });
       scrollContainer.addEventListener('touchmove', handleTouchMove, { passive: false });
       scrollContainer.addEventListener('touchend', handleTouchEnd, { passive: true });
@@ -484,11 +508,11 @@
     
     onDestroy(() => {
       clearInterval(refreshInterval);
-      clearInterval(loadMoreInterval);
+      // Remove scroll listener from the window
+      window.removeEventListener('scroll', handleScroll);
+      
+      // Remove touch event listeners
       if (scrollContainer) {
-        scrollContainer.removeEventListener('scroll', handleScroll);
-        
-        // Remove touch event listeners
         scrollContainer.removeEventListener('touchstart', handleTouchStart);
         scrollContainer.removeEventListener('touchmove', handleTouchMove);
         scrollContainer.removeEventListener('touchend', handleTouchEnd);
@@ -498,7 +522,7 @@
 </script>
 
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<div class="container" bind:this={scrollContainer} on:scroll={handleScroll}>
+<div class="container" bind:this={scrollContainer}> <!-- Removed on:scroll from here -->
   <div class="header">
     <button class="header-content" on:click={toggleDarkMode} type="button">
       <h1>San Diego Traffic Watch</h1>
@@ -1145,6 +1169,7 @@
     margin-bottom: 1.2rem;
     color: var(--text-darker);
     position: relative;
+    text-align: center; /* Center the text */
   }
   .post-actions {
     display: flex;
@@ -1893,6 +1918,7 @@
   .expanded-content {
     display: flex;
     gap: 1rem;
+    align-items: center; /* Vertically center content */
   }
   
   .expanded-image {
@@ -1900,13 +1926,13 @@
     max-width: 300px;
     border-radius: 12px;
     overflow: hidden;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
   }
   
   .expanded-image img {
     width: 100%;
     height: 200px;
     object-fit: cover;
+    border-radius: 12px; /* Add rounded corners to all sides */
   }
   
   .expanded-info {
@@ -1917,7 +1943,7 @@
   
   .expanded-actions {
     display: flex;
-    justify-content: flex-start;
+    justify-content: center; /* Center the buttons */
     gap: 1rem;
     margin-top: 1rem;
   }
@@ -1934,7 +1960,9 @@
     
     .expanded-image {
       max-width: 100%;
+      width: 100%; /* Ensure it takes full width */
       margin-bottom: 1rem;
+      padding-top: 0.5rem; /* Add space above the image without shifting other content */
     }
     
     .type-cell {
