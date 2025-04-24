@@ -110,10 +110,25 @@
           active: incident.active
         }));
 
+      // Filter out newer posts at the same location within 5 minutes of an older one
+      const filteredByLocationAndTime = [];
+      const lastSeenAt = new Map(); // location -> timestamp of last kept post
+      // Sort processedPosts by timestamp ascending (oldest first)
+      const sorted = processedPosts.slice().sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      for (const post of sorted) {
+        const loc = post.location;
+        const ts = new Date(post.timestamp).getTime();
+        if (!lastSeenAt.has(loc) || ts - lastSeenAt.get(loc) > 300000) {
+          filteredByLocationAndTime.push(post);
+          lastSeenAt.set(loc, ts);
+        }
+        // else: skip this post (it's a duplicate within 5 minutes)
+      }
+
       // Merge new incidents with existing ones without resetting pagination
       // Assuming processedPosts contains the latest data from the API
       const existingPostsMap = new Map(allPosts.map(post => [post.compositeId, post]));
-      const newPostsMap = new Map(processedPosts.map(post => [post.compositeId, post]));
+      const newPostsMap = new Map(filteredByLocationAndTime.map(post => [post.compositeId, post]));
 
       // Update existing posts and add new ones
       const mergedPosts = allPosts.map(post => {
@@ -122,7 +137,7 @@
       });
 
       // Add any completely new posts that weren't in the original allPosts
-      processedPosts.forEach(newPost => {
+      filteredByLocationAndTime.forEach(newPost => {
           if (!existingPostsMap.has(newPost.compositeId)) {
               mergedPosts.push(newPost);
           }
