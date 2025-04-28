@@ -198,7 +198,6 @@ def generate_description(data):
         prompt = (
             f"Neighborhood: {data.get('Neighborhood')}\n"
             f"Location: {data.get('Location')} - {data.get('Location Desc.')}\n"
-            f"Type: {data.get('Type')}\n"
             f"Details: {', '.join(data.get('Details', []))}\n"
         )
         system_prompt = (

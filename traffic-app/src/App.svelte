@@ -1,6 +1,6 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
-  import { fade, slide } from 'svelte/transition';
+  import { fade, slide, fly } from 'svelte/transition';
   import { flip } from 'svelte/animate';
 
   let posts = [];
@@ -17,7 +17,12 @@
   let selectedType = null;
   let condensedView = false;
   let expandedPostId = null;
-  
+  let showSideToggle = true;
+  let lastScrollY = 0;
+  let searchQuery = '';
+  let showSearch = false;
+  let filteredPosts = posts;
+
   // Touch/swipe handling variables
   let touchStartX = 0;
   let touchEndX = 0;
@@ -105,11 +110,57 @@
           active: incident.active
         }));
 
-      allPosts = processedPosts;
-      currentPage = 1;
-      allPostsLoaded = false;
+      // Filter out newer posts at the same location within 5 minutes of an older one
+      const filteredByLocationAndTime = [];
+      const lastSeenAt = new Map(); // location -> timestamp of last kept post
+      // Sort processedPosts by timestamp ascending (oldest first)
+      const sorted = processedPosts.slice().sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      for (const post of sorted) {
+        const loc = post.location;
+        const ts = new Date(post.timestamp).getTime();
+        if (!lastSeenAt.has(loc) || ts - lastSeenAt.get(loc) > 300000) {
+          filteredByLocationAndTime.push(post);
+          lastSeenAt.set(loc, ts);
+        }
+        // else: skip this post (it's a duplicate within 5 minutes)
+      }
+
+      // Merge new incidents with existing ones without resetting pagination
+      // Assuming processedPosts contains the latest data from the API
+      const existingPostsMap = new Map(allPosts.map(post => [post.compositeId, post]));
+      const newPostsMap = new Map(filteredByLocationAndTime.map(post => [post.compositeId, post]));
+
+      // Update existing posts and add new ones
+      const mergedPosts = allPosts.map(post => {
+          const updatedPost = newPostsMap.get(post.compositeId);
+          return updatedPost ? { ...post, ...updatedPost } : post;
+      });
+
+      // Add any completely new posts that weren't in the original allPosts
+      filteredByLocationAndTime.forEach(newPost => {
+          if (!existingPostsMap.has(newPost.compositeId)) {
+              mergedPosts.push(newPost);
+          }
+      });
+
+      // Sort mergedPosts by timestamp if necessary, or maintain existing order if API provides sorted data
+      // Sort mergedPosts by timestamp descending
+      mergedPosts.sort((a, b) => {
+          const dateA = new Date(a.timestamp);
+          const dateB = new Date(b.timestamp);
+          if (dateB < dateA) {
+              return -1;
+          }
+          if (dateB > dateA) {
+              return 1;
+          }
+          return 0;
+      });
+
+      allPosts = mergedPosts;
+      // Do NOT reset currentPage or allPostsLoaded here
       loadPostsPage();
-      
+
     } catch (err) {
       console.error("Error fetching incidents:", err);
     } finally {
@@ -153,14 +204,27 @@
   }
   
   function handleScroll() {
-    if (!scrollContainer || loadingMore || allPostsLoaded) return;
+    const currentY = window.scrollY;
+    if (currentY > lastScrollY + 5) {
+      // Scrolling down
+      showSideToggle = false;
+    } else if (currentY < lastScrollY - 5) {
+      // Scrolling up
+      showSideToggle = true;
+    }
+    lastScrollY = currentY;
     
-    const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+    // Use window/document scroll properties for overall page scroll
+    const scrollTop = window.scrollY || document.documentElement.scrollTop;
+    const scrollHeight = document.documentElement.scrollHeight;
+    const clientHeight = window.innerHeight;
+    
     const scrollBottom = scrollHeight - scrollTop - clientHeight;
     
     // Only load more when very close to the bottom to minimize unnecessary loads
-    if (scrollBottom < 150) {
-      console.log("Triggering load more posts from scroll");
+    // Using a threshold that works with overall page scroll
+    if (scrollBottom < 600 && !loadingMore && !allPostsLoaded) { /* Adjusted threshold for window scroll */
+      console.log("Triggering load more posts from scroll (window scroll)");
       loadMorePosts();
     }
   }
@@ -374,6 +438,27 @@
   return types[type] || "🚨";
 }
 
+$: filteredPosts = searchQuery.trim().length
+  ? posts.filter(post =>
+      (post.description && post.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (post.location && post.location.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (post.type && post.type.toLowerCase().includes(searchQuery.toLowerCase()))
+    )
+  : posts;
+
+function handleSearchInput(e) {
+  searchQuery = e.target.value;
+}
+
+function toggleSearch() {
+  showSearch = !showSearch;
+  if (showSearch) {
+    setTimeout(() => {
+      const input = document.querySelector('.header-search-input');
+      if (input && input.focus) input.focus();
+    }, 100);
+  }
+}
 
   function toggleDescription(postId) {
     posts = posts.map(post =>
@@ -459,24 +544,14 @@
 
     fetchIncidents();
     
-    // Less frequent check to minimize processing
-    const loadMoreInterval = setInterval(() => {
-      if (scrollContainer && !allPostsLoaded && posts.length > 0 && !loadingMore) {
-        const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
-        // Only auto-load if viewport is not fully filled and user hasn't scrolled
-        if (scrollHeight <= clientHeight && scrollTop === 0) {
-          forceLoadMore();
-        }
-      }
-    }, 5000); // Check less frequently
-    
     // Refresh at a reasonable interval
     const refreshInterval = setInterval(fetchIncidents, 120000); // Every 2 minutes instead of 1
     
+    // Attach scroll listener to the window
+    window.addEventListener('scroll', handleScroll);
+    
+    // Add touch event listeners for swipe detection on the scroll container
     if (scrollContainer) {
-      scrollContainer.addEventListener('scroll', handleScroll);
-      
-      // Add touch event listeners for swipe detection
       scrollContainer.addEventListener('touchstart', handleTouchStart, { passive: true });
       scrollContainer.addEventListener('touchmove', handleTouchMove, { passive: false });
       scrollContainer.addEventListener('touchend', handleTouchEnd, { passive: true });
@@ -484,11 +559,11 @@
     
     onDestroy(() => {
       clearInterval(refreshInterval);
-      clearInterval(loadMoreInterval);
+      // Remove scroll listener from the window
+      window.removeEventListener('scroll', handleScroll);
+      
+      // Remove touch event listeners
       if (scrollContainer) {
-        scrollContainer.removeEventListener('scroll', handleScroll);
-        
-        // Remove touch event listeners
         scrollContainer.removeEventListener('touchstart', handleTouchStart);
         scrollContainer.removeEventListener('touchmove', handleTouchMove);
         scrollContainer.removeEventListener('touchend', handleTouchEnd);
@@ -498,12 +573,23 @@
 </script>
 
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<div class="container" bind:this={scrollContainer} on:scroll={handleScroll}>
+<div class="container" bind:this={scrollContainer}> 
   <div class="header">
     <button class="header-content" on:click={toggleDarkMode} type="button">
       <h1>San Diego Traffic Watch</h1>
       <p>Real-time incidents from CHP scanner data</p>
     </button>
+    <div class="header-search-container always-visible">
+      <input
+        class="header-search-input always-visible"
+        type="text"
+        placeholder="Search incidents..."
+        bind:value={searchQuery}
+        on:input={handleSearchInput}
+        autocomplete="off"
+        maxlength="50"
+      />
+    </div>
   </div>
   
   <div class="view-controls">
@@ -528,6 +614,7 @@
   <button 
     class="side-toggle" 
     class:condensed={condensedView}
+    class:hidden={!showSideToggle}
     on:click={() => condensedView = !condensedView}
     aria-label={condensedView ? "Expand to card view" : "Condense to table view"}
   >
@@ -562,12 +649,19 @@
         <div class="table-cell status-cell">Status</div>
       </div>
       
-      {#each posts as post, i (post.compositeId)}
+      {#each filteredPosts as post, i (post.compositeId)}
         <div 
           class="table-row" 
           class:active={post.active}
           class:expanded={expandedPostId === post.id}
-          on:click={() => expandedPostId = expandedPostId === post.id ? null : post.id}
+          on:click={() => {
+            // If closing the currently expanded row and its comments are open, close comments first
+            if (expandedPostId === post.id && post.showComments) {
+              posts = posts.map(p => p.id === post.id ? { ...p, showComments: false } : p);
+            }
+            // Toggle expanded state
+            expandedPostId = expandedPostId === post.id ? null : post.id;
+          }}
           in:slide={{ delay: Math.min(i * 30, 300), duration: 150 }}
         >
           <div class="table-cell type-cell">
@@ -642,7 +736,11 @@
             </div>
             
             {#if post.showComments}
-              <div class="table-comments-overlay" transition:fade={{ duration: 150 }}>
+              <div
+                class="table-comments-overlay"
+                in:fly="{{ y: 200, duration: 300 }}"
+                out:fly="{{ y: 200, duration: 200 }}"
+              >
                 <button class="close-comments" on:click={(e) => {
                   e.stopPropagation();
                   toggleComments(post.id);
@@ -708,7 +806,7 @@
     </div>
   {:else}
     <div class="feed">
-      {#each posts as post, i (post.compositeId)}
+      {#each filteredPosts as post, i (post.compositeId)}
         <div 
           class="post"
           class:active={post.active}
@@ -768,7 +866,11 @@
               </div>
 
               {#if post.showComments}
-                <div class="comments-overlay" transition:fade={{ duration: 100 }}>
+                <div
+                  class="comments-overlay"
+                  in:fly="{{ y: 200, duration: 300 }}"
+                  out:fly="{{ y: 200, duration: 200 }}"
+                >
                   <button class="close-comments" on:click={() => toggleComments(post.id)}>×</button>
                   <h3 class="comments-title">Comments ({post.comments.length})</h3>
                   {#if post.commentError}
@@ -1130,6 +1232,7 @@
     margin-bottom: 1.2rem;
     color: var(--text-darker);
     position: relative;
+    text-align: center; /* Center the text */
   }
   .post-actions {
     display: flex;
@@ -1218,18 +1321,18 @@
   }
   .comments-overlay {
     position: absolute;
-    top: 200px;
+    top: 50px; /* Leave 50px space at the top */
     left: 0;
     width: 100%;
-    height: calc(100% - 200px);
+    height: calc(100% - 50px); /* Adjust height accordingly */
     background-color: var(--card-bg);
     display: flex;
     flex-direction: column;
     padding: 1.2rem;
     z-index: 10;
-    border-radius: 0 0 18px 18px;
+    border-radius: 16px 16px 0 0; /* Round only top corners */
     box-sizing: border-box;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
     will-change: opacity;
     backface-visibility: hidden;
   }
@@ -1878,6 +1981,7 @@
   .expanded-content {
     display: flex;
     gap: 1rem;
+    align-items: center; /* Vertically center content */
   }
   
   .expanded-image {
@@ -1885,13 +1989,13 @@
     max-width: 300px;
     border-radius: 12px;
     overflow: hidden;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
   }
   
   .expanded-image img {
     width: 100%;
     height: 200px;
     object-fit: cover;
+    border-radius: 12px; /* Add rounded corners to all sides */
   }
   
   .expanded-info {
@@ -1902,7 +2006,7 @@
   
   .expanded-actions {
     display: flex;
-    justify-content: flex-start;
+    justify-content: center; /* Center the buttons */
     gap: 1rem;
     margin-top: 1rem;
   }
@@ -1919,7 +2023,9 @@
     
     .expanded-image {
       max-width: 100%;
+      width: 100%; /* Ensure it takes full width */
       margin-bottom: 1rem;
+      padding-top: 0.5rem; /* Add space above the image without shifting other content */
     }
     
     .type-cell {
@@ -2148,7 +2254,7 @@
     gap: 0.5rem;
     cursor: pointer;
     z-index: 100;
-    box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+    box-shadow: -2px 0 10px rgba(0,0,0,0.1);
     transition: all 0.3s ease;
   }
 
@@ -2177,16 +2283,16 @@
 
   .table-comments-overlay {
     position: absolute;
-    top: 0;
+    top: 20px; /* Reduced space at the top */
     left: 0;
     width: 100%;
-    height: 100%;
+    height: calc(100% - 20px); /* Adjust height accordingly */
     background-color: var(--card-bg);
     display: flex;
     flex-direction: column;
     padding: 1.2rem;
     z-index: 20;
-    border-radius: 0 0 16px 16px;
+    border-radius: 16px 16px 0 0; /* Round only top corners */
     box-sizing: border-box;
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
     will-change: opacity;
@@ -2196,6 +2302,55 @@
   @media (max-width: 768px) {
     .side-toggle {
       display: none; /* Hide the side toggle on mobile - use swipe instead */
+    }
+  }
+  
+  .side-toggle.hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(20px);
+    transition: opacity 0.3s, transform 0.3s;
+  }
+
+  /* --- ALWAYS VISIBLE HEADER SEARCH BAR --- */
+  .header-search-container.always-visible {
+    position: absolute;
+    top: 1.2rem;
+    right: 2rem;
+    display: flex;
+    align-items: center;
+    z-index: 110;
+    width: 200px;
+    max-width: 22vw;
+  }
+  .header-search-input.always-visible {
+    width: 100%;
+    padding: 0.7rem 1.3rem;
+    font-size: 1.08rem;
+    border-radius: 2rem;
+    border: none;
+    outline: none;
+    background: var(--primary-color);
+    color: #fff;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.10);
+    transition: box-shadow 0.2s, background 0.2s, color 0.2s;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+  }
+  .header-search-input.always-visible::placeholder {
+    color: #f9fafb;
+    opacity: 1;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+  }
+  .header-search-input.always-visible:focus {
+    background: var(--primary-dark);
+    color: #fff;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.16);
+  }
+  @media (max-width: 1024px) {
+    .header-search-container.always-visible {
+      display: none;
     }
   }
 </style>
