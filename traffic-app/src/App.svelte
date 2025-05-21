@@ -17,6 +17,10 @@
   let selectedType = null;
   let condensedView = false;
   let expandedPostId = null;
+  let eventsToday = 0;
+  let eventsLastHour = 0;
+  let eventsActive = 0; // New state variable for active events
+  let showEventCounters = false; // New state variable for collapsable section
   
   // Touch/swipe handling variables
   let touchStartX = 0;
@@ -43,6 +47,10 @@
     darkMode = !darkMode;
     document.body.classList.toggle('dark-mode', darkMode);
     localStorage.setItem('darkMode', darkMode.toString());
+  }
+
+  function toggleEventCounters() {
+    showEventCounters = !showEventCounters;
   }
 
   function getUniqueIncidentTypes() {
@@ -140,6 +148,7 @@
       allPosts = mergedPosts;
       // Do NOT reset currentPage or allPostsLoaded here
       loadPostsPage();
+      calculateEventCounts();
 
     } catch (err) {
       console.error("Error fetching incidents:", err);
@@ -254,6 +263,24 @@
       month: 'short',
       day: 'numeric'
     });
+  }
+
+  function calculateEventCounts() {
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+
+    eventsToday = allPosts.filter(post => {
+      const postDate = new Date(post.timestamp);
+      return postDate >= startOfDay;
+    }).length;
+
+    eventsLastHour = allPosts.filter(post => {
+      const postDate = new Date(post.timestamp);
+      return postDate >= oneHourAgo;
+    }).length;
+
+    eventsActive = allPosts.filter(post => post.active).length;
   }
 
   async function likePost(postId) {
@@ -528,6 +555,26 @@
       <h1>San Diego Traffic Watch</h1>
       <p>Real-time incidents from CHP scanner data</p>
     </button>
+    <button class="collapse-button" on:click={toggleEventCounters} aria-expanded={showEventCounters}>
+      Incident Stats
+      <span class="arrow-icon" class:rotated={showEventCounters}></span>
+    </button>
+    {#if showEventCounters}
+      <div class="event-counters" transition:slide>
+        <div class="counter-item">
+          <span class="counter-label">Events Today:</span>
+          <span class="counter-value">{eventsToday}</span>
+        </div>
+        <div class="counter-item">
+          <span class="counter-label">Events Last Hour:</span>
+          <span class="counter-value">{eventsLastHour}</span>
+        </div>
+        <div class="counter-item">
+          <span class="counter-label">Active Events:</span>
+          <span class="counter-value">{eventsActive}</span>
+        </div>
+      </div>
+    {/if}
   </div>
   
   <div class="view-controls">
@@ -998,6 +1045,72 @@
     font-size: 1.1rem;
     opacity: 0.9;
     font-weight: 500;
+  }
+  .event-counters {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    position: relative;
+    z-index: 1;
+  }
+  .collapse-button {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin: 0.5rem auto 0;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    transition: background-color 0.2s, transform 0.2s;
+    opacity: 0.8;
+  }
+  .collapse-button:hover {
+    opacity: 1;
+    background-color: rgba(255, 255, 255, 0.1);
+    transform: translateY(-1px);
+  }
+  .collapse-button:active {
+    transform: translateY(0);
+  }
+  .arrow-icon {
+    display: inline-block;
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 5px solid white;
+    transition: transform 0.3s ease;
+  }
+  .arrow-icon.rotated {
+    transform: rotate(180deg);
+  }
+  .counter-item {
+    text-align: center;
+    color: white;
+    font-size: 1rem;
+    font-weight: 600;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .counter-label {
+    font-size: 0.8rem;
+    opacity: 0.8;
+    margin-bottom: 0.2rem;
+  }
+  .counter-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.1);
   }
   .loading-container {
     display: flex;
