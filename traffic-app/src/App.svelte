@@ -4,12 +4,11 @@
   import { flip } from 'svelte/animate';
 
   let posts = [];
-  let allPosts = [];
   let loading = true;
   let darkMode = false;
   let currentUsername = '';
   let lastToggleTime = 0;
-  let postsPerPage = 12;
+  let postsPerPage = 30;
   let currentPage = 1;
   let loadingMore = false;
   let allPostsLoaded = false;
@@ -55,131 +54,103 @@
 
   function getUniqueIncidentTypes() {
     const types = new Set();
-    allPosts.forEach(post => types.add(post.type));
+    posts.forEach(post => types.add(post.type));
     return Array.from(types);
   }
 
   function filterByType(type) {
     selectedType = selectedType === type ? null : type;
     currentPage = 1;
-    loadPostsPage();
+    posts = []; // Clear existing posts when filter changes
+    fetchIncidents();
   }
 
   async function fetchIncidents() {
-    try {
+  try {
+    // Set loading state for initial load or filter change
+    if (currentPage === 1) {
       loading = true;
-      const res = await fetch('/api/incidents');
-      
-      if (!res.ok) {
-        console.error(`Failed to fetch incidents: ${res.status} ${res.statusText}`);
-        loading = false;
-        return;
-      }
-      
-      const incidents = await res.json();
-      const uniqueIncidents = [];
-      const seenKeys = new Set();
-      
-      for (const incident of incidents) {
-        const date = incident.timestamp ? new Date(incident.timestamp).toLocaleDateString() : '';
-        const compositeKey = `${incident.incident_no}-${date}`;
-        
-        if (!seenKeys.has(compositeKey)) {
-          seenKeys.add(compositeKey);
-          incident.compositeId = compositeKey;
-          uniqueIncidents.push(incident);
-        }
-      }
-      
-      const processedPosts = uniqueIncidents
-        .filter(incident => incident.map_filename) 
-        .map(incident => ({
-          id: incident.incident_no,
-          compositeId: incident.compositeId,
-          timestamp: incident.timestamp,
-          time: formatTimestamp(incident.timestamp),
-          description: incident.description,
-          showFullDescription: false,
-          location: incident.location,
-          image: `/maps/${incident.map_filename}`,
-          likes: incident.likes,
-          comments: incident.comments || [],
-          newComment: "",
-          showComments: false,
-          type: incident.type || "Traffic Incident",
-          likeError: "",
-          commentError: "",
-          likeErrorAnimation: false,
-          active: incident.active
-        }));
-
-      // Merge new incidents with existing ones without resetting pagination
-      // Assuming processedPosts contains the latest data from the API
-      const existingPostsMap = new Map(allPosts.map(post => [post.compositeId, post]));
-      const newPostsMap = new Map(processedPosts.map(post => [post.compositeId, post]));
-
-      // Update existing posts and add new ones
-      const mergedPosts = allPosts.map(post => {
-          const updatedPost = newPostsMap.get(post.compositeId);
-          return updatedPost ? { ...post, ...updatedPost } : post;
-      });
-
-      // Add any completely new posts that weren't in the original allPosts
-      processedPosts.forEach(newPost => {
-          if (!existingPostsMap.has(newPost.compositeId)) {
-              mergedPosts.push(newPost);
-          }
-      });
-
-      // Sort mergedPosts by timestamp if necessary, or maintain existing order if API provides sorted data
-      // Sort mergedPosts by timestamp descending
-      mergedPosts.sort((a, b) => {
-          const dateA = new Date(a.timestamp);
-          const dateB = new Date(b.timestamp);
-          if (dateB < dateA) {
-              return -1;
-          }
-          if (dateB > dateA) {
-              return 1;
-          }
-          return 0;
-      });
-
-      allPosts = mergedPosts;
-      // Do NOT reset currentPage or allPostsLoaded here
-      loadPostsPage();
-      calculateEventCounts();
-
-    } catch (err) {
-      console.error("Error fetching incidents:", err);
-    } finally {
-      loading = false;
+    } else {
+      loadingMore = true; // Use loadingMore for subsequent pages
     }
-  }
-  
-  function loadPostsPage() {
-    const endIndex = currentPage * postsPerPage;
-    let postsToShow = allPosts;
-    
+
+    const offset = (currentPage - 1) * postsPerPage;
+    let url = `/api/incidents?limit=${postsPerPage}&offset=${offset}`;
+
     if (selectedType) {
-      postsToShow = allPosts.filter(post => post.type === selectedType);
+      url += `&type=${encodeURIComponent(selectedType)}`;
     }
-    
-    const totalAvailable = postsToShow.length;
-    postsToShow = postsToShow.slice(0, endIndex);
-    
-    posts = postsToShow.map(newPost => {
-      const existingPost = posts.find(p => p.compositeId === newPost.compositeId);
-      return existingPost
-        ? { ...newPost, likes: existingPost.likes, comments: existingPost.comments, showComments: existingPost.showComments, newComment: existingPost.newComment, likeError: existingPost.likeError, commentError: existingPost.commentError, showFullDescription: existingPost.showFullDescription }
-        : newPost;
-    });
-    
-    allPostsLoaded = endIndex >= totalAvailable;
-    loadingMore = false;
-    
-    console.log(`Loaded ${posts.length} of ${totalAvailable} posts. All loaded: ${allPostsLoaded}`);
+
+    const res = await fetch(url);
+
+    if (!res.ok) {
+      console.error(`Failed to fetch incidents: ${res.status} ${res.statusText}`);
+      // Reset loading states on error
+      if (currentPage === 1) {
+        loading = false;
+      } else {
+        loadingMore = false;
+      }
+      return;
+    }
+
+    const incidents = await res.json();
+    const uniqueIncidents = [];
+    const seenKeys = new Set();
+
+    for (const incident of incidents) {
+      const date = incident.timestamp ? new Date(incident.timestamp).toLocaleDateString() : '';
+      const compositeKey = `${incident.incident_no}-${date}`;
+
+      if (!seenKeys.has(compositeKey)) {
+        seenKeys.add(compositeKey);
+        incident.compositeId = compositeKey;
+        uniqueIncidents.push(incident);
+      }
+    }
+
+    const processedPosts = uniqueIncidents
+      .filter(incident => incident.map_filename)
+      .map(incident => ({
+        id: incident.incident_no,
+        compositeId: incident.compositeId,
+        timestamp: incident.timestamp,
+        time: formatTimestamp(incident.timestamp),
+        description: incident.description,
+        showFullDescription: false,
+        location: incident.location,
+        image: `/maps/${incident.map_filename}`,
+        likes: incident.likes,
+        comments: incident.comments || [],
+        newComment: "",
+        showComments: false,
+        type: incident.type || "Traffic Incident",
+        likeError: "",
+        commentError: "",
+        likeErrorAnimation: false,
+        active: incident.active
+      }));
+
+    // Append new posts to the existing posts array
+    posts = [...posts, ...processedPosts];
+
+    // Check if all posts are loaded (if the number of incidents fetched is less than the limit)
+    allPostsLoaded = incidents.length < postsPerPage;
+
+    calculateEventCounts(); // Recalculate counts based on the updated posts array
+
+  } catch (err) {
+    console.error("Error fetching incidents:", err);
+  } finally {
+    // Reset loading states
+    if (currentPage === 1) {
+      loading = false;
+    } else {
+      loadingMore = false;
+    }
   }
+}
+  
   
   function loadMorePosts() {
     if (loadingMore || allPostsLoaded) return;
@@ -189,7 +160,7 @@
     
     currentPage++;
     
-    loadPostsPage();
+    fetchIncidents();
   }
   
   function handleScroll() {
@@ -214,7 +185,7 @@
     
     console.log("Force loading more posts");
     currentPage++;
-    loadPostsPage();
+    fetchIncidents();
   }
 
   function formatTimestamp(timestamp) {
@@ -270,17 +241,17 @@
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
 
-    eventsToday = allPosts.filter(post => {
+    eventsToday = posts.filter(post => {
       const postDate = new Date(post.timestamp);
       return postDate >= startOfDay;
     }).length;
 
-    eventsLastHour = allPosts.filter(post => {
+    eventsLastHour = posts.filter(post => {
       const postDate = new Date(post.timestamp);
       return postDate >= oneHourAgo;
     }).length;
 
-    eventsActive = allPosts.filter(post => post.active).length;
+    eventsActive = posts.filter(post => post.active).length;
   }
 
   async function likePost(postId) {

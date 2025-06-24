@@ -153,12 +153,12 @@ def init_db():
         
         conn.commit()
 
-def read_incidents():
-    """Read all incidents from the database along with their comments."""
+def read_incidents(limit=20, offset=0):
+    """Read a limited set of incidents from the database along with their comments."""
     with sqlite3.connect(DB_FILE) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
-        cur.execute("SELECT * FROM incidents ORDER BY timestamp DESC")
+        cur.execute("SELECT * FROM incidents ORDER BY timestamp DESC LIMIT ? OFFSET ?", (limit, offset))
         incidents = [dict(row) for row in cur.fetchall()]
         for inc in incidents:
             incident_no = inc["incident_no"]
@@ -166,12 +166,16 @@ def read_incidents():
                 "SELECT username, comment, timestamp FROM comments WHERE incident_no = ? ORDER BY timestamp ASC",
                 (incident_no,)
             )
-            inc["comments"] = [{"username": row[0] or "Anonymous", "comment": row[1], "timestamp": row[2]} for row in cur.fetchall()]
+            inc["comments"] = [
+                {"username": row[0] or "Anonymous", "comment": row[1], "timestamp": row[2]}
+                for row in cur.fetchall()
+            ]
             try:
                 inc["Details"] = json.loads(inc["details"]) if inc["details"] else []
             except Exception:
                 inc["Details"] = []
         return incidents
+
 
 def incident_exists(incident_no, date):
     """Check if an incident exists in the database."""
@@ -458,7 +462,9 @@ def monitor_traffic_data(interval=60):
 
 @app.route("/api/incidents")
 def get_incidents():
-    response = jsonify(read_incidents())
+    limit = int(request.args.get("limit", 20))
+    offset = int(request.args.get("offset", 0))
+    response = jsonify(read_incidents(limit=limit, offset=offset))
     if COOKIE_NAME not in request.cookies:
         device_uuid = str(uuid.uuid4())
         response.set_cookie(
