@@ -8,7 +8,7 @@ import uuid
 import sqlite3
 import subprocess
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import requests
 from bs4 import BeautifulSoup
@@ -153,12 +153,20 @@ def init_db():
         
         conn.commit()
 
-def read_incidents(limit=20, offset=0):
+def read_incidents(limit=20, offset=0, incident_type=None):
     """Read a limited set of incidents from the database along with their comments."""
     with sqlite3.connect(DB_FILE) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
-        cur.execute("SELECT * FROM incidents ORDER BY timestamp DESC LIMIT ? OFFSET ?", (limit, offset))
+        query = "SELECT * FROM incidents"
+        params = []
+        if incident_type:
+            query += " WHERE type = ?"
+            params.append(incident_type)
+        query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+
+        cur.execute(query, tuple(params))
         incidents = [dict(row) for row in cur.fetchall()]
         for inc in incidents:
             incident_no = inc["incident_no"]
@@ -184,6 +192,7 @@ def incident_exists(incident_no, date):
         cur.execute("SELECT 1 FROM incidents WHERE incident_no = ? AND date = ?", (str(incident_no), date))
         return cur.fetchone() is not None
 
+
 # -----------------------------------
 # Google AI Helper Functions
 # -----------------------------------
@@ -197,19 +206,22 @@ def generate_description(data):
     global call_count
     call_count += 1
     print("GPT API Calls:" + str(call_count))
-    """Generate a tweet-friendly description using ChatGPT's GPT-4o-mini model."""
+
     try:
+        # Generate a tweet-friendly description using ChatGPT's GPT-4o-mini model
         prompt = (
             f"Neighborhood: {data.get('Neighborhood')}\n"
             f"Location: {data.get('Location')} - {data.get('Location Desc.')}\n"
             f"Type: {data.get('Type')}\n"
-            f"Details: {', '.join(data.get('Details', []))}\n"
+            f"Details: {', '.join(data.get('Details', []))}"
         )
+
         system_prompt = (
             "Provide a factual, tweet-length summary using the details given. "
             "Do not add any warnings, advice, hashtags, or extra commentary. "
             "Keep the summary under 200 characters. Add related emojis."
         )
+
         user_message = f"Summarize this traffic incident in one fluent sentence.\n{prompt}"
 
         if TESTMODE:  # Return the prompt for debugging in test mode
@@ -223,6 +235,7 @@ def generate_description(data):
                 ]
             )
             return response.choices[0].message.content.strip()
+
     except Exception as e:
         print(f"Error generating description: {e}")
         return "Traffic incident reported."
@@ -422,10 +435,10 @@ def monitor_traffic_data(interval=60):
     print("Starting continuous traffic monitoring...")
     print(f"Data saved to: {DB_FILE}")
     print(f"Map generator: {MAP_GENERATOR}")
-    print("Press Ctrl+C to stop.\n")
+    print("Press Ctrl+C to stop.")
     try:
         while True:
-            print(f"\nChecking updates... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"Checking updates... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             incidents = scrape_all_incidents()
             active_incident_ids = set()
             if incidents:
@@ -455,16 +468,17 @@ def monitor_traffic_data(interval=60):
 
             time.sleep(interval)
     except KeyboardInterrupt:
-        print("\nMonitoring stopped by user.")
+        print("Monitoring stopped by user.")
     except Exception as e:
-        print(f"\nError: {e}")
+        print(f"Error: {e}")
         raise
 
 @app.route("/api/incidents")
 def get_incidents():
     limit = int(request.args.get("limit", 20))
     offset = int(request.args.get("offset", 0))
-    response = jsonify(read_incidents(limit=limit, offset=offset))
+    incident_type = request.args.get("type") # Added to support filtering by type
+    response = jsonify(read_incidents(limit=limit, offset=offset, incident_type=incident_type))
     if COOKIE_NAME not in request.cookies:
         device_uuid = str(uuid.uuid4())
         response.set_cookie(
@@ -476,6 +490,32 @@ def get_incidents():
             samesite='Lax'
         )
     return response
+
+@app.route("/api/incident_stats")
+def get_incident_stats():
+    with sqlite3.connect(DB_FILE) as conn:
+        cur = conn.cursor()
+        
+        # Events Today
+        today = datetime.now().strftime("%Y-%m-%d")
+        cur.execute("SELECT COUNT(*) FROM incidents WHERE date = ?", (today,))
+        events_today = cur.fetchone()[0]
+
+        # Events Last Hour
+        one_hour_ago = datetime.now() - timedelta(hours=1)
+        one_hour_ago_str = one_hour_ago.strftime("%Y-%m-%d %H:%M:%S")
+        cur.execute("SELECT COUNT(*) FROM incidents WHERE timestamp >= ?", (one_hour_ago_str,))
+        events_last_hour = cur.fetchone()[0]
+
+        # Active Events
+        cur.execute("SELECT COUNT(*) FROM incidents WHERE active = 1")
+        events_active = cur.fetchone()[0]
+        
+        return jsonify({
+            "eventsToday": events_today,
+            "eventsLastHour": events_last_hour,
+            "eventsActive": events_active
+        })
 
 @app.route("/maps/<filename>")
 def get_map(filename):
@@ -508,7 +548,7 @@ def like_incident(incident_id):
             device_uuid,
             max_age=COOKIE_MAX_AGE,
             secure=False,
-            httponly=True,
+            httpy=True,
             samesite='Lax'
         )
     return response
@@ -547,7 +587,7 @@ def comment_incident(incident_id):
             device_uuid,
             max_age=COOKIE_MAX_AGE,
             secure=False,
-            httponly=True,
+            httpy=True,
             samesite='Lax'
         )
     return response
@@ -562,7 +602,7 @@ def check_user():
             device_uuid,
             max_age=COOKIE_MAX_AGE,
             secure=False,
-            httponly=True,
+            httpy=True,
             samesite='Lax'
         )
     return response
