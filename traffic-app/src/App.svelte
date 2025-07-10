@@ -564,11 +564,8 @@
   
   <style>
     .filter-active {
-      background-color: #c13117; /* Red background for active filter */
-      color: white !important; /* White text for contrast, ensure visibility */
-      padding: 2px 4px;
+      padding: 0px 4px;
       border-radius: 6px;
-      font-weight: bold;
       box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
       transition: all 0.3s ease; /* Smooth transition for changes */
     }
