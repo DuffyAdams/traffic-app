@@ -153,16 +153,26 @@ def init_db():
         
         conn.commit()
 
-def read_incidents(limit=20, offset=0, incident_type=None):
+def read_incidents(limit=20, offset=0, incident_type=None, active_only=False):
     """Read a limited set of incidents from the database along with their comments."""
     with sqlite3.connect(DB_FILE) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
         query = "SELECT * FROM incidents"
         params = []
+        conditions = []
+
         if incident_type:
-            query += " WHERE type = ?"
+            conditions.append("type = ?")
             params.append(incident_type)
+        
+        if active_only:
+            conditions.append("active = 1")
+            conditions.append("map_filename IS NOT NULL") # Only show active incidents that have a map
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        
         query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
 
@@ -373,8 +383,11 @@ def get_incident_details(row_index, viewstate):
                 details_data["City"] = location_info.get("city", "N/A")
             return details_data
         return {}
+    except requests.exceptions.RequestException as e:
+        print(f"Network or HTTP error getting incident details for index {row_index}: {e}")
+        return {}
     except Exception as e:
-        print(f"Error getting incident details for index {row_index}: {e}")
+        print(f"An unexpected error occurred getting incident details for index {row_index}: {e}")
         return {}
 
 def scrape_all_incidents():
@@ -400,6 +413,10 @@ def scrape_all_incidents():
                 continue
             table_data = dict(zip(headers, row_data))
             additional_details = get_incident_details(idx, viewstate)
+            if not additional_details:
+                print(f"WARNING: Failed to retrieve additional details for incident at index {idx}. Skipping.")
+                continue # Skip this incident if details could not be retrieved
+
             merged_data = {**table_data, **additional_details}
             # Remove the generate_description() call here to avoid duplicate API calls.
             merged_data["Date"] = datetime.now().strftime("%Y-%m-%d")
@@ -478,7 +495,10 @@ def get_incidents():
     limit = int(request.args.get("limit", 20))
     offset = int(request.args.get("offset", 0))
     incident_type = request.args.get("type") # Added to support filtering by type
-    response = jsonify(read_incidents(limit=limit, offset=offset, incident_type=incident_type))
+    active_only = request.args.get("active_only", "false").lower() == "true"
+
+    # Modify read_incidents to accept active_only filter
+    response = jsonify(read_incidents(limit=limit, offset=offset, incident_type=incident_type, active_only=active_only))
     if COOKIE_NAME not in request.cookies:
         device_uuid = str(uuid.uuid4())
         response.set_cookie(
@@ -507,8 +527,8 @@ def get_incident_stats():
         cur.execute("SELECT COUNT(*) FROM incidents WHERE timestamp >= ?", (one_hour_ago_str,))
         events_last_hour = cur.fetchone()[0]
 
-        # Active Events
-        cur.execute("SELECT COUNT(*) FROM incidents WHERE active = 1")
+        # Active Events (only count incidents with a map_filename, as these are displayed)
+        cur.execute("SELECT COUNT(*) FROM incidents WHERE active = 1 AND map_filename IS NOT NULL")
         events_active = cur.fetchone()[0]
         
         return jsonify({

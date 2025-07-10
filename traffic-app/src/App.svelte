@@ -20,6 +20,7 @@
   let eventsLastHour = 0;
   let eventsActive = 0; // New state variable for active events
   let showEventCounters = false; // New state variable for collapsable section
+  let showActiveOnly = false; // New state variable to toggle active events filter
   let seenCompositeKeys = new Set(); // Global set to track seen composite keys
   
   // Touch/swipe handling variables
@@ -53,6 +54,12 @@
     showEventCounters = !showEventCounters;
   }
 
+  function toggleActiveOnly() {
+    showActiveOnly = !showActiveOnly;
+    currentPage = 1; // Reset to first page when filter changes
+    fetchIncidents(); // Re-fetch incidents with new filter
+  }
+
   function getUniqueIncidentTypes() {
     const types = new Set();
     posts.forEach(post => types.add(post.type));
@@ -82,6 +89,9 @@
 
     if (selectedType) {
       url += `&type=${encodeURIComponent(selectedType)}`;
+    }
+    if (showActiveOnly) {
+      url += `&active_only=true`;
     }
 
     const res = await fetch(url);
@@ -134,7 +144,8 @@
       }));
 
     // Append new posts to the existing posts array
-    posts = [...posts, ...newProcessedPosts];
+    const filteredPosts = showActiveOnly ? newProcessedPosts.filter(p => p.active) : newProcessedPosts;
+    posts = [...posts, ...filteredPosts];
 
     // Check if all posts are loaded (if the number of incidents fetched is less than the limit)
     allPostsLoaded = incidents.length < postsPerPage;
@@ -494,7 +505,8 @@
     // Refresh at a reasonable interval
     const refreshInterval = setInterval(() => {
       fetchIncidentStats(); // Refresh stats periodically
-    }, 120000); // Every 2 minutes instead of 1
+      fetchIncidents(); // Also refresh incidents periodically
+    }, 60000); // Every 1 minute
     
     // Attach scroll listener to the window
     window.addEventListener('scroll', handleScroll);
@@ -542,13 +554,25 @@
           <span class="counter-label">Events Last Hour:</span>
           <span class="counter-value">{eventsLastHour}</span>
         </div>
-        <div class="counter-item">
+        <div class="counter-item" on:click={toggleActiveOnly} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && toggleActiveOnly()}>
           <span class="counter-label">Active Events:</span>
-          <span class="counter-value">{eventsActive}</span>
+          <span class="counter-value" class:filter-active={showActiveOnly}>{eventsActive}</span>
         </div>
       </div>
     {/if}
   </div>
+  
+  <style>
+    .filter-active {
+      background-color: #c13117; /* Red background for active filter */
+      color: white !important; /* White text for contrast, ensure visibility */
+      padding: 2px 4px;
+      border-radius: 6px;
+      font-weight: bold;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      transition: all 0.3s ease; /* Smooth transition for changes */
+    }
+  </style>
   
   <div class="view-controls">
     <button 
@@ -932,6 +956,11 @@
     --error-bg: #fff5f5;
     --error-color: #e53e3e;
     --success-color: #38a169;
+  }
+
+  .filter-active {
+    color: #c13117 !important; /* Red color for active filter */
+    font-weight: bold;
   }
   :global(body.dark-mode) {
     --primary-color: #4299e1;
