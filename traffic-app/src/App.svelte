@@ -20,6 +20,7 @@
   let eventsLastHour = 0;
   let eventsActive = 0; // New state variable for active events
   let showEventCounters = false; // New state variable for collapsable section
+  let seenCompositeKeys = new Set(); // Global set to track seen composite keys
   
   // Touch/swipe handling variables
   let touchStartX = 0;
@@ -61,7 +62,7 @@
   function filterByType(type) {
     selectedType = selectedType === type ? null : type;
     currentPage = 1;
-    posts = []; // Clear existing posts when filter changes
+    // posts and seenCompositeKeys will be cleared by fetchIncidents when currentPage is 1
     fetchIncidents();
   }
 
@@ -70,6 +71,8 @@
     // Set loading state for initial load or filter change
     if (currentPage === 1) {
       loading = true;
+      posts = []; // Clear posts for initial load or filter change
+      seenCompositeKeys = new Set(); // Clear seen keys for initial load or filter change
     } else {
       loadingMore = true; // Use loadingMore for subsequent pages
     }
@@ -95,22 +98,21 @@
     }
 
     const incidents = await res.json();
-    const uniqueIncidents = [];
-    const seenKeys = new Set();
 
-    for (const incident of incidents) {
-      const date = incident.timestamp ? new Date(incident.timestamp).toLocaleDateString() : '';
-      const compositeKey = `${incident.incident_no}-${date}`;
-
-      if (!seenKeys.has(compositeKey)) {
-        seenKeys.add(compositeKey);
-        incident.compositeId = compositeKey;
-        uniqueIncidents.push(incident);
-      }
-    }
-
-    const processedPosts = uniqueIncidents
+    const newProcessedPosts = incidents
       .filter(incident => incident.map_filename)
+      .map(incident => {
+        const date = incident.timestamp ? new Date(incident.timestamp).toLocaleDateString() : '';
+        incident.compositeId = `${incident.incident_no}-${date}`;
+        return incident;
+      })
+      .filter(incident => {
+        if (seenCompositeKeys.has(incident.compositeId)) {
+          return false;
+        }
+        seenCompositeKeys.add(incident.compositeId);
+        return true;
+      })
       .map(incident => ({
         id: incident.incident_no,
         compositeId: incident.compositeId,
@@ -132,12 +134,11 @@
       }));
 
     // Append new posts to the existing posts array
-    posts = [...posts, ...processedPosts];
+    posts = [...posts, ...newProcessedPosts];
 
     // Check if all posts are loaded (if the number of incidents fetched is less than the limit)
     allPostsLoaded = incidents.length < postsPerPage;
 
-    calculateEventCounts(); // Recalculate counts based on the updated posts array
 
   } catch (err) {
     console.error("Error fetching incidents:", err);
@@ -236,22 +237,20 @@
     });
   }
 
-  function calculateEventCounts() {
-    const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
-
-    eventsToday = posts.filter(post => {
-      const postDate = new Date(post.timestamp);
-      return postDate >= startOfDay;
-    }).length;
-
-    eventsLastHour = posts.filter(post => {
-      const postDate = new Date(post.timestamp);
-      return postDate >= oneHourAgo;
-    }).length;
-
-    eventsActive = posts.filter(post => post.active).length;
+  async function fetchIncidentStats() {
+    try {
+      const res = await fetch('/api/incident_stats');
+      if (!res.ok) {
+        console.error(`Failed to fetch incident stats: ${res.status} ${res.statusText}`);
+        return;
+      }
+      const stats = await res.json();
+      eventsToday = stats.eventsToday;
+      eventsLastHour = stats.eventsLastHour;
+      eventsActive = stats.eventsActive;
+    } catch (err) {
+      console.error("Error fetching incident stats:", err);
+    }
   }
 
   async function likePost(postId) {
@@ -490,9 +489,12 @@
     }
 
     fetchIncidents();
+    fetchIncidentStats(); // Fetch stats on mount
     
     // Refresh at a reasonable interval
-    const refreshInterval = setInterval(fetchIncidents, 120000); // Every 2 minutes instead of 1
+    const refreshInterval = setInterval(() => {
+      fetchIncidentStats(); // Refresh stats periodically
+    }, 120000); // Every 2 minutes instead of 1
     
     // Attach scroll listener to the window
     window.addEventListener('scroll', handleScroll);
