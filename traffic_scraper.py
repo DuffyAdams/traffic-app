@@ -138,7 +138,7 @@ def init_db():
             SET type = 'Road Conditions'
             WHERE type = 'Road/Weather Conditions'
         """)
-        
+
         cur.execute("""
             UPDATE incidents
             SET type = 'Debris from Vehicle'
@@ -244,7 +244,7 @@ def generate_description(data):
             return f"{system_prompt}\n\n{user_message}"
         else:
             response = client.chat.completions.create(
-                model="gpt-4.1-nano-2025-04-14",
+                model="gpt-5-nano-2025-08-07",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_message},
