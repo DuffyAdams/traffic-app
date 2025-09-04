@@ -141,6 +141,12 @@ def init_db():
         
         cur.execute("""
             UPDATE incidents
+            SET type = 'Debris from Vehicle'
+            WHERE type = 'Object Flying From Veh'
+        """)
+        
+        cur.execute("""
+            UPDATE incidents
             SET type = 'Construction'
             WHERE type = 'Assist with Construction'
         """)

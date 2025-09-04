@@ -13,7 +13,7 @@ TARGET_DIR = os.path.join(BASE_DIR, "traffic-app", "maps")
 if not os.path.exists(TARGET_DIR):
     os.makedirs(TARGET_DIR)
 
-def generate_mapbox_url(lon, lat, access_token, zoom=16, bearing=0, pitch=60, size='500x500@2x', dark_mode=False):
+def generate_mapbox_url(lon, lat, access_token, zoom=16, bearing=0, pitch=60, size='500x500', dark_mode=False):
     """
     Generate a Mapbox URL for a static map image.
     """
