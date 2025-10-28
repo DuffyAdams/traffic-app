@@ -1220,7 +1220,7 @@
     align-items: center;
     gap: 0.25rem;
     z-index: 1;
-    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
     box-shadow: 0 2px 6px #0003;
     border: 1px solid rgba(255, 255, 255, .1);
     animation: badgePulse 2s linear infinite;
@@ -1901,6 +1901,7 @@
   
   .incidents-table {
     width: 100%;
+    min-width: 800px;
     background: var(--card-bg);
     border-radius: 16px;
     overflow: hidden;
@@ -1924,7 +1925,7 @@
   
   .table-row {
     display: flex;
-    padding: 0.8rem 1rem;
+    padding: 0.4rem 0.5rem;
     border-bottom: 1px solid var(--border-color);
     cursor: pointer;
     transition: all 0.2s;
@@ -1977,15 +1978,15 @@
     align-items: center;
     gap: 0.5rem;
   }
-  
+
   .time-cell {
     flex: 0 0 22%;
   }
-  
+
   .location-cell {
     flex: 1;
   }
-  
+
   .status-cell {
     flex: 0 0 12%;
     text-align: center;
@@ -2104,7 +2105,7 @@
     }
     
     .table-row {
-      padding: 0.6rem 0.5rem;
+      padding: 0.4rem 0.5rem;
     }
     
     .table-cell {
@@ -2203,7 +2204,7 @@
     }
     
     .table-row {
-      padding: 0.6rem 0.5rem;
+      padding: 0.4rem 0.5rem;
     }
     
     .table-cell {
