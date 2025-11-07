@@ -13,6 +13,7 @@
   let loadingMore = false;
   let allPostsLoaded = false;
   let scrollContainer;
+  let lastCursor = null; // For cursor-based pagination
   let selectedType = null;
   let condensedView = false;
   let expandedPostId = null;
@@ -25,6 +26,46 @@
   let showEventCounters = false; // New state variable for collapsable section
   let showActiveOnly = false; // New state variable to toggle active events filter
   let seenCompositeKeys = new Set(); // Global set to track seen composite keys
+
+  // Toast notification system
+  let toasts = [];
+  let toastId = 0;
+
+  function addToast(message, type = 'info', duration = 5000) {
+    const id = ++toastId;
+    toasts = [...toasts, { id, message, type }];
+    if (duration > 0) {
+      setTimeout(() => removeToast(id), duration);
+    }
+    return id;
+  }
+
+  function removeToast(id) {
+    toasts = toasts.filter(t => t.id !== id);
+  }
+
+  // Network status
+  let isOnline = true;
+
+  function updateOnlineStatus() {
+    isOnline = navigator.onLine;
+    if (!isOnline) {
+      addToast('You are offline. Some features may not work.', 'warning', 0);
+    } else {
+      addToast('Connection restored.', 'success');
+      // Retry failed requests when back online
+      if (posts.length === 0) fetchIncidents();
+      fetchIncidentStats();
+    }
+  }
+
+
+  // Caching and cancellation
+  let apiCache = new Map();
+  let currentController = null;
+  let statsCache = {};
+  let statsController = null;
+  let currentRequestId = 0; // For handling race conditions
   
   // Touch/swipe handling variables
   let touchStartX = 0;
@@ -37,6 +78,13 @@
   let swipeThreshold = 80; // minimum distance for a swipe
   let verticalThreshold = 50; // maximum vertical movement allowed for horizontal swipe
 
+  // Pull-to-refresh variables
+  let pullStartY = 0;
+  let pullDistance = 0;
+  let isPulling = false;
+  let pullThreshold = 100; // minimum pull distance to trigger refresh
+  let refreshing = false;
+
   const adjectives = ['Cool', 'Happy', 'Swift', 'Brave', 'Clever', 'Lucky'];
   const nouns = ['Panda', 'Tiger', 'Eagle', 'Fox', 'Wolf', 'Bear'];
 
@@ -46,6 +94,33 @@
     const num = Math.floor(Math.random() * 100);
     return `${adj}${noun}${num}`;
   }
+
+  // Debounce utility
+  function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+      const later = () => {
+        clearTimeout(timeout);
+        func(...args);
+      };
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+    };
+  }
+
+  // Retry utility with exponential backoff
+  async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        if (attempt === maxRetries) throw error;
+        const delay = baseDelay * Math.pow(2, attempt);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
 
   function toggleDarkMode() {
     darkMode = !darkMode;
@@ -63,10 +138,18 @@
     fetchIncidents(); // Re-fetch incidents with new filter
   }
 
+  // Memoized unique incident types
+  let memoizedTypes = [];
+  let lastPostsLength = 0;
+
   function getUniqueIncidentTypes() {
-    const types = new Set();
-    posts.forEach(post => types.add(post.type));
-    return Array.from(types);
+    if (posts.length !== lastPostsLength) {
+      const types = new Set();
+      posts.forEach(post => types.add(post.type));
+      memoizedTypes = Array.from(types);
+      lastPostsLength = posts.length;
+    }
+    return memoizedTypes;
   }
 
   function filterByType(type) {
@@ -77,53 +160,139 @@
   }
 
   async function fetchIncidents() {
-  try {
-    // Set loading state for initial load or filter change
-    if (currentPage === 1) {
-      loading = true;
-      posts = []; // Clear posts for initial load or filter change
-      seenCompositeKeys = new Set(); // Clear seen keys for initial load or filter change
-    } else {
-      loadingMore = true; // Use loadingMore for subsequent pages
+    const requestId = ++currentRequestId; // Assign unique ID to this request
+
+    // Cancel any ongoing request
+    if (currentController) {
+      currentController.abort();
     }
+    currentController = new AbortController();
 
-    const offset = (currentPage - 1) * postsPerPage;
-    let url = `/api/incidents?limit=${postsPerPage}&offset=${offset}`;
-
-    if (selectedType) {
-      url += `&type=${encodeURIComponent(selectedType)}`;
-    }
-    if (showActiveOnly) {
-      url += `&active_only=true`;
-    }
-
-    const res = await fetch(url);
-
-    if (!res.ok) {
-      console.error(`Failed to fetch incidents: ${res.status} ${res.statusText}`);
-      // Reset loading states on error
+    try {
+      // Set loading state for initial load or filter change
       if (currentPage === 1) {
-        loading = false;
+        loading = true;
+        posts = []; // Clear posts for initial load or filter change
+        seenCompositeKeys = new Set(); // Clear seen keys for initial load or filter change
+        lastCursor = null; // Reset cursor for new queries
       } else {
-        loadingMore = false;
+        loadingMore = true; // Use loadingMore for subsequent pages
       }
+
+      let url = `/api/incidents?limit=${postsPerPage}`;
+
+      // Use cursor-based pagination for subsequent pages
+      if (currentPage > 1 && lastCursor) {
+        url += `&cursor=${encodeURIComponent(lastCursor)}`;
+      }
+
+      if (selectedType) {
+        url += `&type=${encodeURIComponent(selectedType)}`;
+      }
+      if (showActiveOnly) {
+        url += `&active_only=true`;
+      }
+
+      // Check cache first
+      const cacheKey = url;
+      if (apiCache.has(cacheKey)) {
+        const cachedData = apiCache.get(cacheKey);
+        // Only process if this is still the latest request
+        if (requestId === currentRequestId) {
+          processIncidents(cachedData);
+        }
+        return;
+      }
+
+      const fetchFn = async () => {
+        const res = await fetch(url, { signal: currentController.signal });
+        if (!res.ok) {
+          throw new Error(`Failed to fetch incidents: ${res.status} ${res.statusText}`);
+        }
+        return await res.json();
+      };
+
+      const incidents = await retryWithBackoff(fetchFn, 3, 1000);
+
+      // Only process if this is still the latest request (prevents race conditions)
+      if (requestId !== currentRequestId) {
+        return; // Ignore outdated response
+      }
+
+      // Cache the response
+      apiCache.set(cacheKey, incidents);
+
+      processIncidents(incidents);
+
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        console.error("Error fetching incidents:", err);
+        addToast('Failed to load incidents. Please check your connection and try again.', 'error');
+        // Show fallback content
+        if (currentPage === 1 && posts.length === 0) {
+          posts = [{
+            id: 'error-fallback',
+            compositeId: 'error-fallback',
+            timestamp: new Date().toISOString(),
+            time: 'Error',
+            description: 'Unable to load incidents at this time.',
+            location: 'N/A',
+            image: '',
+            likes: 0,
+            comments: [],
+            newComment: "",
+            showComments: false,
+            type: "Error",
+            likeError: "",
+            commentError: "",
+            likeErrorAnimation: false,
+            active: false
+          }];
+        }
+      }
+    } finally {
+      // Reset loading states only if this is still the latest request
+      if (requestId === currentRequestId) {
+        if (currentPage === 1) {
+          loading = false;
+        } else {
+          loadingMore = false;
+        }
+      }
+      currentController = null;
+    }
+  }
+
+  function processIncidents(incidents) {
+    // Validate API response structure
+    if (!Array.isArray(incidents)) {
+      console.error('Invalid incidents data: expected array');
+      addToast('Received invalid data from server', 'error');
       return;
     }
 
-    const incidents = await res.json();
-
     const newProcessedPosts = incidents
-      .filter(incident => incident.map_filename)
+      .filter(incident => {
+        // Validate required fields
+        if (!incident || typeof incident !== 'object') return false;
+        if (!incident.incident_no || !incident.timestamp || !incident.map_filename) {
+          console.warn('Incident missing required fields:', incident);
+          return false;
+        }
+        return true;
+      })
       .map(incident => {
         const date = incident.timestamp ? new Date(incident.timestamp).toLocaleDateString() : '';
         incident.compositeId = `${incident.incident_no}-${date}`;
         return incident;
       })
       .filter(incident => {
-        if (seenCompositeKeys.has(incident.compositeId)) {
+        // More robust duplicate detection using multiple criteria
+        const duplicateKey = `${incident.incident_no}-${incident.timestamp}-${incident.location}`;
+        if (seenCompositeKeys.has(duplicateKey)) {
           return false;
         }
-        seenCompositeKeys.add(incident.compositeId);
+        seenCompositeKeys.add(duplicateKey);
         return true;
       })
       .map(incident => ({
@@ -131,40 +300,34 @@
         compositeId: incident.compositeId,
         timestamp: incident.timestamp,
         time: formatTimestamp(incident.timestamp),
-        description: incident.description,
+        description: incident.description || 'No description available',
         showFullDescription: false,
-        location: incident.location,
+        location: incident.location || 'Unknown location',
         image: `/maps/${incident.map_filename}`,
-        likes: incident.likes,
-        comments: incident.comments || [],
+        likes: typeof incident.likes === 'number' ? incident.likes : 0,
+        comments: Array.isArray(incident.comments) ? incident.comments : [],
         newComment: "",
         showComments: false,
         type: incident.type || "Traffic Incident",
         likeError: "",
         commentError: "",
         likeErrorAnimation: false,
-        active: incident.active
+        active: Boolean(incident.active),
+        liking: false
       }));
 
     // Append new posts to the existing posts array
     const filteredPosts = showActiveOnly ? newProcessedPosts.filter(p => p.active) : newProcessedPosts;
     posts = [...posts, ...filteredPosts];
 
+    // Update cursor for next page (use the timestamp of the last incident)
+    if (incidents.length > 0) {
+      lastCursor = incidents[incidents.length - 1].timestamp;
+    }
+
     // Check if all posts are loaded (if the number of incidents fetched is less than the limit)
     allPostsLoaded = incidents.length < postsPerPage;
-
-
-  } catch (err) {
-    console.error("Error fetching incidents:", err);
-  } finally {
-    // Reset loading states
-    if (currentPage === 1) {
-      loading = false;
-    } else {
-      loadingMore = false;
-    }
   }
-}
   
   
   function loadMorePosts() {
@@ -178,21 +341,22 @@
     fetchIncidents();
   }
   
-  function handleScroll() {
+  // Debounced scroll handler
+  const debouncedHandleScroll = debounce(() => {
     // Use window/document scroll properties for overall page scroll
     const scrollTop = window.scrollY || document.documentElement.scrollTop;
     const scrollHeight = document.documentElement.scrollHeight;
     const clientHeight = window.innerHeight;
-    
+
     const scrollBottom = scrollHeight - scrollTop - clientHeight;
-    
+
     // Only load more when very close to the bottom to minimize unnecessary loads
     // Using a threshold that works with overall page scroll
-    if (scrollBottom < 600 && !loadingMore && !allPostsLoaded) { /* Adjusted threshold for window scroll */
+    if (scrollBottom < 600 && !loadingMore && !allPostsLoaded) {
       console.log("Triggering load more posts from scroll (window scroll)");
       loadMorePosts();
     }
-  }
+  }, 100);
 
   // Modify the forceLoadMore function to be more conservative
   function forceLoadMore() {
@@ -252,56 +416,115 @@
   }
 
   async function fetchIncidentStats() {
+    // Cancel any ongoing stats request
+    if (statsController) {
+      statsController.abort();
+    }
+    statsController = new AbortController();
+
     try {
-      const res = await fetch('/api/incident_stats');
-      if (!res.ok) {
-        console.error(`Failed to fetch incident stats: ${res.status} ${res.statusText}`);
+      // Check cache first
+      const cacheKey = 'incident_stats';
+      if (statsCache[cacheKey] && Date.now() - statsCache[cacheKey].timestamp < 30000) { // 30 second cache
+        const cachedStats = statsCache[cacheKey].data;
+        eventsToday = cachedStats.eventsToday;
+        eventsLastHour = cachedStats.eventsLastHour;
+        eventsActive = cachedStats.eventsActive;
+        totalIncidents = cachedStats.totalIncidents;
+        incidentsByType = cachedStats.incidentsByType;
+        topLocations = cachedStats.topLocations;
         return;
       }
-      const stats = await res.json();
+
+      const fetchFn = async () => {
+        const res = await fetch('/api/incident_stats', { signal: statsController.signal });
+        if (!res.ok) {
+          throw new Error(`Failed to fetch incident stats: ${res.status} ${res.statusText}`);
+        }
+        return await res.json();
+      };
+
+      const stats = await retryWithBackoff(fetchFn, 3, 1000);
+
+      // Cache the stats
+      statsCache[cacheKey] = {
+        data: stats,
+        timestamp: Date.now()
+      };
+
       eventsToday = stats.eventsToday;
       eventsLastHour = stats.eventsLastHour;
       eventsActive = stats.eventsActive;
       totalIncidents = stats.totalIncidents;
       incidentsByType = stats.incidentsByType;
-      topLocations = stats.topLocations;
+      topLocations = Object.fromEntries(Object.entries(stats.topLocations).slice(0, 5));
     } catch (err) {
-      console.error("Error fetching incident stats:", err);
+      if (err.name !== 'AbortError') {
+        console.error("Error fetching incident stats:", err);
+        addToast('Failed to load incident statistics.', 'error');
+        // Set fallback values
+        eventsToday = eventsToday || 0;
+        eventsLastHour = eventsLastHour || 0;
+        eventsActive = eventsActive || 0;
+        totalIncidents = totalIncidents || 0;
+        incidentsByType = incidentsByType || {};
+        topLocations = topLocations || {};
+      }
+    } finally {
+      statsController = null;
     }
   }
 
   async function likePost(postId) {
-    try {
-      posts = posts.map(p =>
-        p.id === postId ? { ...p, likeError: "", likeErrorAnimation: false } : p
-      );
+    const post = posts.find(p => p.id === postId);
+    if (!post || post.liking) return;
 
-      const res = await fetch(`/api/incidents/${postId}/like`, { method: 'POST' });
-      const data = await res.json();
-      if (res.ok) {
+    // Set liking state to prevent multiple requests
+    posts = posts.map(p =>
+      p.id === postId ? { ...p, liking: true } : p
+    );
+
+    // Store original like count for rollback
+    const originalLikes = post.likes;
+    const wasLiked = post.likes > 0;
+
+    // Optimistic update: increment likes immediately
+    posts = posts.map(p =>
+      p.id === postId ? { ...p, likes: wasLiked ? 0 : 1, likeError: "", likeErrorAnimation: false } : p
+    );
+
+    try {
+      const method = wasLiked ? 'DELETE' : 'POST';
+      const fetchFn = async () => {
+        const res = await fetch(`/api/incidents/${postId}/like`, { method });
+        if (!res.ok) {
+          throw new Error(`Failed to ${wasLiked ? 'unlike' : 'like'} post: ${res.status} ${res.statusText}`);
+        }
+        return await res.json();
+      };
+
+      const data = await retryWithBackoff(fetchFn, 2, 500);
+
+      // Update with server response
+      posts = posts.map(p =>
+        p.id === postId ? { ...p, likes: data.likes, likeError: "", liking: false } : p
+      );
+    } catch (err) {
+      console.error("Error updating like:", err);
+
+      // For unliking, don't rollback on failure to allow users to unlike posts
+      if (wasLiked) {
+        // Keep the unliked state
         posts = posts.map(p =>
-          p.id === postId ? { ...p, likes: data.likes, likeError: "" } : p
+          p.id === postId ? { ...p, liking: false } : p
         );
       } else {
+        // For liking, rollback on failure
+        addToast('Failed to like post. Please try again.', 'error');
         posts = posts.map(p =>
-          p.id === postId ? { ...p, likeErrorAnimation: true } : p
+          p.id === postId ? { ...p, likes: originalLikes, liking: false } : p
         );
-        setTimeout(() => {
-          posts = posts.map(p =>
-            p.id === postId ? { ...p, likeErrorAnimation: false } : p
-          );
-        }, 500);
       }
-    } catch (err) {
-      console.error("Error liking post:", err);
-      posts = posts.map(p =>
-        p.id === postId ? { ...p, likeErrorAnimation: true } : p
-      );
-      setTimeout(() => {
-        posts = posts.map(p =>
-          p.id === postId ? { ...p, likeErrorAnimation: false } : p
-        );
-      }, 500);
     }
   }
 
@@ -338,58 +561,69 @@
 
     const userComments = post.comments.filter(c => c.username === currentUsername);
     if (userComments.length >= 2) {
-      posts = posts.map(p =>
-        p.id === postId ? { ...p, commentError: "You can only leave 2 comments per post." } : p
-      );
-      setTimeout(() => {
-        posts = posts.map(p =>
-          p.id === postId ? { ...p, commentError: "" } : p
-        );
-      }, 3000);
+      addToast('You can only leave 2 comments per post.', 'warning');
       return;
     }
 
     const newCommentObj = {
       username: currentUsername,
-      comment: post.newComment,
+      comment: post.newComment.trim(),
       timestamp: new Date().toISOString()
     };
+
+    // Store original state for rollback
+    const originalComments = [...post.comments];
+    const originalNewComment = post.newComment;
+
+    // Optimistic update: add comment immediately
+    const optimisticComment = { ...newCommentObj, id: `temp-${Date.now()}` };
+    posts = posts.map(p =>
+      p.id === postId ? {
+        ...p,
+        comments: [...p.comments, optimisticComment],
+        newComment: "",
+        commentError: ""
+      } : p
+    );
+
     try {
-      const res = await fetch(`/api/incidents/${postId}/comment`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newCommentObj)
-      });
-      const data = await res.json();
-      if (res.ok) {
-        posts = posts.map(p =>
-          p.id === postId ? { 
-            ...p, 
-            comments: data.comments,
-            newComment: "", 
-            commentError: "" 
-          } : p
-        );
-      } else {
-        posts = posts.map(p =>
-          p.id === postId ? { ...p, commentError: data.error } : p
-        );
-        setTimeout(() => {
-          posts = posts.map(p =>
-            p.id === postId ? { ...p, commentError: "" } : p
-          );
-        }, 3000);
-      }
+      const fetchFn = async () => {
+        const res = await fetch(`/api/incidents/${postId}/comment`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newCommentObj)
+        });
+        if (!res.ok) {
+          throw new Error(`Failed to submit comment: ${res.status} ${res.statusText}`);
+        }
+        return await res.json();
+      };
+
+      const data = await retryWithBackoff(fetchFn, 2, 500);
+
+      // Update with server response
+      posts = posts.map(p =>
+        p.id === postId ? {
+          ...p,
+          comments: data.comments,
+          newComment: "",
+          commentError: ""
+        } : p
+      );
+      addToast('Comment added successfully!', 'success');
     } catch (err) {
       console.error("Error submitting comment:", err);
+      addToast('Failed to submit comment. Please try again.', 'error');
+
+      // Rollback optimistic update
       posts = posts.map(p =>
-        p.id === postId ? { ...p, commentError: "Error submitting comment." } : p
+        p.id === postId ? {
+          ...p,
+          comments: originalComments,
+          newComment: originalNewComment,
+          commentError: "Failed to submit comment"
+        } : p
       );
-      setTimeout(() => {
-        posts = posts.map(p =>
-          p.id === postId ? { ...p, commentError: "" } : p
-        );
-      }, 3000);
     }
   }
 
@@ -444,24 +678,40 @@
   function handleTouchStart(e) {
     touchStartX = e.touches[0].clientX;
     touchStartY = e.touches[0].clientY;
+    pullStartY = e.touches[0].clientY;
     swipeInProgress = true;
+    isPulling = false;
   }
   
   function handleTouchMove(e) {
     if (!swipeInProgress) return;
-    
+
     touchEndX = e.touches[0].clientX;
     touchEndY = e.touches[0].clientY;
-    
+
     // Calculate horizontal and vertical distance
     const diffX = touchStartX - touchEndX;
-    const diffY = Math.abs(touchStartY - touchEndY);
-    
+    const diffY = touchEndY - touchStartY;
+
+    // Check for pull-to-refresh (vertical pull at top of scroll)
+    if (diffY > 0 && window.scrollY === 0 && !isPulling) {
+      isPulling = true;
+      pullDistance = Math.min(diffY * 0.5, 120); // Dampen the pull
+      e.preventDefault();
+      return;
+    }
+
+    if (isPulling) {
+      pullDistance = Math.min(diffY * 0.5, 120);
+      e.preventDefault();
+      return;
+    }
+
     // Only show swipe indicator for primarily horizontal movements
-    if (Math.abs(diffX) > 20 && diffY < verticalThreshold) {
+    if (Math.abs(diffX) > 20 && Math.abs(diffY) < verticalThreshold) {
       swipeIndicator = true;
       swipeDirection = diffX > 0 ? 'left' : 'right';
-      
+
       // Prevent scrolling when a valid swipe is detected
       if (Math.abs(diffX) > 40) {
         e.preventDefault();
@@ -473,25 +723,44 @@
   
   function handleTouchEnd(e) {
     if (!swipeInProgress) return;
-    
+
+    // Handle pull-to-refresh
+    if (isPulling && pullDistance >= pullThreshold && !refreshing) {
+      refreshing = true;
+      addToast('Refreshing...', 'info');
+      // Trigger refresh
+      fetchIncidents();
+      fetchIncidentStats();
+      setTimeout(() => {
+        refreshing = false;
+        addToast('Refreshed!', 'success');
+      }, 1000);
+    }
+
     // Calculate horizontal and vertical distance
     const diffX = touchStartX - touchEndX;
     const diffY = Math.abs(touchStartY - touchEndY);
-    
+
     // Only process as swipe if movement was primarily horizontal
     if (Math.abs(diffX) > swipeThreshold && diffY < verticalThreshold) {
       if (diffX > 0) {
         // Swipe left - go to table view
         if (!condensedView) condensedView = true;
+        // Haptic feedback
+        if (navigator.vibrate) navigator.vibrate(50);
       } else {
         // Swipe right - go to card view
         if (condensedView) condensedView = false;
+        // Haptic feedback
+        if (navigator.vibrate) navigator.vibrate(50);
       }
     }
-    
+
     // Reset
     swipeInProgress = false;
     swipeIndicator = false;
+    isPulling = false;
+    pullDistance = 0;
   }
 
   onMount(() => {
@@ -505,30 +774,41 @@
       localStorage.setItem('username', currentUsername);
     }
 
+    // Add network status listeners
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+    updateOnlineStatus(); // Initial check
+
     fetchIncidents();
     fetchIncidentStats(); // Fetch stats on mount
-    
+
     // Refresh at a reasonable interval
     const refreshInterval = setInterval(() => {
-      fetchIncidentStats(); // Refresh stats periodically
-      fetchIncidents(); // Also refresh incidents periodically
+      if (isOnline) {
+        fetchIncidentStats(); // Refresh stats periodically
+        fetchIncidents(); // Also refresh incidents periodically
+      }
     }, 60000); // Every 1 minute
-    
+
     // Attach scroll listener to the window
-    window.addEventListener('scroll', handleScroll);
-    
-    // Add touch event listeners for swipe detection on the scroll container
+    window.addEventListener('scroll', debouncedHandleScroll);
+
+    // Add touch event listeners for swipe detection and pull-to-refresh on the scroll container
     if (scrollContainer) {
       scrollContainer.addEventListener('touchstart', handleTouchStart, { passive: true });
       scrollContainer.addEventListener('touchmove', handleTouchMove, { passive: false });
       scrollContainer.addEventListener('touchend', handleTouchEnd, { passive: true });
     }
-    
+
+
     onDestroy(() => {
       clearInterval(refreshInterval);
+      // Remove network listeners
+      window.removeEventListener('online', updateOnlineStatus);
+      window.removeEventListener('offline', updateOnlineStatus);
       // Remove scroll listener from the window
-      window.removeEventListener('scroll', handleScroll);
-      
+      window.removeEventListener('scroll', debouncedHandleScroll);
+
       // Remove touch event listeners
       if (scrollContainer) {
         scrollContainer.removeEventListener('touchstart', handleTouchStart);
@@ -568,20 +848,22 @@
           <span class="counter-label">Total Incidents:</span>
           <span class="counter-value">{totalIncidents}</span>
         </div>
-        <div class="counter-item">
-          <span class="counter-label">Incidents by Type:</span>
-          <div class="type-breakdown">
-            {#each Object.entries(incidentsByType) as [type, count]}
-              <div class="type-item">{type}: {count}</div>
-            {/each}
+        <div class="counter-item combined-stats">
+          <div class="stats-column">
+            <span class="counter-label">Incidents by Type:</span>
+            <div class="type-breakdown">
+              {#each Object.entries(incidentsByType) as [type, count]}
+                <div class="type-item">{type}: {count}</div>
+              {/each}
+            </div>
           </div>
-        </div>
-        <div class="counter-item">
-          <span class="counter-label">Top Locations:</span>
-          <div class="location-breakdown">
-            {#each Object.entries(topLocations) as [location, count]}
-              <div class="location-item">{location}: {count}</div>
-            {/each}
+          <div class="stats-column">
+            <span class="counter-label">Top Locations:</span>
+            <div class="location-breakdown">
+              {#each Object.entries(topLocations) as [location, count]}
+                <div class="location-item">{location}: {count}</div>
+              {/each}
+            </div>
           </div>
         </div>
       </div>
@@ -632,11 +914,35 @@
       <span class="swipe-text">{swipeDirection === 'left' ? 'Table View' : 'Card View'}</span>
     </div>
   {/if}
+
+  <!-- Pull-to-refresh indicator -->
+  {#if isPulling || refreshing}
+    <div class="pull-refresh-indicator {refreshing ? 'refreshing' : ''}" style="transform: translateX(-50%) translateY({isPulling ? pullDistance : 0}px)">
+      {#if refreshing}
+        <span>🔄 Refreshing...</span>
+      {:else}
+        <span>⬇️ Pull to refresh</span>
+      {/if}
+    </div>
+  {/if}
   
   {#if loading && posts.length === 0}
     <div class="loading-container" in:fade={{ duration: 150 }}>
-      <div class="loading-spinner"></div>
-      <p>Loading incidents...</p>
+      {#each Array(6) as _}
+        <div class="skeleton-card" in:fade={{ duration: 150, delay: 50 }}>
+          <div class="skeleton-image"></div>
+          <div class="skeleton-content">
+            <div class="skeleton-line skeleton-title"></div>
+            <div class="skeleton-line skeleton-text"></div>
+            <div class="skeleton-line skeleton-text"></div>
+            <div class="skeleton-actions">
+              <div class="skeleton-button"></div>
+              <div class="skeleton-button"></div>
+              <div class="skeleton-button"></div>
+            </div>
+          </div>
+        </div>
+      {/each}
     </div>
   {:else if posts.length === 0}
     <div class="empty-state" in:fade={{ duration: 150 }}>
@@ -794,8 +1100,13 @@
       
       {#if loadingMore}
         <div class="loading-more" in:fade={{ duration: 150 }}>
-          <div class="loading-spinner-small"></div>
-          <p>Loading more...</p>
+          <div class="skeleton-card-small">
+            <div class="skeleton-image-small"></div>
+            <div class="skeleton-content-small">
+              <div class="skeleton-line-small"></div>
+              <div class="skeleton-line-small"></div>
+            </div>
+          </div>
         </div>
       {:else if !allPostsLoaded && posts.length > 0 && posts.length >= postsPerPage}
         <div class="scroll-indicator" in:fade={{ duration: 150 }} on:click={forceLoadMore}>
@@ -811,7 +1122,7 @@
   {:else}
     <div class="feed">
       {#each posts as post, i (post.compositeId)}
-        <div 
+        <div
           class="post"
           class:active={post.active}
           in:slide={{ delay: Math.min(i % postsPerPage * 50, 300), duration: 200 }}
@@ -919,8 +1230,12 @@
       
       {#if loadingMore}
         <div class="loading-more" in:fade={{ duration: 150 }}>
-          <div class="loading-spinner-small"></div>
-          <p>Loading more...</p>
+          <div class="skeleton-table-row">
+            <div class="skeleton-cell"></div>
+            <div class="skeleton-cell"></div>
+            <div class="skeleton-cell"></div>
+            <div class="skeleton-cell"></div>
+          </div>
         </div>
       {:else if !allPostsLoaded && posts.length > 0 && posts.length >= postsPerPage}
         <div class="scroll-indicator" in:fade={{ duration: 150 }} on:click={forceLoadMore}>
@@ -935,6 +1250,22 @@
     </div>
   {/if}
   
+  <!-- Toast notifications -->
+  {#if toasts.length > 0}
+    <div class="toast-container">
+      {#each toasts as toast (toast.id)}
+        <div
+          class="toast toast-{toast.type}"
+          in:fly="{{ y: -50, duration: 300 }}"
+          out:fly="{{ y: -50, duration: 200 }}"
+        >
+          <span class="toast-message">{toast.message}</span>
+          <button class="toast-close" on:click={() => removeToast(toast.id)}>×</button>
+        </div>
+      {/each}
+    </div>
+  {/if}
+
   <footer class="app-footer" in:fade={{ delay: 400, duration: 200 }}>
     <p>Created and Developed by <a href="https://github.com/DuffyAdams" target="_blank" rel="noopener noreferrer">Duffy Adams</a></p>
   </footer>
@@ -1074,12 +1405,13 @@
   .event-counters {
     display: flex;
     justify-content: center;
-    gap: 2rem;
+    gap: 1rem;
     margin-top: 1rem;
     padding-top: 1rem;
     border-top: 1px solid rgba(255, 255, 255, 0.2);
     position: relative;
     z-index: 1;
+    flex-wrap: wrap;
   }
   .collapse-button {
     background: none;
@@ -1127,6 +1459,19 @@
     flex-direction: column;
     align-items: center;
   }
+
+  .combined-stats {
+    flex-direction: row !important;
+    gap: 2rem;
+    align-items: flex-start;
+  }
+
+  .stats-column {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
   .type-breakdown, .location-breakdown {
     display: flex;
     flex-direction: column;
@@ -1152,20 +1497,116 @@
     text-shadow: 0 1px 2px rgba(0,0,0,0.1);
   }
   .loading-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 3rem 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+    padding: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
   }
-  .loading-spinner {
-    width: 40px;
-    height: 40px;
-    border: 4px solid rgba(66, 153, 225, 0.1);
-    border-radius: 50%;
-    border-left-color: var(--primary-color);
-    animation: spin 1s linear infinite;
-    margin-bottom: 1rem;
+  .skeleton-card {
+    background: var(--card-bg);
+    border-radius: 18px;
+    box-shadow: 0 4px 20px var(--shadow-color), 0 0 0 1px rgba(0,0,0,0.03);
+    overflow: hidden;
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+  }
+  .skeleton-image {
+    height: 200px;
+    background: linear-gradient(90deg, var(--border-color) 25%, transparent 50%, var(--border-color) 75%);
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s infinite;
+  }
+  .skeleton-content {
+    padding: 1.4rem;
+  }
+  .skeleton-line {
+    height: 16px;
+    background: var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 0.8rem;
+  }
+  .skeleton-title {
+    width: 60%;
+    height: 20px;
+  }
+  .skeleton-text {
+    width: 100%;
+  }
+  .skeleton-actions {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 1rem;
+  }
+  .skeleton-button {
+    width: 60px;
+    height: 32px;
+    background: var(--border-color);
+    border-radius: 8px;
+  }
+  .skeleton-card-small {
+    display: flex;
+    align-items: center;
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 1rem;
+    box-shadow: 0 2px 8px var(--shadow-color);
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+  }
+  .skeleton-image-small {
+    width: 60px;
+    height: 60px;
+    background: var(--border-color);
+    border-radius: 8px;
+    margin-right: 1rem;
+    animation: skeleton-shimmer 1.5s infinite;
+  }
+  .skeleton-content-small {
+    flex: 1;
+  }
+  .skeleton-line-small {
+    height: 12px;
+    background: var(--border-color);
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+    width: 100%;
+  }
+  .skeleton-line-small:last-child {
+    width: 70%;
+  }
+  .skeleton-table-row {
+    display: flex;
+    padding: 0.4rem 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+  }
+  .skeleton-cell {
+    padding: 0.2rem 0.5rem;
+    flex: 1;
+    height: 16px;
+    background: var(--border-color);
+    border-radius: 4px;
+    margin: 0 0.25rem;
+  }
+  .skeleton-cell:first-child {
+    flex: 0 0 18%;
+  }
+  .skeleton-cell:nth-child(2) {
+    flex: 0 0 22%;
+  }
+  .skeleton-cell:nth-child(3) {
+    flex: 1;
+  }
+  .skeleton-cell:last-child {
+    flex: 0 0 12%;
+  }
+  @keyframes skeleton-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+  @keyframes skeleton-shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
   }
   @keyframes spin {
     0% { transform: rotate(0deg); }
@@ -1341,12 +1782,13 @@
     color: var(--text-muted);
     font-size: 0.9rem;
     font-weight: 600;
-    padding: 0.45rem 0; /* reduced padding for tighter look */
+    padding: 0.6875rem 0; /* increased to ensure 44px height (44px / 16px = 2.75rem, but adjusted for existing styles) */
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s;
     outline: none;
     flex: 1;
+    min-height: 44px; /* ensure minimum touch target */
   }
   .like-button, .comment-button, .share-button {
     flex: 1;
@@ -1729,9 +2171,46 @@
       padding: 0.4rem 0.2rem;
       font-size: 0.85rem;
       gap: 0.2rem;
+      min-height: 44px;
     }
     .action-button span:last-child {
       min-width: 18px;
+    }
+  }
+
+  @media (max-width: 320px) {
+    .container {
+      padding: 0.1rem;
+      overflow-x: hidden;
+    }
+    .feed {
+      gap: 0.3rem;
+    }
+    .post {
+      margin: 0 0 0.3rem 0;
+      border-radius: 8px;
+      min-width: unset;
+      max-width: 100%;
+    }
+    .post-image-container {
+      border-radius: 8px 8px 0 0;
+    }
+    .post-info {
+      padding: 0.5rem 0.5rem 0.3rem;
+    }
+    .header {
+      padding: 0.5rem;
+      margin-bottom: 0.5rem;
+      border-radius: 8px;
+    }
+    .action-button {
+      padding: 0.3rem 0.1rem;
+      font-size: 0.8rem;
+      min-height: 44px;
+    }
+    .incidents-table {
+      min-width: unset;
+      overflow-x: auto;
     }
   }
   :global(button) {
@@ -1744,20 +2223,8 @@
   .loading-more {
     width: 100%;
     display: flex;
-    flex-direction: column;
-    align-items: center;
     justify-content: center;
-    padding: 1.5rem 0;
-    color: var(--text-muted);
-  }
-  .loading-spinner-small {
-    width: 30px;
-    height: 30px;
-    border: 3px solid rgba(66, 153, 225, 0.1);
-    border-radius: 50%;
-    border-left-color: var(--primary-color);
-    animation: spin 1s linear infinite;
-    margin-bottom: 0.5rem;
+    padding: 1rem 0;
   }
   .scroll-indicator {
     width: 100%;
@@ -1820,6 +2287,90 @@
   .app-footer a:hover {
     color: var(--primary-dark);
     text-decoration: underline;
+  }
+
+  /* Toast notifications */
+  .toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-width: 400px;
+  }
+
+  .toast {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    font-size: 0.9rem;
+    font-weight: 500;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    min-width: 300px;
+  }
+
+  .toast-info {
+    background-color: var(--primary-color);
+    color: white;
+  }
+
+  .toast-success {
+    background-color: var(--success-color);
+    color: white;
+  }
+
+  .toast-warning {
+    background-color: #ed8936;
+    color: white;
+  }
+
+  .toast-error {
+    background-color: var(--error-color);
+    color: white;
+  }
+
+  .toast-message {
+    flex: 1;
+    line-height: 1.4;
+  }
+
+  .toast-close {
+    background: none;
+    border: none;
+    color: inherit;
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 0;
+    margin-left: 0.5rem;
+    opacity: 0.8;
+    transition: opacity 0.2s;
+    line-height: 1;
+  }
+
+  .toast-close:hover {
+    opacity: 1;
+  }
+
+  @media (max-width: 480px) {
+    .toast-container {
+      left: 20px;
+      right: 20px;
+      top: 20px;
+      max-width: none;
+    }
+
+    .toast {
+      min-width: auto;
+      max-width: 100%;
+      font-size: 0.85rem;
+      padding: 0.75rem 1rem;
+    }
   }
   .more-button {
     background: none;
@@ -2393,5 +2944,40 @@
     .side-toggle {
       display: none; /* Hide the side toggle on mobile - use swipe instead */
     }
+  }
+
+  /* Pull-to-refresh indicator */
+  .pull-refresh-indicator {
+    position: fixed;
+    top: -60px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--primary-color);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    z-index: 1000;
+    transition: transform 0.3s ease;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+  }
+
+  .pull-refresh-indicator.refreshing {
+    transform: translateX(-50%) translateY(60px);
+  }
+
+  /* Optimize animations for lower-end devices */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* Add will-change for better performance */
+  .post, .table-row, .toast, .swipe-indicator {
+    will-change: transform, opacity;
   }
 </style>

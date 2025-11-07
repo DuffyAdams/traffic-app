@@ -65,6 +65,7 @@ app = Flask(__name__, static_folder=os.path.join(BASE_DIR, "traffic-app", "dist"
 CORS(app, resources={r"/api/*": {"origins": "*"}, r"/maps/*": {"origins": "*"}})
 
 # Test mode flag
+
 TESTMODE = False
 
 # -----------------------------------
@@ -159,7 +160,7 @@ def init_db():
         
         conn.commit()
 
-def read_incidents(limit=20, offset=0, incident_type=None, active_only=False):
+def read_incidents(limit=20, offset=0, incident_type=None, active_only=False, cursor=None):
     """Read a limited set of incidents from the database along with their comments."""
     with sqlite3.connect(DB_FILE) as conn:
         conn.row_factory = sqlite3.Row
@@ -171,16 +172,21 @@ def read_incidents(limit=20, offset=0, incident_type=None, active_only=False):
         if incident_type:
             conditions.append("type = ?")
             params.append(incident_type)
-        
+
         if active_only:
             conditions.append("active = 1")
             conditions.append("map_filename IS NOT NULL") # Only show active incidents that have a map
 
+        if cursor:
+            # Cursor-based pagination: get incidents after the cursor timestamp
+            conditions.append("timestamp < ?")
+            params.append(cursor)
+
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
-        
-        query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
-        params.extend([limit, offset])
+
+        query += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(limit)
 
         cur.execute(query, tuple(params))
         incidents = [dict(row) for row in cur.fetchall()]
@@ -500,11 +506,17 @@ def monitor_traffic_data(interval=60):
 def get_incidents():
     limit = int(request.args.get("limit", 20))
     offset = int(request.args.get("offset", 0))
+    cursor = request.args.get("cursor")  # New cursor parameter for cursor-based pagination
     incident_type = request.args.get("type") # Added to support filtering by type
     active_only = request.args.get("active_only", "false").lower() == "true"
 
-    # Modify read_incidents to accept active_only filter
-    response = jsonify(read_incidents(limit=limit, offset=offset, incident_type=incident_type, active_only=active_only))
+    # Use cursor-based pagination if cursor is provided, otherwise fall back to offset
+    if cursor:
+        incidents = read_incidents(limit=limit, cursor=cursor, incident_type=incident_type, active_only=active_only)
+    else:
+        incidents = read_incidents(limit=limit, offset=offset, incident_type=incident_type, active_only=active_only)
+
+    response = jsonify(incidents)
     if COOKIE_NAME not in request.cookies:
         device_uuid = str(uuid.uuid4())
         response.set_cookie(
