@@ -19,6 +19,9 @@
   let eventsToday = 0;
   let eventsLastHour = 0;
   let eventsActive = 0; // New state variable for active events
+  let totalIncidents = 0;
+  let incidentsByType = {};
+  let topLocations = {};
   let showEventCounters = false; // New state variable for collapsable section
   let showActiveOnly = false; // New state variable to toggle active events filter
   let seenCompositeKeys = new Set(); // Global set to track seen composite keys
@@ -259,6 +262,9 @@
       eventsToday = stats.eventsToday;
       eventsLastHour = stats.eventsLastHour;
       eventsActive = stats.eventsActive;
+      totalIncidents = stats.totalIncidents;
+      incidentsByType = stats.incidentsByType;
+      topLocations = stats.topLocations;
     } catch (err) {
       console.error("Error fetching incident stats:", err);
     }
@@ -557,6 +563,26 @@
         <div class="counter-item" on:click={toggleActiveOnly} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && toggleActiveOnly()}>
           <span class="counter-label">Active Events:</span>
           <span class="counter-value" class:filter-active={showActiveOnly}>{eventsActive}</span>
+        </div>
+        <div class="counter-item">
+          <span class="counter-label">Total Incidents:</span>
+          <span class="counter-value">{totalIncidents}</span>
+        </div>
+        <div class="counter-item">
+          <span class="counter-label">Incidents by Type:</span>
+          <div class="type-breakdown">
+            {#each Object.entries(incidentsByType) as [type, count]}
+              <div class="type-item">{type}: {count}</div>
+            {/each}
+          </div>
+        </div>
+        <div class="counter-item">
+          <span class="counter-label">Top Locations:</span>
+          <div class="location-breakdown">
+            {#each Object.entries(topLocations) as [location, count]}
+              <div class="location-item">{location}: {count}</div>
+            {/each}
+          </div>
         </div>
       </div>
     {/if}
@@ -1100,6 +1126,20 @@
     display: flex;
     flex-direction: column;
     align-items: center;
+  }
+  .type-breakdown, .location-breakdown {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+  }
+  .type-item, .location-item {
+    background-color: rgba(255, 255, 255, 0.1);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    text-align: center;
   }
   .counter-label {
     font-size: 0.8rem;

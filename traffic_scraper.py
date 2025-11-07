@@ -65,7 +65,7 @@ app = Flask(__name__, static_folder=os.path.join(BASE_DIR, "traffic-app", "dist"
 CORS(app, resources={r"/api/*": {"origins": "*"}, r"/maps/*": {"origins": "*"}})
 
 # Test mode flag
-TESTMODE = True
+TESTMODE = False
 
 # -----------------------------------
 # Database Functions
@@ -521,7 +521,7 @@ def get_incidents():
 def get_incident_stats():
     with sqlite3.connect(DB_FILE) as conn:
         cur = conn.cursor()
-        
+
         # Events Today
         today = datetime.now().strftime("%Y-%m-%d")
         cur.execute("SELECT COUNT(*) FROM incidents WHERE date = ?", (today,))
@@ -536,11 +536,26 @@ def get_incident_stats():
         # Active Events (only count incidents with a map_filename, as these are displayed)
         cur.execute("SELECT COUNT(*) FROM incidents WHERE active = 1 AND map_filename IS NOT NULL")
         events_active = cur.fetchone()[0]
-        
+
+        # Total Incidents
+        cur.execute("SELECT COUNT(*) FROM incidents")
+        total_incidents = cur.fetchone()[0]
+
+        # Incidents by Type
+        cur.execute("SELECT type, COUNT(*) as count FROM incidents GROUP BY type ORDER BY count DESC")
+        incidents_by_type = {row[0]: row[1] for row in cur.fetchall()}
+
+        # Top Locations (top 10)
+        cur.execute("SELECT location, COUNT(*) as count FROM incidents WHERE location IS NOT NULL AND location != '' GROUP BY location ORDER BY count DESC LIMIT 10")
+        top_locations = {row[0]: row[1] for row in cur.fetchall()}
+
         return jsonify({
             "eventsToday": events_today,
             "eventsLastHour": events_last_hour,
-            "eventsActive": events_active
+            "eventsActive": events_active,
+            "totalIncidents": total_incidents,
+            "incidentsByType": incidents_by_type,
+            "topLocations": top_locations
         })
 
 @app.route("/maps/<filename>")
