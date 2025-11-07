@@ -35,8 +35,8 @@ os.makedirs(TARGET_DIR, exist_ok=True)
 GPT_KEY = os.getenv("GPT_KEY")
 
 # Check if the API key is loaded correctly
-if not GPT_KEY:
-    raise ValueError("GPT_KEY not found in environment variables. Ensure it is set in the .env file.")
+#if not GPT_KEY:
+#    raise ValueError("GPT_KEY not found in environment variables. Ensure it is set in the .env file.")
 
 # Initialize the OpenAI client with the API key
 client = OpenAI(api_key=GPT_KEY)
@@ -65,7 +65,7 @@ app = Flask(__name__, static_folder=os.path.join(BASE_DIR, "traffic-app", "dist"
 CORS(app, resources={r"/api/*": {"origins": "*"}, r"/maps/*": {"origins": "*"}})
 
 # Test mode flag
-TESTMODE = False
+TESTMODE = True
 
 # -----------------------------------
 # Database Functions
