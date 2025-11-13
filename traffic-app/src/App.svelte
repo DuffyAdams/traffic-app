@@ -167,6 +167,7 @@
       currentController.abort();
     }
     currentController = new AbortController();
+    const signal = currentController.signal;
 
     try {
       // Set loading state for initial load or filter change
@@ -205,7 +206,7 @@
       }
 
       const fetchFn = async () => {
-        const res = await fetch(url, { signal: currentController.signal });
+        const res = await fetch(url, { signal });
         if (!res.ok) {
           throw new Error(`Failed to fetch incidents: ${res.status} ${res.statusText}`);
         }
@@ -421,6 +422,7 @@
       statsController.abort();
     }
     statsController = new AbortController();
+    const signal = statsController.signal;
 
     try {
       // Check cache first
@@ -437,7 +439,7 @@
       }
 
       const fetchFn = async () => {
-        const res = await fetch('/api/incident_stats', { signal: statsController.signal });
+        const res = await fetch('/api/incident_stats', { signal });
         if (!res.ok) {
           throw new Error(`Failed to fetch incident stats: ${res.status} ${res.statusText}`);
         }
@@ -456,8 +458,16 @@
       eventsLastHour = stats.eventsLastHour;
       eventsActive = stats.eventsActive;
       totalIncidents = stats.totalIncidents;
-      incidentsByType = stats.incidentsByType;
-      topLocations = Object.fromEntries(Object.entries(stats.topLocations).slice(0, 5));
+      incidentsByType = Object.fromEntries(
+        Object.entries(stats.incidentsByType)
+          .sort(([,a], [,b]) => b - a)
+          .slice(0, 7)
+      );
+      topLocations = Object.fromEntries(
+        Object.entries(stats.topLocations)
+          .sort(([,a], [,b]) => b - a)
+          .slice(0, 5)
+      );
     } catch (err) {
       if (err.name !== 'AbortError') {
         console.error("Error fetching incident stats:", err);
@@ -1510,6 +1520,11 @@
     box-shadow: 0 4px 20px var(--shadow-color), 0 0 0 1px rgba(0,0,0,0.03);
     overflow: hidden;
     animation: skeleton-pulse 1.5s ease-in-out infinite;
+    flex: 0 0 calc(33.333% - 1.5rem);
+    min-width: 300px;
+    max-width: 400px;
+    box-sizing: border-box;
+    margin-bottom: 2rem;
   }
   .skeleton-image {
     height: 200px;
@@ -2091,7 +2106,7 @@
     20%, 40%, 60%, 80% { transform: translateX(5px); }
   }
   @media (max-width: 1024px) {
-    .post {
+    .skeleton-card {
       flex: 0 0 calc(50% - 1.5rem);
     }
   }
@@ -2131,6 +2146,38 @@
       font-size: 0.95rem;
       line-height: 1.4;
       margin-bottom: 1rem;
+    }
+    
+    .skeleton-card {
+      flex: 0 0 100%;
+      max-width: 100%;
+      margin: 0 0 0.8rem 0;
+      border-radius: 14px;
+    }
+    
+    .skeleton-image {
+      border-radius: 14px 14px 0 0;
+    }
+    
+    .skeleton-content {
+      padding: 1rem 1rem 0.6rem;
+    }
+    
+    .skeleton-line {
+      margin-bottom: 0.7rem;
+    }
+    
+    .skeleton-title {
+      margin-bottom: 0.7rem;
+    }
+    
+    .skeleton-text {
+      height: 14px;
+      margin-bottom: 1rem;
+    }
+    
+    .skeleton-actions {
+      padding-top: 0.7rem;
     }
   }
   @media (max-width: 480px) {
@@ -2176,6 +2223,42 @@
     .action-button span:last-child {
       min-width: 18px;
     }
+    
+    .skeleton-card {
+      margin: 0 0 0.5rem 0;
+      border-radius: 12px;
+    }
+    
+    .skeleton-image {
+      border-radius: 12px 12px 0 0;
+    }
+    
+    .skeleton-content {
+      padding: 0.7rem 0.7rem 0.5rem;
+    }
+    
+    .skeleton-line {
+      height: 18px;
+      margin-bottom: 0.7rem;
+    }
+
+    .skeleton-title {
+      height: 22px;
+      margin-bottom: 0.7rem;
+    }
+    
+    .skeleton-text {
+      margin-bottom: 0.8rem;
+    }
+    
+    .skeleton-actions {
+      gap: 0.2rem;
+      padding-top: 0.7rem;
+    }
+    
+    .skeleton-button {
+      height: 44px;
+    }
   }
 
   @media (max-width: 320px) {
@@ -2211,6 +2294,21 @@
     .incidents-table {
       min-width: unset;
       overflow-x: auto;
+    }
+    
+    .skeleton-card {
+      margin: 0 0 0.3rem 0;
+      border-radius: 8px;
+      min-width: unset;
+      max-width: 100%;
+    }
+    
+    .skeleton-image {
+      border-radius: 8px 8px 0 0;
+    }
+    
+    .skeleton-content {
+      padding: 0.5rem 0.5rem 0.3rem;
     }
   }
   :global(button) {
