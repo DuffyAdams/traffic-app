@@ -894,7 +894,7 @@
       class="view-toggle-button" 
       on:click={() => condensedView = !condensedView}
       aria-label={condensedView ? "Expand to card view" : "Condense to table view"}
-      aria-pressed={condensedView}
+      aria-checked={condensedView}
       role="switch"
       tabindex="0"
       on:keydown={(e) => e.key === 'Enter' && (condensedView = !condensedView)}
@@ -1119,7 +1119,7 @@
           </div>
         </div>
       {:else if !allPostsLoaded && posts.length > 0 && posts.length >= postsPerPage}
-        <div class="scroll-indicator" in:fade={{ duration: 150 }} on:click={forceLoadMore}>
+        <div class="scroll-indicator" in:fade={{ duration: 150 }} on:click={forceLoadMore} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && forceLoadMore()}>
           <div class="scroll-dots">
             <span class="dot"></span>
             <span class="dot"></span>
@@ -1248,7 +1248,7 @@
           </div>
         </div>
       {:else if !allPostsLoaded && posts.length > 0 && posts.length >= postsPerPage}
-        <div class="scroll-indicator" in:fade={{ duration: 150 }} on:click={forceLoadMore}>
+        <div class="scroll-indicator" in:fade={{ duration: 150 }} on:click={forceLoadMore} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && forceLoadMore()}>
           <div class="scroll-dots">
             <span class="dot"></span>
             <span class="dot"></span>
