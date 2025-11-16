@@ -174,7 +174,7 @@
       if (currentPage === 1) {
         loading = true;
         posts = []; // Clear posts for initial load or filter change
-        seenCompositeKeys = new Set(); // Clear seen keys for initial load or filter change
+        seenCompositeKeys.clear(); // ✅ Clear the set
         lastCursor = null; // Reset cursor for new queries
       } else {
         loadingMore = true; // Use loadingMore for subsequent pages

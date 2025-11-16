@@ -10,6 +10,9 @@ import subprocess
 import threading
 from datetime import datetime, timedelta
 
+# Database lock for thread safety
+db_lock = threading.Lock()
+
 import requests
 from bs4 import BeautifulSoup
 from geopy.geocoders import Nominatim
@@ -74,6 +77,7 @@ TESTMODE = False
 def init_db():
     """Initialize SQLite database with updated schema."""
     with sqlite3.connect(DB_FILE) as conn:
+        conn.execute("PRAGMA foreign_keys = ON")  # Enable foreign keys globally
         cur = conn.cursor()
         # Incidents table with an extra 'active' column
         cur.execute("""
@@ -162,9 +166,10 @@ def init_db():
 
 def read_incidents(limit=20, offset=0, incident_type=None, active_only=False, cursor=None):
     """Read a limited set of incidents from the database along with their comments."""
-    with sqlite3.connect(DB_FILE) as conn:
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
+    with db_lock:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
         query = "SELECT * FROM incidents"
         params = []
         conditions = []
@@ -209,8 +214,9 @@ def read_incidents(limit=20, offset=0, incident_type=None, active_only=False, cu
 
 def incident_exists(incident_no, date):
     """Check if an incident exists in the database."""
-    with sqlite3.connect(DB_FILE) as conn:
-        cur = conn.cursor()
+    with db_lock:
+        with sqlite3.connect(DB_FILE) as conn:
+            cur = conn.cursor()
         cur.execute("SELECT 1 FROM incidents WHERE incident_no = ? AND date = ?", (str(incident_no), date))
         return cur.fetchone() is not None
 
@@ -280,24 +286,25 @@ def save_or_update_incident(data):
     neighborhood = data.get("Neighborhood", "")
     location = data.get("Location", "")
     location_desc = data.get("Location Desc.", "")
-    
+
     # Standardize traffic collision type
     type_field = data.get("Type", "")
     if type_field and type_field.startswith("Trfc Collision"):
         type_field = "Traffic Collision"
-    
+
     new_details = data.get("Details", [])
     if isinstance(new_details, str):
         new_details = [new_details]
     details_json = json.dumps(new_details)
-    
+
     latitude = data.get("Latitude")
     longitude = data.get("Longitude")
     new_map_filename = data.get("MapFilename", "")
 
-    with sqlite3.connect(DB_FILE) as conn:
-        conn.row_factory = sqlite3.Row
-        cur = conn.cursor()
+    with db_lock:
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
         cur.execute("SELECT * FROM incidents WHERE incident_no = ? AND date = ?", (str(incident_no), date))
         existing = cur.fetchone()
         if existing:
@@ -485,15 +492,16 @@ def monitor_traffic_data(interval=60):
                 print("No valid data retrieved.")
 
             # Mark incidents as inactive if they are not in the current scrape.
-            with sqlite3.connect(DB_FILE) as conn:
-                cur = conn.cursor()
-                if active_incident_ids:
-                    placeholders = ",".join("?" for _ in active_incident_ids)
-                    query = f"UPDATE incidents SET active = 0 WHERE incident_no NOT IN ({placeholders})"
-                    cur.execute(query, tuple(active_incident_ids))
-                else:
-                    cur.execute("UPDATE incidents SET active = 0")
-                conn.commit()
+            with db_lock:
+                with sqlite3.connect(DB_FILE) as conn:
+                    cur = conn.cursor()
+                    if active_incident_ids:
+                        placeholders = ",".join("?" for _ in active_incident_ids)
+                        query = f"UPDATE incidents SET active = 0 WHERE incident_no NOT IN ({placeholders})"
+                        cur.execute(query, tuple(active_incident_ids))
+                    else:
+                        cur.execute("UPDATE incidents SET active = 0")
+                    conn.commit()
 
             time.sleep(interval)
     except KeyboardInterrupt:
@@ -574,36 +582,52 @@ def get_incident_stats():
 def get_map(filename):
     return send_from_directory(TARGET_DIR, filename)
 
-@app.route("/api/incidents/<incident_id>/like", methods=["POST"])
+@app.route("/api/incidents/<incident_id>/like", methods=["POST", "DELETE"])
 def like_incident(incident_id):
     device_uuid = get_or_create_uuid(request)
-    with sqlite3.connect(DB_FILE) as conn:
-        conn.execute("PRAGMA foreign_keys = ON")
-        cur = conn.cursor()
-        cur.execute("SELECT 1 FROM likes WHERE incident_no = ? AND device_uuid = ?", (incident_id, device_uuid))
-        if cur.fetchone():
-            return jsonify({"error": "You already liked this post."}), 400
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        try:
-            cur.execute("INSERT INTO likes (incident_no, device_uuid, timestamp) VALUES (?, ?, ?)", (incident_id, device_uuid, timestamp))
-            cur.execute("UPDATE incidents SET likes = likes + 1 WHERE incident_no = ?", (incident_id,))
-            conn.commit()
+
+    with db_lock:
+        with sqlite3.connect(DB_FILE) as conn:
+            cur = conn.cursor()
+
+            if request.method == "DELETE":
+                # Handle unlike
+                cur.execute("DELETE FROM likes WHERE incident_no = ? AND device_uuid = ?",
+                           (incident_id, device_uuid))
+                cur.execute("UPDATE incidents SET likes = GREATEST(likes - 1, 0) WHERE incident_no = ?",
+                           (incident_id,))
+                conn.commit()
+            else:
+                # Existing POST logic
+                cur.execute("SELECT 1 FROM likes WHERE incident_no = ? AND device_uuid = ?",
+                           (incident_id, device_uuid))
+                if cur.fetchone():
+                    return jsonify({"error": "You already liked this post."}), 400
+
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                cur.execute("INSERT INTO likes (incident_no, device_uuid, timestamp) VALUES (?, ?, ?)",
+                           (incident_id, device_uuid, timestamp))
+                cur.execute("UPDATE incidents SET likes = likes + 1 WHERE incident_no = ?",
+                           (incident_id,))
+                conn.commit()
+
+    with db_lock:
+        with sqlite3.connect(DB_FILE) as conn:
+            cur = conn.cursor()
             cur.execute("SELECT likes FROM incidents WHERE incident_no = ?", (incident_id,))
             result = cur.fetchone()
             likes_count = result[0] if result else 0
-        except sqlite3.IntegrityError:
-            conn.rollback()
-            return jsonify({"error": "Could not process like."}), 400
+
     response = jsonify({"likes": likes_count})
-    if COOKIE_NAME not in request.cookies:
-        response.set_cookie(
-            COOKIE_NAME,
-            device_uuid,
-            max_age=COOKIE_MAX_AGE,
-            secure=False,
-            httpy=True,
-            samesite='Lax'
-        )
+    # Set cookie with UUID
+    response.set_cookie(
+        COOKIE_NAME,
+        device_uuid,
+        max_age=COOKIE_MAX_AGE,
+        secure=False,
+        httponly=True,  # ✅ Fixed typo
+        samesite='Lax'
+    )
     return response
 
 @app.route("/api/incidents/<incident_id>/comment", methods=["POST"])
