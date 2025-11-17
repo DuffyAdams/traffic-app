@@ -164,7 +164,7 @@ def init_db():
         
         conn.commit()
 
-def read_incidents(limit=20, offset=0, incident_type=None, active_only=False, cursor=None):
+def read_incidents(limit=20, offset=0, incident_type=None, active_only=False, cursor=None, date_filter=None):
     """Read a limited set of incidents from the database along with their comments."""
     with db_lock:
         with sqlite3.connect(DB_FILE) as conn:
@@ -181,6 +181,11 @@ def read_incidents(limit=20, offset=0, incident_type=None, active_only=False, cu
         if active_only:
             conditions.append("active = 1")
             conditions.append("map_filename IS NOT NULL") # Only show active incidents that have a map
+
+        if date_filter == 'daily':
+            today = datetime.now().strftime("%Y-%m-%d")
+            conditions.append("date = ?")
+            params.append(today)
 
         if cursor:
             # Cursor-based pagination: get incidents after the cursor timestamp
@@ -517,12 +522,13 @@ def get_incidents():
     cursor = request.args.get("cursor")  # New cursor parameter for cursor-based pagination
     incident_type = request.args.get("type") # Added to support filtering by type
     active_only = request.args.get("active_only", "false").lower() == "true"
+    date_filter = request.args.get("date_filter")
 
     # Use cursor-based pagination if cursor is provided, otherwise fall back to offset
     if cursor:
-        incidents = read_incidents(limit=limit, cursor=cursor, incident_type=incident_type, active_only=active_only)
+        incidents = read_incidents(limit=limit, cursor=cursor, incident_type=incident_type, active_only=active_only, date_filter=date_filter)
     else:
-        incidents = read_incidents(limit=limit, offset=offset, incident_type=incident_type, active_only=active_only)
+        incidents = read_incidents(limit=limit, offset=offset, incident_type=incident_type, active_only=active_only, date_filter=date_filter)
 
     response = jsonify(incidents)
     if COOKIE_NAME not in request.cookies:
@@ -539,10 +545,20 @@ def get_incidents():
 
 @app.route("/api/incident_stats")
 def get_incident_stats():
+    date_filter = request.args.get("date_filter")
+
     with sqlite3.connect(DB_FILE) as conn:
         cur = conn.cursor()
 
-        # Events Today
+        # Determine date condition if filtering
+        date_condition = ""
+        date_params = []
+        if date_filter == 'daily':
+            today = datetime.now().strftime("%Y-%m-%d")
+            date_condition = "date = ?"
+            date_params = [today]
+
+        # Events Today (always calculate regardless of filter, as it's a fixed metric)
         today = datetime.now().strftime("%Y-%m-%d")
         cur.execute("SELECT COUNT(*) FROM incidents WHERE date = ?", (today,))
         events_today = cur.fetchone()[0]
@@ -554,19 +570,31 @@ def get_incident_stats():
         events_last_hour = cur.fetchone()[0]
 
         # Active Events (only count incidents with a map_filename, as these are displayed)
-        cur.execute("SELECT COUNT(*) FROM incidents WHERE active = 1 AND map_filename IS NOT NULL")
+        if date_condition:
+            cur.execute(f"SELECT COUNT(*) FROM incidents WHERE active = 1 AND map_filename IS NOT NULL AND {date_condition}", date_params)
+        else:
+            cur.execute("SELECT COUNT(*) FROM incidents WHERE active = 1 AND map_filename IS NOT NULL")
         events_active = cur.fetchone()[0]
 
         # Total Incidents
-        cur.execute("SELECT COUNT(*) FROM incidents")
+        if date_condition:
+            cur.execute(f"SELECT COUNT(*) FROM incidents WHERE {date_condition}", date_params)
+        else:
+            cur.execute("SELECT COUNT(*) FROM incidents")
         total_incidents = cur.fetchone()[0]
 
         # Incidents by Type
-        cur.execute("SELECT type, COUNT(*) as count FROM incidents GROUP BY type ORDER BY count DESC")
+        if date_condition:
+            cur.execute(f"SELECT type, COUNT(*) as count FROM incidents WHERE {date_condition} GROUP BY type ORDER BY count DESC", date_params)
+        else:
+            cur.execute("SELECT type, COUNT(*) as count FROM incidents GROUP BY type ORDER BY count DESC")
         incidents_by_type = {row[0]: row[1] for row in cur.fetchall()}
 
         # Top Locations (top 10)
-        cur.execute("SELECT location, COUNT(*) as count FROM incidents WHERE location IS NOT NULL AND location != '' GROUP BY location ORDER BY count DESC LIMIT 10")
+        if date_condition:
+            cur.execute(f"SELECT location, COUNT(*) as count FROM incidents WHERE {date_condition} AND location IS NOT NULL AND location != '' GROUP BY location ORDER BY count DESC LIMIT 10", date_params)
+        else:
+            cur.execute("SELECT location, COUNT(*) as count FROM incidents WHERE location IS NOT NULL AND location != '' GROUP BY location ORDER BY count DESC LIMIT 10")
         top_locations = {row[0]: row[1] for row in cur.fetchall()}
 
         return jsonify({

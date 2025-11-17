@@ -25,6 +25,7 @@
   let topLocations = {};
   let showEventCounters = false; // New state variable for collapsable section
   let showActiveOnly = false; // New state variable to toggle active events filter
+  let timeFilter = 'all'; // New state variable for time period filter
   let seenCompositeKeys = new Set(); // Global set to track seen composite keys
 
   // Toast notification system
@@ -138,6 +139,35 @@
     fetchIncidents(); // Re-fetch incidents with new filter
   }
 
+  function toggleTimeFilter() {
+    timeFilter = timeFilter === 'daily' ? 'all' : 'daily';
+    currentPage = 1; // Reset to first page when filter changes
+    statsCache = {}; // Clear stats cache to ensure fresh data
+    fetchIncidents(); // Re-fetch incidents with new filter
+    fetchIncidentStats(); // Re-fetch stats with new filter
+  }
+
+  // Helper function to limit stats to maximum 6 items
+  function limitStatsData(stats) {
+    const limit = 6;
+    return {
+      incidentsByType: Object.fromEntries(
+        Object.entries(stats.incidentsByType || {})
+          .sort(([,a], [,b]) => b - a)
+          .slice(0, limit)
+      ),
+      topLocations: Object.fromEntries(
+        Object.entries(stats.topLocations || {})
+          .sort(([,a], [,b]) => b - a)
+          .slice(0, limit)
+      ),
+      eventsToday: stats.eventsToday,
+      eventsLastHour: stats.eventsLastHour,
+      eventsActive: stats.eventsActive,
+      totalIncidents: stats.totalIncidents
+    };
+  }
+
   // Memoized unique incident types
   let memoizedTypes = [];
   let lastPostsLength = 0;
@@ -192,6 +222,9 @@
       }
       if (showActiveOnly) {
         url += `&active_only=true`;
+      }
+      if (timeFilter === 'daily') {
+        url += '&date_filter=daily';
       }
 
       // Check cache first
@@ -425,21 +458,37 @@
     const signal = statsController.signal;
 
     try {
+      let url = '/api/incident_stats';
+      if (timeFilter === 'daily') {
+        url += '?date_filter=daily';
+      }
+
       // Check cache first
-      const cacheKey = 'incident_stats';
+      const cacheKey = url;
       if (statsCache[cacheKey] && Date.now() - statsCache[cacheKey].timestamp < 30000) { // 30 second cache
         const cachedStats = statsCache[cacheKey].data;
         eventsToday = cachedStats.eventsToday;
         eventsLastHour = cachedStats.eventsLastHour;
         eventsActive = cachedStats.eventsActive;
         totalIncidents = cachedStats.totalIncidents;
-        incidentsByType = cachedStats.incidentsByType;
-        topLocations = cachedStats.topLocations;
+
+        // Apply limiting to cached data as well
+        const limit = 6;
+        incidentsByType = Object.fromEntries(
+          Object.entries(cachedStats.incidentsByType)
+            .sort(([,a], [,b]) => b - a)
+            .slice(0, limit)
+        );
+        topLocations = Object.fromEntries(
+          Object.entries(cachedStats.topLocations)
+            .sort(([,a], [,b]) => b - a)
+            .slice(0, limit)
+        );
         return;
       }
 
       const fetchFn = async () => {
-        const res = await fetch('/api/incident_stats', { signal });
+        const res = await fetch(url, { signal });
         if (!res.ok) {
           throw new Error(`Failed to fetch incident stats: ${res.status} ${res.statusText}`);
         }
@@ -458,16 +507,19 @@
       eventsLastHour = stats.eventsLastHour;
       eventsActive = stats.eventsActive;
       totalIncidents = stats.totalIncidents;
-      incidentsByType = Object.fromEntries(
-        Object.entries(stats.incidentsByType)
-          .sort(([,a], [,b]) => b - a)
-          .slice(0, 7)
-      );
-      topLocations = Object.fromEntries(
-        Object.entries(stats.topLocations)
-          .sort(([,a], [,b]) => b - a)
-          .slice(0, 5)
-      );
+
+    // Always limit to 6 items for both fresh and cached data
+    const limit = 6;
+    incidentsByType = Object.fromEntries(
+      Object.entries(stats.incidentsByType)
+        .sort(([,a], [,b]) => b - a)
+        .slice(0, limit)
+    );
+    topLocations = Object.fromEntries(
+      Object.entries(stats.topLocations)
+        .sort(([,a], [,b]) => b - a)
+        .slice(0, limit)
+    );
     } catch (err) {
       if (err.name !== 'AbortError') {
         console.error("Error fetching incident stats:", err);
@@ -853,6 +905,14 @@
         <div class="counter-item" on:click={toggleActiveOnly} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && toggleActiveOnly()}>
           <span class="counter-label">Active Events:</span>
           <span class="counter-value" class:filter-active={showActiveOnly}>{eventsActive}</span>
+        </div>
+        <div class="counter-item toggle-item">
+          <span class="counter-label">Time Period:</span>
+          <button class="toggle-switch" on:click={toggleTimeFilter} role="switch" aria-checked={timeFilter === 'daily'} tabindex="0" on:keydown={(e) => e.key === 'Enter' && toggleTimeFilter()}>
+            <span class="toggle-text-all">All Time</span>
+            <span class="toggle-thumb" class:daily={timeFilter === 'daily'}></span>
+            <span class="toggle-text-daily">Daily</span>
+          </button>
         </div>
         <div class="counter-item">
           <span class="counter-label">Total Incidents:</span>
@@ -1326,6 +1386,59 @@
     color: #c13117 !important; /* Red color for active filter */
     font-weight: bold;
   }
+
+  .toggle-switch {
+    position: relative;
+    display: flex;
+    align-items: center;
+    background-color: rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    padding: 0.3rem 4px;
+    width: 140px;
+    cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    transition: all 0.3s ease;
+  }
+
+  .toggle-switch:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+  }
+
+  .toggle-text-all, .toggle-text-daily {
+    flex: 1;
+    text-align: center;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.6);
+    transition: color 0.3s ease;
+    padding: 0.2rem 0;
+    z-index: 2;
+    position: relative;
+  }
+
+  .toggle-thumb {
+    position: absolute;
+    width: 66px;
+    height: calc(100% - 6px);
+    background-color: rgba(255, 255, 255, 0.2);
+    border-radius: 16px;
+    z-index: 1;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+
+  .toggle-thumb.daily {
+    transform: translateX(66px);
+  }
+
+  .toggle-switch:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.3);
+  }
+
+  .counter-item.toggle-item {
+    align-items: center;
+  }
   :global(body.dark-mode) {
     --primary-color: #4299e1;
     --primary-dark: #3182ce;
@@ -1468,27 +1581,31 @@
     display: flex;
     flex-direction: column;
     align-items: center;
+    flex-shrink: 0;
+    min-width: 140px;
   }
 
   .combined-stats {
     flex-direction: row !important;
-    gap: 2rem;
-    align-items: flex-start;
+    gap: 1rem;
+    align-items: stretch;
   }
 
   .stats-column {
-    flex: 1;
+    flex: 0 0 50%;
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
   }
   .type-breakdown, .location-breakdown {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
     margin-top: 0.5rem;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     font-weight: 500;
+    min-height: 120px;
   }
   .type-item, .location-item {
     background-color: rgba(255, 255, 255, 0.1);
@@ -1500,6 +1617,8 @@
     font-size: 0.8rem;
     opacity: 0.8;
     margin-bottom: 0.2rem;
+    text-align: center;
+    width: 100%;
   }
   .counter-value {
     font-size: 1.5rem;
@@ -2759,30 +2878,35 @@
     .expanded-content {
       flex-direction: column;
     }
-    
+
     .expanded-image {
       max-width: 100%;
       width: 100%; /* Ensure it takes full width */
       margin-bottom: 1rem;
       padding-top: 0.5rem; /* Add space above the image without shifting other content */
     }
-    
+
     .type-cell {
       flex: 0 0 25%;
     }
-    
+
     .time-cell {
       flex: 0 0 25%;
     }
-    
+
     .status-cell {
       flex: 0 0 20%;
     }
-    
+
+    .combined-stats {
+      flex-direction: column !important;
+      gap: 1rem;
+    }
+
     .view-toggle-button span:not(.toggle-icon):not(.arrow-icon) {
       display: none;
     }
-    
+
     .view-toggle-button {
       padding: 0.5rem;
     }
