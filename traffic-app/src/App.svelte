@@ -908,10 +908,17 @@
         </div>
         <div class="counter-item toggle-item">
           <span class="counter-label">Time Period:</span>
-          <button class="toggle-switch" on:click={toggleTimeFilter} role="switch" aria-checked={timeFilter === 'daily'} tabindex="0" on:keydown={(e) => e.key === 'Enter' && toggleTimeFilter()}>
-            <span class="toggle-text-all">All Time</span>
-            <span class="toggle-thumb" class:daily={timeFilter === 'daily'}></span>
-            <span class="toggle-text-daily">Daily</span>
+          <button
+            class="toggle-switch"
+            on:click={toggleTimeFilter}
+            role="switch"
+            aria-checked={timeFilter === 'daily'}
+            tabindex="0"
+            on:keydown={(e) => e.key === 'Enter' && toggleTimeFilter()}
+          >
+            <span class="toggle-option" class:active={timeFilter === 'all'}>All Time</span>
+            <span class="toggle-option" class:active={timeFilter === 'daily'}>Daily</span>
+            <span class="toggle-slider" class:daily={timeFilter === 'daily'}></span>
           </button>
         </div>
         <div class="counter-item">
@@ -1389,51 +1396,58 @@
 
   .toggle-switch {
     position: relative;
-    display: flex;
-    align-items: center;
-    background-color: rgba(255, 255, 255, 0.08);
-    border-radius: 20px;
-    padding: 0.3rem 4px;
-    width: 140px;
+    display: inline-flex;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 24px;
+    padding: 4px;
+    border: none;
     cursor: pointer;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    transition: all 0.3s ease;
+    transition: background 0.3s ease;
+    overflow: hidden;
   }
 
   .toggle-switch:hover {
-    background-color: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.2);
   }
 
-  .toggle-text-all, .toggle-text-daily {
-    flex: 1;
-    text-align: center;
+  .toggle-option {
+    position: relative;
+    padding: 6px 16px;
     font-size: 0.85rem;
     font-weight: 600;
     color: rgba(255, 255, 255, 0.6);
     transition: color 0.3s ease;
-    padding: 0.2rem 0;
     z-index: 2;
-    position: relative;
+    user-select: none;
   }
 
-  .toggle-thumb {
+  .toggle-option.active {
+    color: rgba(26, 32, 44, 0.9);
+  }
+
+  :global(body.dark-mode) .toggle-option.active {
+    color: white;
+  }
+
+  .toggle-slider {
     position: absolute;
-    width: 66px;
-    height: calc(100% - 6px);
-    background-color: rgba(255, 255, 255, 0.2);
-    border-radius: 16px;
+    top: 4px;
+    left: 4px;
+    width: calc(50% - 4px);
+    height: calc(100% - 8px);
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 20px;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     z-index: 1;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   }
 
-  .toggle-thumb.daily {
-    transform: translateX(66px);
+  :global(body.dark-mode) .toggle-slider {
+    background: rgba(255, 255, 255, 0.05);
   }
 
-  .toggle-switch:focus {
-    outline: none;
-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.3);
+  .toggle-slider.daily {
+    transform: translateX(100%);
   }
 
   .counter-item.toggle-item {
