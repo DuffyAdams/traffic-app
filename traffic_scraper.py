@@ -597,13 +597,38 @@ def get_incident_stats():
             cur.execute("SELECT location, COUNT(*) as count FROM incidents WHERE location IS NOT NULL AND location != '' GROUP BY location ORDER BY count DESC LIMIT 10")
         top_locations = {row[0]: row[1] for row in cur.fetchall()}
 
+        # Calculate REAL-TIME hourly data for last 24 hours in 30-minute intervals
+        now = datetime.now()
+        start_time = now - timedelta(hours=24)  # Exactly 24 hours ago
+        end_time = now  # Current time
+
+        hourly_data = []
+
+        # Create 48 intervals (24 hours × 2 thirty-minute intervals per hour)
+        for i in range(48):
+            interval_start = start_time + timedelta(minutes=i*30)
+            interval_end = interval_start + timedelta(minutes=30)
+
+            interval_start_str = interval_start.strftime('%Y-%m-%d %H:%M:%S')
+            interval_end_str = interval_end.strftime('%Y-%m-%d %H:%M:%S')
+
+            # Count ALL incidents in this REAL 30-minute window
+            cur.execute("""
+                SELECT COUNT(*) FROM incidents
+                WHERE timestamp >= ? AND timestamp < ?
+            """, (interval_start_str, interval_end_str))
+
+            count = cur.fetchone()[0]
+            hourly_data.append(count)
+
         return jsonify({
             "eventsToday": events_today,
             "eventsLastHour": events_last_hour,
             "eventsActive": events_active,
             "totalIncidents": total_incidents,
             "incidentsByType": incidents_by_type,
-            "topLocations": top_locations
+            "topLocations": top_locations,
+            "hourlyData": hourly_data
         })
 
 @app.route("/maps/<filename>")

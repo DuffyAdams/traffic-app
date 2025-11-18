@@ -27,6 +27,26 @@
   let showActiveOnly = false; // New state variable to toggle active events filter
   let timeFilter = 'all'; // New state variable for time period filter
   let seenCompositeKeys = new Set(); // Global set to track seen composite keys
+  let hourlyData = []; // 24-hour activity chart data
+
+  $: chartPath = hourlyData.length > 0
+    ? `M 0 60 ${hourlyData.map((point, i) => `L ${i * 6} ${60 - Math.min(point, 15) / 15 * 60}`).join(' ')} L ${(hourlyData.length - 1) * 6} 60 Z`
+    : '';
+
+  $: linePath = hourlyData.length > 0
+    ? hourlyData.map((point, i) => `${i === 0 ? 'M' : 'L'} ${i * 6} ${60 - Math.min(point, 15) / 15 * 60}`).join(' ')
+    : '';
+
+  // Generate dynamic chart labels based on current time (24-hour period)
+  $: currentTime = new Date();
+  $: currentHour = currentTime.getHours();
+  $: chartLabels = [
+    new Date(currentTime.getTime() - 20 * 60 * 60 * 1000).toLocaleTimeString('en-US', { hour: 'numeric', hour12: true }),
+    new Date(currentTime.getTime() - 14 * 60 * 60 * 1000).toLocaleTimeString('en-US', { hour: 'numeric', hour12: true }),
+    new Date(currentTime.getTime() - 8 * 60 * 60 * 1000).toLocaleTimeString('en-US', { hour: 'numeric', hour12: true }),
+    new Date(currentTime.getTime() - 2 * 60 * 60 * 1000).toLocaleTimeString('en-US', { hour: 'numeric', hour12: true }),
+    new Date(currentTime).toLocaleTimeString('en-US', { hour: 'numeric', hour12: true })
+  ];
 
   // Toast notification system
   let toasts = [];
@@ -503,10 +523,18 @@
         timestamp: Date.now()
       };
 
-      eventsToday = stats.eventsToday;
-      eventsLastHour = stats.eventsLastHour;
-      eventsActive = stats.eventsActive;
-      totalIncidents = stats.totalIncidents;
+      // 🐛 DEBUG: Log the hourly data
+      console.log('Hourly data received:', stats.hourlyData);
+      console.log('Hourly data length:', stats.hourlyData?.length);
+      console.log('Sample values:', stats.hourlyData?.slice(0, 10));
+      console.log('Max value:', Math.max(...(stats.hourlyData || [0])));
+      console.log('Sum of all values:', (stats.hourlyData || []).reduce((a, b) => a + b, 0));
+
+eventsToday = stats.eventsToday;
+        eventsLastHour = stats.eventsLastHour;
+        eventsActive = stats.eventsActive;
+        totalIncidents = stats.totalIncidents;
+      hourlyData = stats.hourlyData || [];
 
     // Always limit to 6 items for both fresh and cached data
     const limit = 6;
@@ -920,6 +948,79 @@
             <span class="toggle-option" class:active={timeFilter === 'daily'}>Daily</span>
             <span class="toggle-slider" class:daily={timeFilter === 'daily'}></span>
           </button>
+        </div>
+        <div class="counter-item chart-item">
+          <span class="counter-label">24-Hour Activity</span>
+          <div class="mini-chart">
+            <svg viewBox="0 0 288 60" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="chartGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" style="stop-color:#4ade80;stop-opacity:0.4" />
+                  <stop offset="100%" style="stop-color:#4ade80;stop-opacity:0.05" />
+                </linearGradient>
+                <filter id="glow">
+                  <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
+                  <feMerge>
+                    <feMergeNode in="coloredBlur"/>
+                    <feMergeNode in="SourceGraphic"/>
+                  </feMerge>
+                </filter>
+              </defs>
+
+              <!-- Grid lines -->
+              {#each [0, 5, 10, 15] as value}
+                <line
+                  x1="0"
+                  y1={60 - (value / 15 * 60)}
+                  x2="288"
+                  y2={60 - (value / 15 * 60)}
+                  stroke="rgba(255,255,255,0.1)"
+                  stroke-width="0.5"
+                />
+              {/each}
+
+              <!-- Area fill -->
+              {#if hourlyData.length > 0}
+                <path
+                  d={chartPath}
+                  fill="url(#chartGradient)"
+                />
+              {/if}
+
+              <!-- Line with smooth curve -->
+              {#if hourlyData.length > 0}
+                <path
+                  d={linePath}
+                  fill="none"
+                  stroke="#4ade80"
+                  stroke-width="2.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  filter="url(#glow)"
+                />
+              {/if}
+
+              <!-- Data points (only show significant ones) -->
+              {#if hourlyData.length > 0}
+                {#each hourlyData as point, i}
+                  {#if point >= 2}
+                    <circle
+                      cx={i * 6}
+                      cy={60 - Math.min(point, 15) / 15 * 60}
+                      r="2"
+                      fill="#4ade80"
+                      filter="url(#glow)"
+                    />
+                  {/if}
+                {/each}
+              {/if}
+            </svg>
+            <div class="chart-labels">
+              {#each chartLabels as label}
+                <span>{label}</span>
+              {/each}
+            </div>
+          </div>
         </div>
         <div class="counter-item">
           <span class="counter-label">Total Incidents:</span>
@@ -3215,5 +3316,42 @@
   /* Add will-change for better performance */
   .post, .table-row, .toast, .swipe-indicator {
     will-change: transform, opacity;
+  }
+
+  .chart-item {
+    flex: 0 0 100%;
+    min-width: 280px;
+    max-width: 500px;
+  }
+
+  .mini-chart {
+    width: 100%;
+    height: 80px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 8px;
+    margin-top: 0.5rem;
+    position: relative;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .mini-chart svg {
+    width: 100%;
+    height: 60px;
+  }
+
+  .chart-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.65rem;
+    color: rgba(255, 255, 255, 0.5);
+    margin-top: 4px;
+    padding: 0 4px;
+  }
+
+  @media (max-width: 768px) {
+    .chart-item {
+      min-width: 100%;
+    }
   }
 </style>
