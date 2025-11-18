@@ -29,13 +29,16 @@
   let seenCompositeKeys = new Set(); // Global set to track seen composite keys
   let hourlyData = []; // 24-hour activity chart data
 
-  $: chartPath = hourlyData.length > 0
-    ? `M 0 60 ${hourlyData.map((point, i) => `L ${i * 6} ${60 - Math.min(point, 15) / 15 * 60}`).join(' ')} L ${(hourlyData.length - 1) * 6} 60 Z`
-    : '';
+  const VW = 288, VH = 60;
+  const PADX = 8, PADY = 8; // room for big dots/glow
 
-  $: linePath = hourlyData.length > 0
-    ? hourlyData.map((point, i) => `${i === 0 ? 'M' : 'L'} ${i * 6} ${60 - Math.min(point, 15) / 15 * 60}`).join(' ')
-    : '';
+  $: xStep = hourlyData.length > 1 ? (VW - PADX*2) / (hourlyData.length - 1) : 0;
+  $: yMax = Math.max(1, ...hourlyData);
+  $: y = v => PADY + (VH - PADY*2) - (v / yMax) * (VH - PADY*2);
+
+  $: chartPath = hourlyData.length ? `M ${PADX} ${VH-PADY} ${hourlyData.map((v,i)=>`L ${PADX + i*xStep} ${y(v)}`).join(' ')} L ${VW-PADX} ${VH-PADY} Z` : '';
+
+  $: linePath = hourlyData.length ? hourlyData.map((v,i)=>`${i?'L':'M'} ${PADX + i*xStep} ${y(v)}`).join(' ') : '';
 
   // Generate dynamic chart labels based on current time (24-hour period)
   $: currentTime = new Date();
@@ -922,20 +925,223 @@ eventsToday = stats.eventsToday;
     </button>
     {#if showEventCounters}
       <div class="event-counters" transition:slide>
-        <div class="counter-item">
-          <span class="counter-label">Events Today:</span>
-          <span class="counter-value">{eventsToday}</span>
+        <div class="top-row">
+          <div class="stats-grid">
+            <div class="stat-card">
+              <span class="stat-icon">📅</span>
+              <span class="stat-value">{eventsToday}</span>
+              <span class="stat-label">Events Today</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-icon">🕒</span>
+              <span class="stat-value">{eventsLastHour}</span>
+              <span class="stat-label">Events Last Hour</span>
+            </div>
+            <div class="stat-card clickable {showActiveOnly ? 'active' : ''}" on:click={toggleActiveOnly} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && toggleActiveOnly()}>
+              <span class="stat-icon">⚡</span>
+              <span class="stat-value">{eventsActive}</span>
+              <span class="stat-label">Active Events</span>
+            </div>
+          </div>
+
+        </div>
+        <div class="activity-chart-section">
+          <div class="activity-header">
+            <span class="section-title">24-Hour Activity</span>
+          </div>
+          <div class="activity-chart-container">
+            <div class="mini-chart">
+              <svg viewBox="0 0 288 60" preserveAspectRatio="none">
+                <defs>
+                  <!-- Enhanced gradients -->
+                  <linearGradient id="chartGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" style="stop-color:#4ade80;stop-opacity:0.6" />
+                    <stop offset="50%" style="stop-color:#22c55e;stop-opacity:0.3" />
+                    <stop offset="100%" style="stop-color:#22c55e;stop-opacity:0.05" />
+                  </linearGradient>
+                  <linearGradient id="gridGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" style="stop-color:rgba(255,255,255,0.02)" />
+                    <stop offset="25%" style="stop-color:rgba(255,255,255,0.04)" />
+                    <stop offset="50%" style="stop-color:rgba(255,255,255,0.06)" />
+                    <stop offset="75%" style="stop-color:rgba(255,255,255,0.04)" />
+                    <stop offset="100%" style="stop-color:rgba(255,255,255,0.02)" />
+                  </linearGradient>
+                  <linearGradient id="peakGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" style="stop-color:#fbbf24" />
+                    <stop offset="100%" style="stop-color:#f59e0b" />
+                  </linearGradient>
+
+                  <!-- Enhanced glow filters -->
+                  <filter id="glow">
+                    <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+                    <feMerge>
+                      <feMergeNode in="coloredBlur"/>
+                      <feMergeNode in="SourceGraphic"/>
+                    </feMerge>
+                  </filter>
+                  <filter id="peakGlow">
+                    <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                    <feMorphology operator="dilate" radius="2"/>
+                    <feMerge>
+                      <feMergeNode in="coloredBlur"/>
+                      <feMergeNode in="SourceGraphic"/>
+                    </feMerge>
+                  </filter>
+                  <filter id="backgroundGlow">
+                    <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+                    <feMerge>
+                      <feMergeNode in="coloredBlur"/>
+                      <feMergeNode in="SourceGraphic"/>
+                    </feMerge>
+                  </filter>
+                </defs>
+
+                <!-- Background grid pattern -->
+                <rect width="288" height="60" fill="url(#gridGradient)" rx="4" />
+
+                <!-- Subtle grid lines -->
+                {#each [0, 3, 6, 9, 12, 15] as value}
+                  <line
+                    x1={PADX}
+                    y1={y(value)}
+                    x2={VW - PADX}
+                    y2={y(value)}
+                    stroke="rgba(255,255,255,0.12)"
+                    stroke-width="0.25"
+                    stroke-dasharray="2 4"
+                  />
+                {/each}
+
+                <!-- Vertical hour markers -->
+                {#each Array(hourlyData.length) as _, i}
+                  <line
+                    x1={PADX + i * xStep}
+                    y1="0"
+                    x2={PADX + i * xStep}
+                    y2="60"
+                    stroke="rgba(255,255,255,0.04)"
+                    stroke-width="0.25"
+                  />
+                {/each}
+
+                <!-- Area fill with enhanced gradient -->
+                {#if hourlyData.length > 0}
+                  <path
+                    d={chartPath}
+                    fill="url(#chartGradient)"
+                    filter="url(#backgroundGlow)"
+                  />
+                {/if}
+
+                <!-- Background area fill for depth -->
+                {#if hourlyData.length > 0}
+                  <path
+                    d={chartPath}
+                    fill="url(#chartGradient)"
+                    opacity="0.3"
+                    transform="translate(1,1)"
+                  />
+                {/if}
+
+                <!-- Enhanced line with multiple passes for depth -->
+                {#if hourlyData.length > 0}
+                  <!-- Shadow line -->
+                  <path
+                    d={linePath}
+                    fill="none"
+                    stroke="#22c55e"
+                    stroke-width="3"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    opacity="0.3"
+                    transform="translate(0.5,0.5)"
+                  />
+                  <!-- Main line -->
+                  <path
+                    d={linePath}
+                    fill="none"
+                    stroke="#4ade80"
+                    stroke-width="2.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    filter="url(#glow)"
+                  />
+                {/if}
+
+                <!-- Peak activity highlights -->
+                {#if hourlyData.length > 0}
+                  {#each hourlyData as point, i}
+                    {#if point === Math.max(...hourlyData) && i === hourlyData.lastIndexOf(Math.max(...hourlyData))}
+                      <!-- Peak indicator background -->
+                      <circle
+                        cx={PADX + i*xStep}
+                        cy={y(point)}
+                        r="8"
+                        fill="url(#peakGradient)"
+                        opacity="0.3"
+                        filter="url(#peakGlow)"
+                      />
+                      <!-- Peak indicator -->
+                      <circle
+                        cx={PADX + i*xStep}
+                        cy={y(point)}
+                        r="4"
+                        fill="url(#peakGradient)"
+                        filter="url(#peakGlow)"
+                        stroke="white"
+                        stroke-width="1.5"
+                      />
+                      <!-- Peak value label -->
+                      <text
+                        x={PADX + i*xStep}
+                        y={y(point) - 8}
+                        text-anchor="middle"
+                        fill="#fbbf24"
+                        font-size="8"
+                        font-weight="bold"
+                        filter="url(#peakGlow)"
+                      >{point}</text>
+                    {/if}
+                  {/each}
+                {/if}
+
+                <!-- Regular data points -->
+                {#if hourlyData.length > 0}
+                  {#each hourlyData as point, i}
+                    {#if point >= 1 && point !== Math.max(...hourlyData)}
+                      <circle
+                        cx={PADX + i*xStep}
+                        cy={y(point)}
+                        r="1.5"
+                        fill="#4ade80"
+                        opacity="0.8"
+                      />
+                      <!-- Point inner highlight -->
+                      <circle
+                        cx={PADX + i*xStep}
+                        cy={y(point)}
+                        r="0.8"
+                        fill="white"
+                        opacity="0.9"
+                      />
+                    {/if}
+                  {/each}
+                {/if}
+              </svg>
+              <div class="chart-labels">
+                {#each chartLabels as label}
+                  <span>{label}</span>
+                {/each}
+              </div>
+            </div>
+          </div>
         </div>
         <div class="counter-item">
-          <span class="counter-label">Events Last Hour:</span>
-          <span class="counter-value">{eventsLastHour}</span>
+          <span class="counter-label">Total Incidents:</span>
+          <span class="counter-value">{totalIncidents}</span>
         </div>
-        <div class="counter-item" on:click={toggleActiveOnly} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && toggleActiveOnly()}>
-          <span class="counter-label">Active Events:</span>
-          <span class="counter-value" class:filter-active={showActiveOnly}>{eventsActive}</span>
-        </div>
-        <div class="counter-item toggle-item">
-          <span class="counter-label">Time Period:</span>
+        <div class="time-period-section">
+          <span class="section-label">Time Period</span>
           <button
             class="toggle-switch"
             on:click={toggleTimeFilter}
@@ -949,97 +1155,48 @@ eventsToday = stats.eventsToday;
             <span class="toggle-slider" class:daily={timeFilter === 'daily'}></span>
           </button>
         </div>
-        <div class="counter-item chart-item">
-          <span class="counter-label">24-Hour Activity</span>
-          <div class="mini-chart">
-            <svg viewBox="0 0 288 60" preserveAspectRatio="none">
-              <defs>
-                <linearGradient id="chartGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                  <stop offset="0%" style="stop-color:#4ade80;stop-opacity:0.4" />
-                  <stop offset="100%" style="stop-color:#4ade80;stop-opacity:0.05" />
-                </linearGradient>
-                <filter id="glow">
-                  <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
-                  <feMerge>
-                    <feMergeNode in="coloredBlur"/>
-                    <feMergeNode in="SourceGraphic"/>
-                  </feMerge>
-                </filter>
-              </defs>
-
-              <!-- Grid lines -->
-              {#each [0, 5, 10, 15] as value}
-                <line
-                  x1="0"
-                  y1={60 - (value / 15 * 60)}
-                  x2="288"
-                  y2={60 - (value / 15 * 60)}
-                  stroke="rgba(255,255,255,0.1)"
-                  stroke-width="0.5"
-                />
-              {/each}
-
-              <!-- Area fill -->
-              {#if hourlyData.length > 0}
-                <path
-                  d={chartPath}
-                  fill="url(#chartGradient)"
-                />
-              {/if}
-
-              <!-- Line with smooth curve -->
-              {#if hourlyData.length > 0}
-                <path
-                  d={linePath}
-                  fill="none"
-                  stroke="#4ade80"
-                  stroke-width="2.5"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  filter="url(#glow)"
-                />
-              {/if}
-
-              <!-- Data points (only show significant ones) -->
-              {#if hourlyData.length > 0}
-                {#each hourlyData as point, i}
-                  {#if point >= 2}
-                    <circle
-                      cx={i * 6}
-                      cy={60 - Math.min(point, 15) / 15 * 60}
-                      r="2"
-                      fill="#4ade80"
-                      filter="url(#glow)"
-                    />
-                  {/if}
-                {/each}
-              {/if}
-            </svg>
-            <div class="chart-labels">
-              {#each chartLabels as label}
-                <span>{label}</span>
+        <div class="incident-breakdown-grid">
+          <div class="breakdown-card">
+            <div class="breakdown-header">
+              <span class="breakdown-icon">🚨</span>
+              <span class="breakdown-title">Incidents by Type</span>
+            </div>
+            <div class="breakdown-list">
+              {#each Object.entries(incidentsByType) as [type, count], i}
+                <div
+                  class="breakdown-item"
+                  style="animation-delay: {i * 50}ms"
+                  in:fly="{{ y: 20, duration: 400 }}"
+                >
+                  <div
+                    class="breakdown-item-bar"
+                    style="width: {Math.max((count / Math.max(...Object.values(incidentsByType))) * 80, 8)}%"
+                  ></div>
+                  <span class="breakdown-item-label">{type}</span>
+                  <span class="breakdown-item-count">{count}</span>
+                </div>
               {/each}
             </div>
           </div>
-        </div>
-        <div class="counter-item">
-          <span class="counter-label">Total Incidents:</span>
-          <span class="counter-value">{totalIncidents}</span>
-        </div>
-        <div class="counter-item combined-stats">
-          <div class="stats-column">
-            <span class="counter-label">Incidents by Type:</span>
-            <div class="type-breakdown">
-              {#each Object.entries(incidentsByType) as [type, count]}
-                <div class="type-item">{type}: {count}</div>
-              {/each}
+          <div class="breakdown-card">
+            <div class="breakdown-header">
+              <span class="breakdown-icon">📍</span>
+              <span class="breakdown-title">Top Locations</span>
             </div>
-          </div>
-          <div class="stats-column">
-            <span class="counter-label">Top Locations:</span>
-            <div class="location-breakdown">
-              {#each Object.entries(topLocations) as [location, count]}
-                <div class="location-item">{location}: {count}</div>
+            <div class="breakdown-list">
+              {#each Object.entries(topLocations) as [location, count], i}
+                <div
+                  class="breakdown-item"
+                  style="animation-delay: {i * 50}ms"
+                  in:fly="{{ y: 20, duration: 400 }}"
+                >
+                  <div
+                    class="breakdown-item-bar"
+                    style="width: {Math.max((count / Math.max(...Object.values(topLocations))) * 80, 8)}%"
+                  ></div>
+                  <span class="breakdown-item-label">{location}</span>
+                  <span class="breakdown-item-count">{count}</span>
+                </div>
               {/each}
             </div>
           </div>
@@ -1055,6 +1212,279 @@ eventsToday = stats.eventsToday;
       box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
       transition: all 0.3s ease; /* Smooth transition for changes */
     }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    .stat-card {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 12px;
+      padding: 0.4rem;
+      text-align: center;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.1);
+      transition: all 0.3s ease;
+    }
+    .stat-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+    }
+    .stat-card.clickable {
+      cursor: pointer;
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+    .stat-card.clickable:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+    .stat-card.active {
+      background: #c13117;
+      border-color: #c13117;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(193, 49, 23, 0.4);
+      animation: cardPulse 2s infinite;
+    }
+    @keyframes cardPulse {
+      0%, 100% { box-shadow: 0 6px 16px rgba(193, 49, 23, 0.4); }
+      50% { box-shadow: 0 6px 16px rgba(193, 49, 23, 0.6), 0 0 0 8px rgba(193, 49, 23, 0); }
+    }
+    .stat-icon {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+      display: block;
+    }
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: 800;
+      margin-bottom: 0.25rem;
+      display: block;
+    }
+  .stat-label {
+    font-size: 0.7rem;
+    opacity: 0.8;
+    display: block;
+    font-weight: 600;
+  }
+
+  .time-period-section {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 0.25rem;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+  .section-label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    opacity: 0.9;
+    margin-bottom: 0.75rem;
+    color: white;
+  }
+
+  .activity-chart-section {
+    margin-top: 1rem;
+    padding: 0.5rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 16px;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  }
+  .activity-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+  .section-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: white;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+  .total-badge {
+    background: rgba(74, 222, 128, 0.2);
+    color: #22c55e;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    border: 1px solid rgba(74, 222, 128, 0.3);
+    backdrop-filter: blur(8px);
+  }
+  .activity-chart-container {
+    position: relative;
+  }
+
+  .incident-breakdown-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    margin-top: 2rem;
+  }
+
+  .breakdown-card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    border-radius: 16px;
+    padding: 1rem;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    transition: all 0.3s ease;
+  }
+
+  .breakdown-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+  }
+
+  .breakdown-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .breakdown-icon {
+    font-size: 1.5rem;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .breakdown-title {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: white;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    margin: 0;
+  }
+
+  .breakdown-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .breakdown-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+    padding: 0rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    min-height: 52px;
+    overflow: hidden;
+  }
+
+  .breakdown-item:hover {
+    transform: translateY(-1px);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  .breakdown-item-bar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    background: rgba(74, 222, 128, 0.6);
+    border-radius: inherit;
+    transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 0;
+    opacity: 1;
+  }
+
+  .breakdown-item-label {
+    flex: 1;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: white;
+    margin-right: 0.75rem;
+    z-index: 1;
+    line-height: 1.4;
+  }
+
+  .breakdown-item-count {
+    background: rgba(74, 222, 128, 0.3);
+    color: #ffffff;
+    padding: 0.375rem 0.75rem;
+    border-radius: 16px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    border: 1px solid rgba(74, 222, 128, 0.25);
+    backdrop-filter: blur(6px);
+    z-index: 1;
+    white-space: nowrap;
+  }
+
+    @media (max-width: 768px) {
+    .top-row {
+      flex-direction: column;
+    }
+
+    .stats-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .time-period-section {
+      min-width: 100%;
+    }
+
+    .activity-chart-section {
+      padding: 1rem;
+      margin-top: 1rem;
+    }
+    .activity-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.75rem;
+    }
+    .incident-breakdown-grid {
+      grid-template-columns: 1fr;
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+    .breakdown-card {
+      padding: 1.25rem;
+    }
+    .breakdown-title {
+      font-size: 1.1rem;
+    }
+    .breakdown-icon {
+      font-size: 1.3rem;
+      width: 28px;
+      height: 28px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .breakdown-item {
+      padding: 0rem;
+      min-height: 48px;
+    }
+    .breakdown-item-label {
+      font-size: 0.85rem;
+      margin-right: 0.5rem;
+    }
+    .breakdown-item-count {
+      font-size: 0.75rem;
+      padding: 0.25rem 0.5rem;
+    }
+  }
   </style>
   
   <div class="view-controls">
@@ -1642,14 +2072,64 @@ eventsToday = stats.eventsToday;
   }
   .event-counters {
     display: flex;
-    justify-content: center;
+    flex-direction: column;
     gap: 1rem;
     margin-top: 1rem;
     padding-top: 1rem;
     border-top: 1px solid rgba(255, 255, 255, 0.2);
     position: relative;
     z-index: 1;
-    flex-wrap: wrap;
+  }
+
+  .top-row {
+    display: flex;
+    gap: 1rem;
+    align-items: stretch;
+  }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    flex: 1;
+  }
+
+  .stat-card {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    padding: 0.8rem;
+    text-align: center;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 100px;
+  }
+
+  .time-period-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0.8rem;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    min-width: 200px;
+    gap: 0.5rem;
+  }
+
+  .section-label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    opacity: 0.9;
+    color: white;
+    white-space: nowrap;
   }
   .collapse-button {
     background: none;
@@ -3325,28 +3805,20 @@ eventsToday = stats.eventsToday;
   }
 
   .mini-chart {
-    width: 100%;
-    height: 80px;
     background: rgba(0, 0, 0, 0.2);
     border-radius: 8px;
-    padding: 8px;
-    margin-top: 0.5rem;
+    padding: 4px;
     position: relative;
-    border: 1px solid rgba(255, 255, 255, 0.1);
   }
 
   .mini-chart svg {
     width: 100%;
-    height: 60px;
   }
 
   .chart-labels {
     display: flex;
     justify-content: space-between;
     font-size: 0.65rem;
-    color: rgba(255, 255, 255, 0.5);
-    margin-top: 4px;
-    padding: 0 4px;
   }
 
   @media (max-width: 768px) {
