@@ -47,16 +47,21 @@
 
   $: linePath = hourlyData.length ? hourlyData.map((v,i)=>`${i?'L':'M'} ${PADX + i*xStep} ${y(v)}`).join(' ') : '';
 
-  // Generate dynamic chart labels based on current time (24-hour period)
+  // Generate dynamic chart labels and title based on timeFilter
   $: currentTime = new Date();
   $: currentHour = currentTime.getHours();
-  $: chartLabels = [
-    new Date(currentTime.getTime() - 20 * 60 * 60 * 1000).toLocaleTimeString('en-US', { hour: 'numeric', hour12: true }),
-    new Date(currentTime.getTime() - 14 * 60 * 60 * 1000).toLocaleTimeString('en-US', { hour: 'numeric', hour12: true }),
-    new Date(currentTime.getTime() - 8 * 60 * 60 * 1000).toLocaleTimeString('en-US', { hour: 'numeric', hour12: true }),
-    new Date(currentTime.getTime() - 2 * 60 * 60 * 1000).toLocaleTimeString('en-US', { hour: 'numeric', hour12: true }),
-    new Date(currentTime).toLocaleTimeString('en-US', { hour: 'numeric', hour12: true })
-  ];
+  $: sectionTitle = timeFilter === 'daily' ? '24-Hour Activity' : 'Yearly Activity';
+  $: chartLabels = timeFilter === 'daily' ?
+    Array.from({ length: 24 }, (_, i) => {
+      const time = new Date(currentTime.getTime() - (23 - i) * 60 * 60 * 1000);
+      return time.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true });
+    }) :
+    Array.from({ length: 12 }, (_, i) => {
+      const date = new Date();
+      date.setDate(1);
+      date.setMonth(currentTime.getMonth() - (11 - i));
+      return date.toLocaleDateString('en-US', { month: 'short' });
+    });
 
   // Toast notification system
   let toasts = [];
@@ -174,7 +179,7 @@
     currentPage = 1; // Reset to first page when filter changes
     statsCache = {}; // Clear stats cache to ensure fresh data
     fetchIncidents(); // Re-fetch incidents with new filter
-    fetchIncidentStats(); // Re-fetch stats with new filter
+    fetchIncidentStats(); // Re-fetch stats (including updated chart data)
   }
 
   // Helper function to limit stats to maximum 6 items
@@ -491,6 +496,8 @@
       let url = '/api/incident_stats';
       if (timeFilter === 'daily') {
         url += '?date_filter=daily';
+      } else {
+        url += '?date_filter=yearly';
       }
 
       // Check cache first
@@ -793,16 +800,14 @@ eventsToday = stats.eventsToday;
       chartInstance = null;
     }
 
+
     console.log('Initializing chart with data:', hourlyData);
 
     try {
       chartInstance = new ChartJS(chartCanvas.getContext('2d'), {
         type: 'line',
         data: {
-          labels: Array.from({ length: hourlyData.length }, (_, i) => {
-            const time = new Date(currentTime.getTime() - (23 - i) * 60 * 60 * 1000);
-            return time.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true });
-          }),
+          labels: chartLabels,
           datasets: [{
             label: 'Activity',
             data: hourlyData,
@@ -898,10 +903,7 @@ eventsToday = stats.eventsToday;
 
     try {
       chartInstance.data.datasets[0].data = hourlyData;
-      chartInstance.data.labels = Array.from({ length: hourlyData.length }, (_, i) => {
-        const time = new Date(currentTime.getTime() - (23 - i) * 60 * 60 * 1000);
-        return time.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true });
-      });
+      chartInstance.data.labels = chartLabels;
       chartInstance.update('none'); // Update without animation for performance
     } catch (error) {
       console.error('Error updating chart:', error);
@@ -1093,7 +1095,7 @@ eventsToday = stats.eventsToday;
         </div>
         <div class="activity-chart-section">
           <div class="activity-header">
-            <span class="section-title">24-Hour Activity</span>
+            <span class="section-title">{sectionTitle}</span>
           </div>
           <div class="activity-chart-container">
             <div class="mini-chart">
@@ -1115,7 +1117,7 @@ eventsToday = stats.eventsToday;
             tabindex="0"
             on:keydown={(e) => e.key === 'Enter' && toggleTimeFilter()}
           >
-            <span class="toggle-option" class:active={timeFilter === 'all'}>All Time</span>
+            <span class="toggle-option" class:active={timeFilter === 'all'}>Yearly</span>
             <span class="toggle-option" class:active={timeFilter === 'daily'}>Daily</span>
             <span class="toggle-slider" class:daily={timeFilter === 'daily'}></span>
           </button>
