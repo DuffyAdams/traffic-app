@@ -2,6 +2,11 @@
   import { onMount, onDestroy } from 'svelte';
   import { fade, slide, fly } from 'svelte/transition';
   import { flip } from 'svelte/animate';
+  import { Chart as ChartJS, CategoryScale, TimeScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler, LineController } from 'chart.js';
+  import 'chartjs-adapter-date-fns';
+
+  // Register Chart.js components
+  ChartJS.register(CategoryScale, TimeScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler, LineController);
 
   let posts = [];
   let loading = true;
@@ -28,8 +33,10 @@
   let timeFilter = 'all'; // New state variable for time period filter
   let seenCompositeKeys = new Set(); // Global set to track seen composite keys
   let hourlyData = []; // 24-hour activity chart data
+  let chartCanvas; // Chart.js canvas reference
+  let chartInstance; // Chart.js chart instance
 
-  const VW = 288, VH = 60;
+  const VW = 288, VH = 120;
   const PADX = 8, PADY = 8; // room for big dots/glow
 
   $: xStep = hourlyData.length > 1 ? (VW - PADX*2) / (hourlyData.length - 1) : 0;
@@ -759,13 +766,152 @@ eventsToday = stats.eventsToday;
   function truncateDescription(text, length = 150) {
     if (!text) return '';
     if (text.length <= 200) return text;
-    
+
     // Find the last space within the character limit
     const lastSpaceIndex = text.lastIndexOf(' ', length);
     if (lastSpaceIndex === -1) return text.substring(0, length);
-    
+
     // Return text up to the last complete word
     return text.substring(0, lastSpaceIndex);
+  }
+
+  // Chart.js functions
+  function initializeChart() {
+    if (!chartCanvas) {
+      console.log('Canvas not ready yet');
+      return;
+    }
+
+    if (!hourlyData || hourlyData.length === 0) {
+      console.log('No hourly data yet');
+      return;
+    }
+
+    // Destroy existing chart if it exists
+    if (chartInstance) {
+      chartInstance.destroy();
+      chartInstance = null;
+    }
+
+    console.log('Initializing chart with data:', hourlyData);
+
+    try {
+      chartInstance = new ChartJS(chartCanvas.getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: Array.from({ length: hourlyData.length }, (_, i) => {
+            const time = new Date(currentTime.getTime() - (23 - i) * 60 * 60 * 1000);
+            return time.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true });
+          }),
+          datasets: [{
+            label: 'Activity',
+            data: hourlyData,
+            borderColor: '#4ade80',
+            backgroundColor: 'rgba(74, 222, 128, 0.2)',
+            borderWidth: 3,
+            fill: true,
+            tension: 0.4,
+            pointBackgroundColor: '#4ade80',
+            pointBorderColor: '#ffffff',
+            pointBorderWidth: 2,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: false,
+            },
+            tooltip: {
+              backgroundColor: 'rgba(0, 0, 0, 0.8)',
+              titleColor: '#ffffff',
+              bodyColor: '#ffffff',
+              borderColor: 'rgba(255, 255, 255, 0.2)',
+              borderWidth: 1,
+              callbacks: {
+                title: function(context) {
+                  return `Time: ${context[0].label}`;
+                },
+                label: function(context) {
+                  return `Incidents: ${context.parsed.y}`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              type: 'category',
+              display: true,
+              grid: {
+                color: 'rgba(255, 255, 255, 0.1)',
+              },
+              ticks: {
+                color: '#ffffff',
+                font: {
+                  size: 10
+                },
+                maxRotation: 45,
+                minRotation: 45
+              }
+            },
+            y: {
+              type: 'linear',
+              display: true,
+              beginAtZero: true,
+              grid: {
+                color: 'rgba(255, 255, 255, 0.1)',
+              },
+              ticks: {
+                color: '#ffffff',
+                font: {
+                  size: 10
+                },
+                stepSize: Math.max(1, Math.ceil(Math.max(...hourlyData) / 5))
+              }
+            }
+          },
+          animation: {
+            duration: 1000,
+            easing: 'easeInOutQuad'
+          }
+        }
+      });
+
+      console.log('Chart initialized successfully');
+    } catch (error) {
+      console.error('Error initializing chart:', error);
+    }
+  }
+
+  function updateChart() {
+    if (!chartInstance || !chartCanvas) {
+      initializeChart();
+      return;
+    }
+
+    if (!hourlyData || hourlyData.length === 0) {
+      return;
+    }
+
+    try {
+      chartInstance.data.datasets[0].data = hourlyData;
+      chartInstance.data.labels = Array.from({ length: hourlyData.length }, (_, i) => {
+        const time = new Date(currentTime.getTime() - (23 - i) * 60 * 60 * 1000);
+        return time.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true });
+      });
+      chartInstance.update('none'); // Update without animation for performance
+    } catch (error) {
+      console.error('Error updating chart:', error);
+      initializeChart(); // Try to reinitialize if update fails
+    }
+  }
+
+  // Reactive statement to update chart when data changes
+  $: if (hourlyData && hourlyData.length > 0 && chartCanvas) {
+    updateChart();
   }
 
   function handleTouchStart(e) {
@@ -951,188 +1097,7 @@ eventsToday = stats.eventsToday;
           </div>
           <div class="activity-chart-container">
             <div class="mini-chart">
-              <svg viewBox="0 0 288 60" preserveAspectRatio="none">
-                <defs>
-                  <!-- Enhanced gradients -->
-                  <linearGradient id="chartGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" style="stop-color:#4ade80;stop-opacity:0.6" />
-                    <stop offset="50%" style="stop-color:#22c55e;stop-opacity:0.3" />
-                    <stop offset="100%" style="stop-color:#22c55e;stop-opacity:0.05" />
-                  </linearGradient>
-                  <linearGradient id="gridGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" style="stop-color:rgba(255,255,255,0.02)" />
-                    <stop offset="25%" style="stop-color:rgba(255,255,255,0.04)" />
-                    <stop offset="50%" style="stop-color:rgba(255,255,255,0.06)" />
-                    <stop offset="75%" style="stop-color:rgba(255,255,255,0.04)" />
-                    <stop offset="100%" style="stop-color:rgba(255,255,255,0.02)" />
-                  </linearGradient>
-                  <linearGradient id="peakGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" style="stop-color:#fbbf24" />
-                    <stop offset="100%" style="stop-color:#f59e0b" />
-                  </linearGradient>
-
-                  <!-- Enhanced glow filters -->
-                  <filter id="glow">
-                    <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
-                    <feMerge>
-                      <feMergeNode in="coloredBlur"/>
-                      <feMergeNode in="SourceGraphic"/>
-                    </feMerge>
-                  </filter>
-                  <filter id="peakGlow">
-                    <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-                    <feMorphology operator="dilate" radius="2"/>
-                    <feMerge>
-                      <feMergeNode in="coloredBlur"/>
-                      <feMergeNode in="SourceGraphic"/>
-                    </feMerge>
-                  </filter>
-                  <filter id="backgroundGlow">
-                    <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
-                    <feMerge>
-                      <feMergeNode in="coloredBlur"/>
-                      <feMergeNode in="SourceGraphic"/>
-                    </feMerge>
-                  </filter>
-                </defs>
-
-                <!-- Background grid pattern -->
-                <rect width="288" height="60" fill="url(#gridGradient)" rx="4" />
-
-                <!-- Subtle grid lines -->
-                {#each [0, 3, 6, 9, 12, 15] as value}
-                  <line
-                    x1={PADX}
-                    y1={y(value)}
-                    x2={VW - PADX}
-                    y2={y(value)}
-                    stroke="rgba(255,255,255,0.12)"
-                    stroke-width="0.25"
-                    stroke-dasharray="2 4"
-                  />
-                {/each}
-
-                <!-- Vertical hour markers -->
-                {#each Array(hourlyData.length) as _, i}
-                  <line
-                    x1={PADX + i * xStep}
-                    y1="0"
-                    x2={PADX + i * xStep}
-                    y2="60"
-                    stroke="rgba(255,255,255,0.04)"
-                    stroke-width="0.25"
-                  />
-                {/each}
-
-                <!-- Area fill with enhanced gradient -->
-                {#if hourlyData.length > 0}
-                  <path
-                    d={chartPath}
-                    fill="url(#chartGradient)"
-                    filter="url(#backgroundGlow)"
-                  />
-                {/if}
-
-                <!-- Background area fill for depth -->
-                {#if hourlyData.length > 0}
-                  <path
-                    d={chartPath}
-                    fill="url(#chartGradient)"
-                    opacity="0.3"
-                    transform="translate(1,1)"
-                  />
-                {/if}
-
-                <!-- Enhanced line with multiple passes for depth -->
-                {#if hourlyData.length > 0}
-                  <!-- Shadow line -->
-                  <path
-                    d={linePath}
-                    fill="none"
-                    stroke="#22c55e"
-                    stroke-width="3"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    opacity="0.3"
-                    transform="translate(0.5,0.5)"
-                  />
-                  <!-- Main line -->
-                  <path
-                    d={linePath}
-                    fill="none"
-                    stroke="#4ade80"
-                    stroke-width="2.5"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    filter="url(#glow)"
-                  />
-                {/if}
-
-                <!-- Peak activity highlights -->
-                {#if hourlyData.length > 0}
-                  {#each hourlyData as point, i}
-                    {#if point === Math.max(...hourlyData) && i === hourlyData.lastIndexOf(Math.max(...hourlyData))}
-                      <!-- Peak indicator background -->
-                      <circle
-                        cx={PADX + i*xStep}
-                        cy={y(point)}
-                        r="8"
-                        fill="url(#peakGradient)"
-                        opacity="0.3"
-                        filter="url(#peakGlow)"
-                      />
-                      <!-- Peak indicator -->
-                      <circle
-                        cx={PADX + i*xStep}
-                        cy={y(point)}
-                        r="4"
-                        fill="url(#peakGradient)"
-                        filter="url(#peakGlow)"
-                        stroke="white"
-                        stroke-width="1.5"
-                      />
-                      <!-- Peak value label -->
-                      <text
-                        x={PADX + i*xStep}
-                        y={y(point) - 8}
-                        text-anchor="middle"
-                        fill="#fbbf24"
-                        font-size="8"
-                        font-weight="bold"
-                        filter="url(#peakGlow)"
-                      >{point}</text>
-                    {/if}
-                  {/each}
-                {/if}
-
-                <!-- Regular data points -->
-                {#if hourlyData.length > 0}
-                  {#each hourlyData as point, i}
-                    {#if point >= 1 && point !== Math.max(...hourlyData)}
-                      <circle
-                        cx={PADX + i*xStep}
-                        cy={y(point)}
-                        r="1.5"
-                        fill="#4ade80"
-                        opacity="0.8"
-                      />
-                      <!-- Point inner highlight -->
-                      <circle
-                        cx={PADX + i*xStep}
-                        cy={y(point)}
-                        r="0.8"
-                        fill="white"
-                        opacity="0.9"
-                      />
-                    {/if}
-                  {/each}
-                {/if}
-              </svg>
-              <div class="chart-labels">
-                {#each chartLabels as label}
-                  <span>{label}</span>
-                {/each}
-              </div>
+              <canvas bind:this={chartCanvas} width="288" height="120"></canvas>
             </div>
           </div>
         </div>
@@ -3811,9 +3776,7 @@ eventsToday = stats.eventsToday;
     position: relative;
   }
 
-  .mini-chart svg {
-    width: 100%;
-  }
+
 
   .chart-labels {
     display: flex;
