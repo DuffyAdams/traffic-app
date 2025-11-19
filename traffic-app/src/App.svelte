@@ -782,6 +782,40 @@ eventsToday = stats.eventsToday;
     return text.substring(0, lastSpaceIndex);
   }
 
+  function calculateNiceStepSize(data) {
+    if (!data || data.length === 0) return 1;
+    const max = Math.max(...data.filter(n => n > 0));
+    if (max === 0) return 1;
+
+    const targetSteps = 5;
+    const approxStep = max / targetSteps;
+
+    // Nice bases to choose from
+    const niceNumbers = [1, 2, 5, 10];
+
+    // Find magnitude
+    const magnitude = Math.floor(Math.log10(approxStep));
+    let scaledStep = approxStep / Math.pow(10, magnitude);
+
+    // Find the nicest base
+    let bestBase = 1;
+    let minDiff = Math.abs(scaledStep - 1);
+    for (const base of niceNumbers) {
+      const diff = Math.abs(scaledStep - base);
+      if (diff < minDiff) {
+        minDiff = diff;
+        bestBase = base;
+      }
+    }
+
+    // If we went with 10, increase magnitude
+    if (bestBase === 10) {
+      return 10 * Math.pow(10, magnitude);
+    }
+    // For 5, 2, 1, use normal magnitude
+    return Math.max(1, bestBase * Math.pow(10, magnitude));
+  }
+
   // Chart.js functions
   function initializeChart() {
     if (!chartCanvas) {
@@ -874,7 +908,7 @@ eventsToday = stats.eventsToday;
                 font: {
                   size: 10
                 },
-                stepSize: Math.max(1, Math.ceil(Math.max(...hourlyData) / 5))
+                stepSize: calculateNiceStepSize(hourlyData)
               }
             }
           },
@@ -1389,6 +1423,7 @@ eventsToday = stats.eventsToday;
     background: rgba(74, 222, 128, 0.3);
     color: #ffffff;
     padding: 0.375rem 0.75rem;
+    margin-right: 0.5rem;
     border-radius: 16px;
     font-size: 0.8rem;
     font-weight: 700;
