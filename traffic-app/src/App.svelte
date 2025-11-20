@@ -30,7 +30,7 @@
   let topLocations = {};
   let showEventCounters = false; // New state variable for collapsable section
   let showActiveOnly = false; // New state variable to toggle active events filter
-  let timeFilter = 'all'; // New state variable for time period filter
+  let timeFilter = 'daily'; // New state variable for time period filter
   let seenCompositeKeys = new Set(); // Global set to track seen composite keys
   let hourlyData = []; // 24-hour activity chart data
   let chartCanvas; // Chart.js canvas reference
@@ -82,17 +82,24 @@
 
   // Network status
   let isOnline = true;
+  let isFirstCheck = true;
 
   function updateOnlineStatus() {
+    const previouslyOnline = isOnline;
     isOnline = navigator.onLine;
     if (!isOnline) {
-      addToast('You are offline. Some features may not work.', 'warning', 0);
+      if (!isFirstCheck) {
+        addToast('You are offline. Some features may not work.', 'warning', 0);
+      }
     } else {
-      addToast('Connection restored.', 'success');
+      if (!isFirstCheck && !previouslyOnline) {
+        addToast('Connection restored.', 'success');
+      }
       // Retry failed requests when back online
       if (posts.length === 0) fetchIncidents();
       fetchIncidentStats();
     }
+    isFirstCheck = false;
   }
 
 
@@ -176,9 +183,7 @@
 
   function toggleTimeFilter() {
     timeFilter = timeFilter === 'daily' ? 'all' : 'daily';
-    currentPage = 1; // Reset to first page when filter changes
     statsCache = {}; // Clear stats cache to ensure fresh data
-    fetchIncidents(); // Re-fetch incidents with new filter
     fetchIncidentStats(); // Re-fetch stats (including updated chart data)
   }
 
@@ -257,9 +262,6 @@
       }
       if (showActiveOnly) {
         url += `&active_only=true`;
-      }
-      if (timeFilter === 'daily') {
-        url += '&date_filter=daily';
       }
 
       // Check cache first
@@ -938,7 +940,7 @@ eventsToday = stats.eventsToday;
     try {
       chartInstance.data.datasets[0].data = hourlyData;
       chartInstance.data.labels = chartLabels;
-      chartInstance.update('none'); // Update without animation for performance
+      chartInstance.update(); // Enable smooth animation for chart transitions
     } catch (error) {
       console.error('Error updating chart:', error);
       initializeChart(); // Try to reinitialize if update fails
@@ -948,6 +950,12 @@ eventsToday = stats.eventsToday;
   // Reactive statement to update chart when data changes
   $: if (hourlyData && hourlyData.length > 0 && chartCanvas) {
     updateChart();
+  }
+
+  // Cleanup chart instance when incident stats tab is closed
+  $: if (!showEventCounters && chartInstance) {
+    chartInstance.destroy();
+    chartInstance = null;
   }
 
   function handleTouchStart(e) {
@@ -1151,9 +1159,9 @@ eventsToday = stats.eventsToday;
             tabindex="0"
             on:keydown={(e) => e.key === 'Enter' && toggleTimeFilter()}
           >
-            <span class="toggle-option" class:active={timeFilter === 'all'}>Yearly</span>
             <span class="toggle-option" class:active={timeFilter === 'daily'}>Daily</span>
-            <span class="toggle-slider" class:daily={timeFilter === 'daily'}></span>
+            <span class="toggle-option" class:active={timeFilter === 'all'}>Yearly</span>
+            <span class="toggle-slider" class:daily={timeFilter === 'all'}></span>
           </button>
         </div>
         <div class="incident-breakdown-grid">
@@ -1707,18 +1715,8 @@ eventsToday = stats.eventsToday;
           </div>
         {/if}
       {/each}
-      
-      {#if loadingMore}
-        <div class="loading-more" in:fade={{ duration: 150 }}>
-          <div class="skeleton-card-small">
-            <div class="skeleton-image-small"></div>
-            <div class="skeleton-content-small">
-              <div class="skeleton-line-small"></div>
-              <div class="skeleton-line-small"></div>
-            </div>
-          </div>
-        </div>
-      {:else if !allPostsLoaded && posts.length > 0 && posts.length >= postsPerPage}
+
+      {#if !allPostsLoaded && posts.length > 0 && posts.length >= postsPerPage}
         <div class="scroll-indicator" in:fade={{ duration: 150 }} on:click={forceLoadMore} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && forceLoadMore()}>
           <div class="scroll-dots">
             <span class="dot"></span>
@@ -1838,16 +1836,7 @@ eventsToday = stats.eventsToday;
         </div>
       {/each}
       
-      {#if loadingMore}
-        <div class="loading-more" in:fade={{ duration: 150 }}>
-          <div class="skeleton-table-row">
-            <div class="skeleton-cell"></div>
-            <div class="skeleton-cell"></div>
-            <div class="skeleton-cell"></div>
-            <div class="skeleton-cell"></div>
-          </div>
-        </div>
-      {:else if !allPostsLoaded && posts.length > 0 && posts.length >= postsPerPage}
+      {#if !allPostsLoaded && posts.length > 0 && posts.length >= postsPerPage}
         <div class="scroll-indicator" in:fade={{ duration: 150 }} on:click={forceLoadMore} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && forceLoadMore()}>
           <div class="scroll-dots">
             <span class="dot"></span>
@@ -3699,14 +3688,14 @@ eventsToday = stats.eventsToday;
 
   .side-toggle {
     position: fixed;
-    right: 0;
+    right: -6px;
     top: 50%;
     transform: translateY(-50%);
     background-color: var(--primary-color);
     color: white;
     border: none;
     border-radius: 8px 0 0 8px;
-    padding: 0.8rem 0.5rem;
+    padding: 0.8rem .5rem;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -3724,7 +3713,7 @@ eventsToday = stats.eventsToday;
   }
 
   .side-toggle.condensed {
-    right: 0;
+    right: -8px;
   }
 
   .side-toggle-arrow {
