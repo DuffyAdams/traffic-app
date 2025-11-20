@@ -9,6 +9,7 @@ import sqlite3
 import subprocess
 import threading
 from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 
 # Database lock for thread safety
 db_lock = threading.Lock()
@@ -597,29 +598,48 @@ def get_incident_stats():
             cur.execute("SELECT location, COUNT(*) as count FROM incidents WHERE location IS NOT NULL AND location != '' GROUP BY location ORDER BY count DESC LIMIT 10")
         top_locations = {row[0]: row[1] for row in cur.fetchall()}
 
-        # Calculate REAL-TIME hourly data for last 24 hours in 30-minute intervals
-        now = datetime.now()
-        start_time = now - timedelta(hours=24)  # Exactly 24 hours ago
-        end_time = now  # Current time
+        # Calculate chart data based on date_filter
+        if date_filter == 'yearly':
+            # Monthly data for the last 12 months
+            monthly_data = []
+            now = datetime.now()
+            for i in range(12):
+                # Get the month: current month - (11-i), so start from 11 months ago to current
+                month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0) + relativedelta(months=-(11-i))
+                month_end = month_start + relativedelta(months=1)
 
-        hourly_data = []
+                month_start_str = month_start.strftime('%Y-%m-%d %H:%M:%S')
+                month_end_str = month_end.strftime('%Y-%m-%d %H:%M:%S')
 
-        # Create 48 intervals (24 hours × 2 thirty-minute intervals per hour)
-        for i in range(48):
-            interval_start = start_time + timedelta(minutes=i*30)
-            interval_end = interval_start + timedelta(minutes=30)
+                cur.execute("""
+                    SELECT COUNT(*) FROM incidents
+                    WHERE timestamp >= ? AND timestamp < ?
+                """, (month_start_str, month_end_str))
 
-            interval_start_str = interval_start.strftime('%Y-%m-%d %H:%M:%S')
-            interval_end_str = interval_end.strftime('%Y-%m-%d %H:%M:%S')
+                count = cur.fetchone()[0]
+                monthly_data.append(count)
+            chart_data = monthly_data
+        else:
+            # Default to daily: hourly data for last 24 hours
+            now = datetime.now()
+            start_time = now - timedelta(hours=24)
+            hourly_data = []
 
-            # Count ALL incidents in this REAL 30-minute window
-            cur.execute("""
-                SELECT COUNT(*) FROM incidents
-                WHERE timestamp >= ? AND timestamp < ?
-            """, (interval_start_str, interval_end_str))
+            for i in range(24):
+                interval_start = start_time + timedelta(hours=i)
+                interval_end = interval_start + timedelta(hours=1)
 
-            count = cur.fetchone()[0]
-            hourly_data.append(count)
+                interval_start_str = interval_start.strftime('%Y-%m-%d %H:%M:%S')
+                interval_end_str = interval_end.strftime('%Y-%m-%d %H:%M:%S')
+
+                cur.execute("""
+                    SELECT COUNT(*) FROM incidents
+                    WHERE timestamp >= ? AND timestamp < ?
+                """, (interval_start_str, interval_end_str))
+
+                count = cur.fetchone()[0]
+                hourly_data.append(count)
+            chart_data = hourly_data
 
         return jsonify({
             "eventsToday": events_today,
@@ -628,7 +648,7 @@ def get_incident_stats():
             "totalIncidents": total_incidents,
             "incidentsByType": incidents_by_type,
             "topLocations": top_locations,
-            "hourlyData": hourly_data
+            "hourlyData": chart_data
         })
 
 @app.route("/maps/<filename>")

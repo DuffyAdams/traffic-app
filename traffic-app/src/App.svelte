@@ -940,6 +940,7 @@ eventsToday = stats.eventsToday;
     try {
       chartInstance.data.datasets[0].data = hourlyData;
       chartInstance.data.labels = chartLabels;
+      chartInstance.options.scales.y.ticks.stepSize = calculateNiceStepSize(hourlyData);
       chartInstance.update(); // Enable smooth animation for chart transitions
     } catch (error) {
       console.error('Error updating chart:', error);
