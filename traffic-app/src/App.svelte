@@ -1116,6 +1116,21 @@ eventsToday = stats.eventsToday;
     </button>
     {#if showEventCounters}
       <div class="event-counters" transition:slide>
+        <div class="time-period-section">
+          <span class="section-label">Time Period</span>
+          <button
+            class="toggle-switch"
+            on:click={toggleTimeFilter}
+            role="switch"
+            aria-checked={timeFilter === 'daily'}
+            tabindex="0"
+            on:keydown={(e) => e.key === 'Enter' && toggleTimeFilter()}
+          >
+            <span class="toggle-option" class:active={timeFilter === 'daily'}>Daily</span>
+            <span class="toggle-option" class:active={timeFilter === 'all'}>Yearly</span>
+            <span class="toggle-slider" class:daily={timeFilter === 'all'}></span>
+          </button>
+        </div>
         <div class="top-row">
           <div class="stats-grid">
             <div class="stat-card">
@@ -1133,8 +1148,12 @@ eventsToday = stats.eventsToday;
               <span class="stat-value">{eventsActive}</span>
               <span class="stat-label">Active Events</span>
             </div>
+            <div class="stat-card">
+              <span class="stat-icon">📊</span>
+              <span class="stat-value">{totalIncidents}</span>
+              <span class="stat-label">Total Incidents</span>
+            </div>
           </div>
-
         </div>
         <div class="activity-chart-section">
           <div class="activity-header">
@@ -1145,25 +1164,6 @@ eventsToday = stats.eventsToday;
               <canvas bind:this={chartCanvas} width="288" height="120"></canvas>
             </div>
           </div>
-        </div>
-        <div class="counter-item">
-          <span class="counter-label">Total Incidents:</span>
-          <span class="counter-value">{totalIncidents}</span>
-        </div>
-        <div class="time-period-section">
-          <span class="section-label">Time Period</span>
-          <button
-            class="toggle-switch"
-            on:click={toggleTimeFilter}
-            role="switch"
-            aria-checked={timeFilter === 'daily'}
-            tabindex="0"
-            on:keydown={(e) => e.key === 'Enter' && toggleTimeFilter()}
-          >
-            <span class="toggle-option" class:active={timeFilter === 'daily'}>Daily</span>
-            <span class="toggle-option" class:active={timeFilter === 'all'}>Yearly</span>
-            <span class="toggle-slider" class:daily={timeFilter === 'all'}></span>
-          </button>
         </div>
         <div class="incident-breakdown-grid">
           <div class="breakdown-card">
@@ -1223,16 +1223,15 @@ eventsToday = stats.eventsToday;
       transition: all 0.3s ease; /* Smooth transition for changes */
     }
     .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 1rem;
-      margin-bottom: 1rem;
+      display: flex;
+      gap: 0.75rem;
+      margin: 0 0.75rem 0.75rem 0.75rem;
     }
     .stat-card {
       background: rgba(255, 255, 255, 0.1);
       border: 1px solid rgba(255, 255, 255, 0.2);
       border-radius: 12px;
-      padding: 0.4rem;
+      padding: 0.5rem;
       text-align: center;
       backdrop-filter: blur(8px);
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -1448,7 +1447,7 @@ eventsToday = stats.eventsToday;
     }
 
     .stats-grid {
-      grid-template-columns: 1fr;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
     }
 
     .time-period-section {
@@ -1456,8 +1455,6 @@ eventsToday = stats.eventsToday;
     }
 
     .activity-chart-section {
-      padding: 1rem;
-      margin-top: 1rem;
     }
     .activity-header {
       flex-direction: column;
@@ -1483,6 +1480,21 @@ eventsToday = stats.eventsToday;
   }
 
   @media (max-width: 480px) {
+    .stats-grid {
+      gap: 0.5rem;
+    }
+    .stat-card {
+      padding: 0.3rem;
+    }
+    .stat-value {
+      font-size: 1.3rem;
+    }
+    .stat-icon {
+      font-size: 1.3rem;
+    }
+    .stat-label {
+      font-size: 0.65rem;
+    }
     .breakdown-item {
       padding: 0rem;
       min-height: 48px;
@@ -2065,9 +2077,9 @@ eventsToday = stats.eventsToday;
   .event-counters {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
-    margin-top: 1rem;
-    padding-top: 1rem;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
     border-top: 1px solid rgba(255, 255, 255, 0.2);
     position: relative;
     z-index: 1;
@@ -2081,7 +2093,7 @@ eventsToday = stats.eventsToday;
 
   .stats-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 1rem;
     flex: 1;
   }
@@ -2090,7 +2102,6 @@ eventsToday = stats.eventsToday;
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 12px;
-    padding: 0.8rem;
     text-align: center;
     backdrop-filter: blur(8px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -2099,6 +2110,8 @@ eventsToday = stats.eventsToday;
     flex-direction: column;
     justify-content: center;
     min-height: 100px;
+    flex: 1;
+    min-width: 0;    min-width: 0;
   }
 
   .time-period-section {
