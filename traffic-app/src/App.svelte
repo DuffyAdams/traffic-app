@@ -30,9 +30,9 @@
   let topLocations = {};
   let showEventCounters = false; // New state variable for collapsable section
   let showActiveOnly = false; // New state variable to toggle active events filter
-  let timeFilter = 'daily'; // New state variable for time period filter
+  let timeFilter = 'day'; // New state variable for time period filter
   let seenCompositeKeys = new Set(); // Global set to track seen composite keys
-  let hourlyData = []; // 24-hour activity chart data
+  let hourlyData = []; // Activity chart data (hourly, daily, or monthly depending on timeFilter)
   let chartCanvas; // Chart.js canvas reference
   let chartInstance; // Chart.js chart instance
 
@@ -50,11 +50,26 @@
   // Generate dynamic chart labels and title based on timeFilter
   $: currentTime = new Date();
   $: currentHour = currentTime.getHours();
-  $: sectionTitle = timeFilter === 'daily' ? '24-Hour Activity' : 'Yearly Activity';
-  $: chartLabels = timeFilter === 'daily' ?
+  $: sectionTitle = timeFilter === 'day' ? '24-Hour Activity' :
+    timeFilter === 'week' ? '7-Day Activity' :
+    timeFilter === 'month' ? '30-Day Activity' :
+    'Yearly Activity';
+  $: chartLabels = timeFilter === 'day' ?
     Array.from({ length: 24 }, (_, i) => {
       const time = new Date(currentTime.getTime() - (23 - i) * 60 * 60 * 1000);
       return time.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true });
+    }) :
+    timeFilter === 'week' ?
+    Array.from({ length: 7 }, (_, i) => {
+      const date = new Date();
+      date.setDate(date.getDate() - (6 - i));
+      return date.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' });
+    }) :
+    timeFilter === 'month' ?
+    Array.from({ length: 30 }, (_, i) => {
+      const date = new Date();
+      date.setDate(date.getDate() - (29 - i));
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     }) :
     Array.from({ length: 12 }, (_, i) => {
       const date = new Date();
@@ -181,8 +196,8 @@
     fetchIncidents(); // Re-fetch incidents with new filter
   }
 
-  function toggleTimeFilter() {
-    timeFilter = timeFilter === 'daily' ? 'all' : 'daily';
+  function setTimeFilter(newFilter) {
+    timeFilter = newFilter;
     statsCache = {}; // Clear stats cache to ensure fresh data
     fetchIncidentStats(); // Re-fetch stats (including updated chart data)
   }
@@ -495,12 +510,7 @@
     const signal = statsController.signal;
 
     try {
-      let url = '/api/incident_stats';
-      if (timeFilter === 'daily') {
-        url += '?date_filter=daily';
-      } else {
-        url += '?date_filter=yearly';
-      }
+      let url = '/api/incident_stats?date_filter=' + timeFilter;
 
       // Check cache first
       const cacheKey = url;
@@ -1118,18 +1128,12 @@ eventsToday = stats.eventsToday;
       <div class="event-counters" transition:slide>
         <div class="time-period-section">
           <span class="section-label">Time Period</span>
-          <button
-            class="toggle-switch"
-            on:click={toggleTimeFilter}
-            role="switch"
-            aria-checked={timeFilter === 'daily'}
-            tabindex="0"
-            on:keydown={(e) => e.key === 'Enter' && toggleTimeFilter()}
-          >
-            <span class="toggle-option" class:active={timeFilter === 'daily'}>Daily</span>
-            <span class="toggle-option" class:active={timeFilter === 'all'}>Yearly</span>
-            <span class="toggle-slider" class:daily={timeFilter === 'all'}></span>
-          </button>
+          <div class="time-buttons">
+            <button class="time-button {timeFilter === 'day' ? 'active' : ''}" on:click={() => setTimeFilter('day')}>1 Day</button>
+            <button class="time-button {timeFilter === 'week' ? 'active' : ''}" on:click={() => setTimeFilter('week')}>Week</button>
+            <button class="time-button {timeFilter === 'month' ? 'active' : ''}" on:click={() => setTimeFilter('month')}>Month</button>
+            <button class="time-button {timeFilter === 'year' ? 'active' : ''}" on:click={() => setTimeFilter('year')}>Year</button>
+          </div>
         </div>
         <div class="top-row">
           <div class="stats-grid">
@@ -1294,6 +1298,29 @@ eventsToday = stats.eventsToday;
     opacity: 0.9;
     margin-bottom: 0.75rem;
     color: white;
+  }
+  .time-buttons {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .time-button {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: white;
+    padding: 0.5rem 0.75rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .time-button:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+  .time-button.active {
+    background: rgba(74, 222, 128, 0.6);
+    border-color: rgba(74, 222, 128, 0.6);
   }
 
   .activity-chart-section {
@@ -3810,7 +3837,6 @@ eventsToday = stats.eventsToday;
   }
 
   .mini-chart {
-    background: rgba(0, 0, 0, 0.2);
     border-radius: 8px;
     padding: 4px;
     position: relative;
