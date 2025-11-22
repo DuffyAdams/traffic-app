@@ -599,13 +599,16 @@ def get_incident_stats():
         top_locations = {row[0]: row[1] for row in cur.fetchall()}
 
         # Calculate chart data based on date_filter
-        if date_filter == 'yearly':
+        if date_filter == 'year':
             # Monthly data for the last 12 months
             monthly_data = []
             now = datetime.now()
+
+            # Start from 11 months ago
             for i in range(12):
-                # Get the month: current month - (11-i), so start from 11 months ago to current
-                month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0) + relativedelta(months=-(11-i))
+                # Calculate month start: go back (11-i) months from now
+                months_back = 11 - i
+                month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0) - relativedelta(months=months_back)
                 month_end = month_start + relativedelta(months=1)
 
                 month_start_str = month_start.strftime('%Y-%m-%d %H:%M:%S')
@@ -619,15 +622,62 @@ def get_incident_stats():
                 count = cur.fetchone()[0]
                 monthly_data.append(count)
             chart_data = monthly_data
+
+        elif date_filter == 'month':
+            # Daily data for the last 30 days
+            daily_data = []
+            now = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+            for i in range(30):
+                # Start from 29 days ago
+                day_start = now - timedelta(days=29-i)
+                day_end = day_start + timedelta(days=1)
+
+                day_start_str = day_start.strftime('%Y-%m-%d %H:%M:%S')
+                day_end_str = day_end.strftime('%Y-%m-%d %H:%M:%S')
+
+                cur.execute("""
+                    SELECT COUNT(*) FROM incidents
+                    WHERE timestamp >= ? AND timestamp < ?
+                """, (day_start_str, day_end_str))
+
+                count = cur.fetchone()[0]
+                daily_data.append(count)
+            chart_data = daily_data
+
+        elif date_filter == 'week':
+            # Daily data for the last 7 days
+            daily_data = []
+            now = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+            for i in range(7):
+                # Start from 6 days ago
+                day_start = now - timedelta(days=6-i)
+                day_end = day_start + timedelta(days=1)
+
+                day_start_str = day_start.strftime('%Y-%m-%d %H:%M:%S')
+                day_end_str = day_end.strftime('%Y-%m-%d %H:%M:%S')
+
+                cur.execute("""
+                    SELECT COUNT(*) FROM incidents
+                    WHERE timestamp >= ? AND timestamp < ?
+                """, (day_start_str, day_end_str))
+
+                count = cur.fetchone()[0]
+                daily_data.append(count)
+            chart_data = daily_data
+
         else:
-            # Default to daily: hourly data for last 24 hours
+            # Default to day: hourly data for last 24 hours
             now = datetime.now()
-            start_time = now - timedelta(hours=24)
             hourly_data = []
+            start24h = now - timedelta(hours=24)
 
             for i in range(24):
-                interval_start = start_time + timedelta(hours=i)
+                interval_start = start24h + timedelta(hours=i)
                 interval_end = interval_start + timedelta(hours=1)
+                if interval_end > now:
+                    interval_end = now
 
                 interval_start_str = interval_start.strftime('%Y-%m-%d %H:%M:%S')
                 interval_end_str = interval_end.strftime('%Y-%m-%d %H:%M:%S')
