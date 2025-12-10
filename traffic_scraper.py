@@ -51,6 +51,7 @@ HEADERS = {
 }
 PARAMS = {"ddlComCenter": "BCCC"}
 SCRAPE_URL = "https://cad.chp.ca.gov/traffic.aspx?__EVENTTARGET=ddlComCenter&ddlComCenter=BCCC"
+HEALTHCHECK_URL = "https://hc-ping.com/7299c402-d91d-4d89-8f84-5e6b510631c0"
 
 # Regex patterns
 VIEWSTATE_PATTERN = re.compile(
@@ -480,34 +481,51 @@ def monitor_traffic_data(interval=60):
     print("Press Ctrl+C to stop.")
     try:
         while True:
-            print(f"Checking updates... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-            incidents = scrape_all_incidents()
-            active_incident_ids = set()
-            if incidents:
-                for incident in incidents:
-                    incident_no = incident.get("No.") or incident.get("Incident No.")
-                    if not incident_no:
-                        print("WARNING: No incident number found. Skipping this entry.")
-                        continue
-                    active_incident_ids.add(str(incident_no))
-                    if not incident_exists(incident_no, incident.get("Date", datetime.now().strftime("%Y-%m-%d"))):
-                        if "Longitude" in incident and "Latitude" in incident:
-                            run_map_generator(incident)
-                    save_or_update_incident(incident)
-            else:
-                print("No valid data retrieved.")
+            try:
+                print(f"Checking updates... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                incidents = scrape_all_incidents()
+                active_incident_ids = set()
+                if incidents:
+                    for incident in incidents:
+                        incident_no = incident.get("No.") or incident.get("Incident No.")
+                        if not incident_no:
+                            print("WARNING: No incident number found. Skipping this entry.")
+                            continue
+                        active_incident_ids.add(str(incident_no))
+                        if not incident_exists(incident_no, incident.get("Date", datetime.now().strftime("%Y-%m-%d"))):
+                            if "Longitude" in incident and "Latitude" in incident:
+                                run_map_generator(incident)
+                        save_or_update_incident(incident)
+                else:
+                    print("No valid data retrieved.")
 
-            # Mark incidents as inactive if they are not in the current scrape.
-            with db_lock:
-                with sqlite3.connect(DB_FILE) as conn:
-                    cur = conn.cursor()
-                    if active_incident_ids:
-                        placeholders = ",".join("?" for _ in active_incident_ids)
-                        query = f"UPDATE incidents SET active = 0 WHERE incident_no NOT IN ({placeholders})"
-                        cur.execute(query, tuple(active_incident_ids))
-                    else:
-                        cur.execute("UPDATE incidents SET active = 0")
-                    conn.commit()
+                # Mark incidents as inactive if they are not in the current scrape.
+                with db_lock:
+                    with sqlite3.connect(DB_FILE) as conn:
+                        cur = conn.cursor()
+                        if active_incident_ids:
+                            placeholders = ",".join("?" for _ in active_incident_ids)
+                            query = f"UPDATE incidents SET active = 0 WHERE incident_no NOT IN ({placeholders})"
+                            cur.execute(query, tuple(active_incident_ids))
+                        else:
+                            cur.execute("UPDATE incidents SET active = 0")
+                        conn.commit()
+
+                # Ping healthcheck for success
+                try:
+                    requests.get(HEALTHCHECK_URL, timeout=10)
+                    print("Healthcheck ping: success")
+                except Exception as ping_e:
+                    print(f"Failed to ping healthcheck success: {ping_e}")
+
+            except Exception as e:
+                print(f"Error in monitoring loop: {e}")
+                # Ping healthcheck for failure
+                try:
+                    requests.get(HEALTHCHECK_URL + "/fail", timeout=10)
+                    print("Healthcheck ping: failure")
+                except Exception as ping_e:
+                    print(f"Failed to ping healthcheck failure: {ping_e}")
 
             time.sleep(interval)
     except KeyboardInterrupt:
