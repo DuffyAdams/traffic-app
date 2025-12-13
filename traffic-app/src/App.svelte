@@ -1227,23 +1227,31 @@ eventsToday = stats.eventsToday;
       transition: all 0.3s ease; /* Smooth transition for changes */
     }
     .stats-grid {
-      display: flex;
-      gap: 0.75rem;
-      margin: 0 0.75rem 0.75rem 0.75rem;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+      margin: 0 0 0.5rem 0;
+      width: 100%;
     }
     .stat-card {
       background: rgba(255, 255, 255, 0.1);
       border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 12px;
-      padding: 0.5rem;
+      border-radius: 10px;
+      padding: 0.4rem;
       text-align: center;
       backdrop-filter: blur(8px);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1), 0 1px 4px rgba(0, 0, 0, 0.1);
       transition: all 0.3s ease;
+      width: 100%;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-height: 80px;
     }
     .stat-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     }
     .stat-card.clickable {
       cursor: pointer;
@@ -1255,23 +1263,23 @@ eventsToday = stats.eventsToday;
     .stat-card.active {
       background: #c13117;
       border-color: #c13117;
-      transform: translateY(-2px);
-      box-shadow: 0 6px 16px rgba(193, 49, 23, 0.4);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(193, 49, 23, 0.4);
       animation: cardPulse 2s infinite;
     }
     @keyframes cardPulse {
-      0%, 100% { box-shadow: 0 6px 16px rgba(193, 49, 23, 0.4); }
-      50% { box-shadow: 0 6px 16px rgba(193, 49, 23, 0.6), 0 0 0 8px rgba(193, 49, 23, 0); }
+      0%, 100% { box-shadow: 0 4px 12px rgba(193, 49, 23, 0.4); }
+      50% { box-shadow: 0 4px 12px rgba(193, 49, 23, 0.6), 0 0 0 8px rgba(193, 49, 23, 0); }
     }
     .stat-icon {
-      font-size: 1.5rem;
-      margin-bottom: 0.5rem;
+      font-size: 1.3rem;
+      margin-bottom: 0.3rem;
       display: block;
     }
     .stat-value {
-      font-size: 1.5rem;
+      font-size: 1.3rem;
       font-weight: 800;
-      margin-bottom: 0.25rem;
+      margin-bottom: 0.2rem;
       display: block;
     }
   .stat-label {
@@ -1324,19 +1332,19 @@ eventsToday = stats.eventsToday;
   }
 
   .activity-chart-section {
-    margin-top: 1rem;
-    padding: 0.5rem;
+    margin-top: 0.5rem;
+    padding: 0.4rem;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 16px;
+    border-radius: 12px;
     backdrop-filter: blur(10px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
   }
   .activity-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 1rem;
+    margin-bottom: 0.5rem;
   }
   .section-title {
     font-size: 1rem;
@@ -1361,43 +1369,43 @@ eventsToday = stats.eventsToday;
   .incident-breakdown-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 0.75rem;
-    margin-top: 2rem;
+    gap: 0.5rem;
+    margin-top: 1rem;
   }
 
   .breakdown-card {
     background: rgba(255, 255, 255, 0.05);
     border: 2px solid rgba(255, 255, 255, 0.15);
-    border-radius: 16px;
-    padding: 1rem;
+    border-radius: 12px;
+    padding: 0.75rem;
     backdrop-filter: blur(10px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
     transition: all 0.3s ease;
   }
 
   .breakdown-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
   }
 
   .breakdown-header {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 1.25rem;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
   }
 
   .breakdown-icon {
-    font-size: 1.5rem;
-    width: 32px;
-    height: 32px;
+    font-size: 1.2rem;
+    width: 24px;
+    height: 24px;
     display: flex;
     align-items: center;
     justify-content: center;
   }
 
   .breakdown-title {
-    font-size: 0.9rem;
+    font-size: 0.8rem;
     font-weight: 700;
     color: white;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
@@ -1407,7 +1415,7 @@ eventsToday = stats.eventsToday;
   .breakdown-list {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.25rem;
   }
 
   .breakdown-item {
@@ -1418,10 +1426,10 @@ eventsToday = stats.eventsToday;
     padding: 0rem;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 10px;
+    border-radius: 8px;
     cursor: pointer;
     transition: all 0.3s ease;
-    min-height: 52px;
+    min-height: 40px;
     overflow: hidden;
   }
 
@@ -1429,7 +1437,7 @@ eventsToday = stats.eventsToday;
     transform: translateY(-1px);
     background: rgba(255, 255, 255, 0.08);
     border-color: rgba(255, 255, 255, 0.2);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   }
 
   .breakdown-item-bar {
@@ -1446,21 +1454,21 @@ eventsToday = stats.eventsToday;
 
   .breakdown-item-label {
     flex: 1;
-    font-size: 0.9rem;
+    font-size: 0.8rem;
     font-weight: 600;
     color: white;
-    margin-right: 0.75rem;
+    margin-right: 0.5rem;
     z-index: 1;
-    line-height: 1.4;
+    line-height: 1.3;
   }
 
   .breakdown-item-count {
     background: rgba(74, 222, 128, 0.3);
     color: #ffffff;
-    padding: 0.375rem 0.75rem;
-    margin-right: 0.5rem;
-    border-radius: 16px;
-    font-size: 0.8rem;
+    padding: 0.25rem 0.5rem;
+    margin-right: 0.25rem;
+    border-radius: 12px;
+    font-size: 0.7rem;
     font-weight: 700;
     border: 1px solid rgba(74, 222, 128, 0.25);
     backdrop-filter: blur(6px);
@@ -1468,13 +1476,14 @@ eventsToday = stats.eventsToday;
     white-space: nowrap;
   }
 
-    @media (max-width: 768px) {
+  @media (max-width: 768px) {
     .top-row {
       flex-direction: column;
     }
 
     .stats-grid {
       grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0;
     }
 
     .time-period-section {
@@ -1482,57 +1491,108 @@ eventsToday = stats.eventsToday;
     }
 
     .activity-chart-section {
+      padding: 0.3rem;
     }
     .activity-header {
       flex-direction: column;
       align-items: flex-start;
-      gap: 0.75rem;
+      gap: 0.5rem;
+      margin-bottom: 0.3rem;
     }
     .incident-breakdown-grid {
       grid-template-columns: 1fr;
-      gap: 1rem;
-      margin-top: 1.5rem;
+      gap: 0.75rem;
+      margin-top: 1rem;
     }
     .breakdown-card {
-      padding: 1.25rem;
+      padding: 0.75rem;
     }
     .breakdown-title {
-      font-size: 1.1rem;
+      font-size: 0.9rem;
     }
     .breakdown-icon {
-      font-size: 1.3rem;
-      width: 28px;
-      height: 28px;
+      font-size: 1.1rem;
+      width: 20px;
+      height: 20px;
+    }
+    .breakdown-header {
+      margin-bottom: 0.5rem;
+    }
+    .breakdown-list {
+      gap: 0.2rem;
     }
   }
 
   @media (max-width: 480px) {
+    .event-counters {
+      gap: 0.4rem;
+      margin-top: 0.4rem;
+      padding-top: 0.4rem;
+    }
     .stats-grid {
-      gap: 0.5rem;
+      gap: 0;
     }
     .stat-card {
-      padding: 0.3rem;
+      padding: 0.25rem;
+      border-radius: 8px;
+      min-height: 80px;
     }
     .stat-value {
-      font-size: 1.3rem;
+      font-size: 1.2rem;
     }
     .stat-icon {
-      font-size: 1.3rem;
+      font-size: 1.1rem;
+      margin-bottom: 0.2rem;
     }
     .stat-label {
-      font-size: 0.65rem;
+      font-size: 0.6rem;
+    }
+    .time-period-section {
+      padding: 0.2rem;
+    }
+    .section-label {
+      font-size: 0.8rem;
+      margin-bottom: 0.5rem;
+    }
+    .time-button {
+      padding: 0.4rem 0.6rem;
+      font-size: 0.8rem;
+    }
+    .activity-chart-section {
+      margin-top: 0.3rem;
+      padding: 0.3rem;
+      border-radius: 10px;
+    }
+    .section-title {
+      font-size: 0.9rem;
+    }
+    .incident-breakdown-grid {
+      gap: 0.5rem;
+      margin-top: 0.8rem;
+    }
+    .breakdown-card {
+      padding: 0.6rem;
+      border-radius: 10px;
     }
     .breakdown-item {
       padding: 0rem;
-      min-height: 48px;
+      min-height: 36px;
+      border-radius: 6px;
     }
     .breakdown-item-label {
-      font-size: 0.85rem;
-      margin-right: 0.5rem;
+      font-size: 0.75rem;
+      margin-right: 0.3rem;
     }
     .breakdown-item-count {
-      font-size: 0.75rem;
-      padding: 0.25rem 0.5rem;
+      font-size: 0.65rem;
+      padding: 0.2rem 0.4rem;
+    }
+    .breakdown-title {
+      font-size: 0.8rem;
+    }
+    .breakdown-header {
+      gap: 0.4rem;
+      margin-bottom: 0.4rem;
     }
   }
   </style>
@@ -2104,9 +2164,9 @@ eventsToday = stats.eventsToday;
   .event-counters {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-    margin-top: 0.75rem;
-    padding-top: 0.75rem;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
     border-top: 1px solid rgba(255, 255, 255, 0.2);
     position: relative;
     z-index: 1;
@@ -2121,7 +2181,7 @@ eventsToday = stats.eventsToday;
   .stats-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 1rem;
+    gap: .25rem;
     flex: 1;
   }
 
@@ -2136,9 +2196,9 @@ eventsToday = stats.eventsToday;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    min-height: 100px;
+    min-height: 80px;
     flex: 1;
-    min-width: 0;    min-width: 0;
+    min-width: 0;
   }
 
   .time-period-section {

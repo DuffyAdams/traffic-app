@@ -71,7 +71,7 @@ CORS(app, resources={r"/api/*": {"origins": "*"}, r"/maps/*": {"origins": "*"}})
 
 # Test mode flag
 
-TESTMODE = False
+TESTMODE = True
 
 # -----------------------------------
 # Database Functions
@@ -572,10 +572,25 @@ def get_incident_stats():
         # Determine date condition if filtering
         date_condition = ""
         date_params = []
-        if date_filter == 'daily':
+        if date_filter == 'day':
             today = datetime.now().strftime("%Y-%m-%d")
             date_condition = "date = ?"
             date_params = [today]
+        elif date_filter == 'week':
+            # Last 7 days
+            week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+            date_condition = "timestamp >= ?"
+            date_params = [week_ago]
+        elif date_filter == 'month':
+            # Last 30 days
+            month_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+            date_condition = "timestamp >= ?"
+            date_params = [month_ago]
+        elif date_filter == 'year':
+            # Last 12 months
+            year_ago = (datetime.now() - relativedelta(months=12)).strftime("%Y-%m-%d %H:%M:%S")
+            date_condition = "timestamp >= ?"
+            date_params = [year_ago]
 
         # Events Today (always calculate regardless of filter, as it's a fixed metric)
         today = datetime.now().strftime("%Y-%m-%d")
