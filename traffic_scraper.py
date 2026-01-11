@@ -71,7 +71,7 @@ CORS(app, resources={r"/api/*": {"origins": "*"}, r"/maps/*": {"origins": "*"}})
 
 # Test mode flag
 
-TESTMODE = True
+TESTMODE = False
 
 # -----------------------------------
 # Database Functions
