@@ -57,7 +57,7 @@
   let darkMode = false;
   let currentUsername = "";
   let lastToggleTime = 0;
-  let postsPerPage = 30;
+  let postsPerPage = 15;
   let currentPage = 1;
   let loadingMore = false;
   let allPostsLoaded = false;
@@ -155,10 +155,24 @@
 
     const ctx = chartCanvas.getContext("2d");
 
+    // Colors based on dark mode
+    const gridColor = darkMode
+      ? "rgba(255, 255, 255, 0.06)"
+      : "rgba(0, 0, 0, 0.06)";
+    const tickColor = darkMode
+      ? "rgba(255, 255, 255, 0.5)"
+      : "rgba(0, 0, 0, 0.6)";
+    const lineColor = darkMode ? "#63b3ed" : "#3182ce";
+
     // Create gradient fill
     const gradient = ctx.createLinearGradient(0, 0, 0, 180);
-    gradient.addColorStop(0, "rgba(99, 179, 237, 0.4)");
-    gradient.addColorStop(1, "rgba(99, 179, 237, 0.02)");
+    if (darkMode) {
+      gradient.addColorStop(0, "rgba(99, 179, 237, 0.4)");
+      gradient.addColorStop(1, "rgba(99, 179, 237, 0.02)");
+    } else {
+      gradient.addColorStop(0, "rgba(49, 130, 206, 0.4)");
+      gradient.addColorStop(1, "rgba(49, 130, 206, 0.02)");
+    }
 
     chartInstance = new ChartJS(ctx, {
       type: "line",
@@ -169,12 +183,12 @@
             data: hourlyData,
             fill: true,
             backgroundColor: gradient,
-            borderColor: "#63b3ed",
+            borderColor: lineColor,
             borderWidth: 2.5,
             tension: 0.4,
             pointRadius: 0,
             pointHoverRadius: 4,
-            pointHoverBackgroundColor: "#63b3ed",
+            pointHoverBackgroundColor: lineColor,
             pointHoverBorderColor: "#ffffff",
             pointHoverBorderWidth: 1.5,
           },
@@ -198,9 +212,13 @@
         plugins: {
           legend: { display: false },
           tooltip: {
-            backgroundColor: "rgba(30, 58, 95, 0.95)",
-            titleColor: "#ffffff",
-            bodyColor: "#ffffff",
+            backgroundColor: darkMode
+              ? "rgba(30, 58, 95, 0.95)"
+              : "rgba(255, 255, 255, 0.95)",
+            titleColor: darkMode ? "#ffffff" : "#1a202c",
+            bodyColor: darkMode ? "#ffffff" : "#2d3748",
+            borderColor: darkMode ? "transparent" : "#e2e8f0",
+            borderWidth: darkMode ? 0 : 1,
             titleFont: { size: 12, weight: "bold" },
             bodyFont: { size: 14, weight: "bold" },
             padding: 12,
@@ -218,7 +236,7 @@
             grid: { display: false },
             border: { display: false },
             ticks: {
-              color: "rgba(255, 255, 255, 0.5)",
+              color: tickColor,
               font: { size: 10, weight: "normal" },
               maxRotation: 0,
               autoSkip: true,
@@ -236,27 +254,34 @@
             display: true,
             position: "right",
             grid: {
-              color: "rgba(255, 255, 255, 0.06)",
+              color: gridColor,
             },
             border: { display: false },
             ticks: {
-              color: "rgba(255, 255, 255, 0.5)",
+              color: tickColor,
               font: { size: 10, weight: "normal" },
               padding: 8,
               callback: function (value) {
-                // Round by 10 for month/year, otherwise round normally
-                if (timeFilter === "month" || timeFilter === "year") {
+                if (timeFilter === "year") {
+                  return value.toLocaleString();
+                }
+                if (timeFilter === "month") {
                   return Math.round(value / 10) * 10;
                 }
                 return Math.round(value);
               },
               stepSize:
-                timeFilter === "month" || timeFilter === "year"
+                timeFilter === "year"
                   ? Math.max(
-                      10,
-                      Math.ceil(Math.max(...hourlyData) / 5 / 10) * 10,
+                      2000,
+                      Math.ceil(Math.max(...hourlyData) / 5 / 2000) * 2000,
                     )
-                  : Math.max(1, Math.ceil(Math.max(...hourlyData) / 5)),
+                  : timeFilter === "month"
+                    ? Math.max(
+                        10,
+                        Math.ceil(Math.max(...hourlyData) / 5 / 10) * 10,
+                      )
+                    : Math.max(1, Math.ceil(Math.max(...hourlyData) / 5)),
             },
             beginAtZero: true,
             suggestedMax: Math.max(...hourlyData) * 1.15 || 10,
@@ -302,10 +327,26 @@
       Math.max(...hourlyData) * 1.15 || 10;
     // Update stepSize based on time filter (round by 10 for month/year)
     chartInstance.options.scales.y.ticks.stepSize =
-      timeFilter === "month" || timeFilter === "year"
-        ? Math.max(10, Math.ceil(Math.max(...hourlyData) / 5 / 10) * 10)
-        : Math.max(1, Math.ceil(Math.max(...hourlyData) / 5));
+      timeFilter === "year"
+        ? Math.max(2000, Math.ceil(Math.max(...hourlyData) / 5 / 2000) * 2000)
+        : timeFilter === "month"
+          ? Math.max(10, Math.ceil(Math.max(...hourlyData) / 5 / 10) * 10)
+          : Math.max(1, Math.ceil(Math.max(...hourlyData) / 5));
+    // Update tick callback dynamically
+    chartInstance.options.scales.y.ticks.callback = function (value) {
+      if (timeFilter === "year") {
+        return value.toLocaleString();
+      }
+      if (timeFilter === "month") {
+        return Math.round(value / 10) * 10;
+      }
+      return Math.round(value);
+    };
     // Use default update mode to keep animation
+    const gridColor = darkMode
+      ? "rgba(255, 255, 255, 0.06)"
+      : "rgba(0, 0, 0, 0.06)";
+    chartInstance.options.scales.y.grid.color = gridColor;
     chartInstance.update();
   }
 
@@ -318,6 +359,11 @@
   ) {
     // Use setTimeout to ensure canvas is mounted
     setTimeout(() => updateChart(), 50);
+  }
+
+  // Reload chart when dark mode changes to update colors
+  $: if (darkMode !== undefined && chartInstance) {
+    initializeChart();
   }
 
   // Cleanup chart when stats panel is closed
@@ -390,7 +436,8 @@
 
   function setTimeFilter(newFilter) {
     timeFilter = newFilter;
-    statsCache = {};
+    // Don't destroy chart here to prevent flashing
+    // statsCache = {}; // Removed to preserve cache
     fetchIncidentStats();
   }
 
@@ -622,6 +669,8 @@
             .sort(([, a], [, b]) => b - a)
             .slice(0, limit),
         );
+        // Important: Create new array reference for caching to trigger Svelte reactivity
+        hourlyData = [...(cachedStats.hourlyData || [])];
         return;
       }
 
@@ -1103,7 +1152,7 @@
                 <div
                   class="breakdown-item-bar"
                   style="width: {(count /
-                    Math.max(...Object.values(topLocations))) *
+                    Math.max(...Object.values(topLocations), 5)) *
                     100}%"
                 ></div>
                 <span class="breakdown-item-label">{location}</span>
@@ -1238,20 +1287,20 @@
     --primary-lightest: #ebf8ff;
     --accent-color: #f6ad55;
     --accent-dark: #dd6b20;
-    --bg-color: #f9fafb;
+    --bg-color: #eaeff5;
     --text-color: #1a202c;
-    --card-bg: white;
-    --shadow-color: rgba(0, 0, 0, 0.06);
-    --border-color: #e2e8f0;
-    --secondary-bg: #f8fafc;
-    --comment-bg: #f1f5f9;
-    --text-muted: #718096;
-    --text-dark: #4a5568;
-    --text-darker: #2d3748;
-    --hover-bg: #f7fafc;
+    --card-bg: #ffffff;
+    --shadow-color: rgba(0, 0, 0, 0.1);
+    --border-color: #cbd5e0;
+    --secondary-bg: #f1f5f9;
+    --comment-bg: #e2e8f0;
+    --text-muted: #4a5568;
+    --text-dark: #2d3748;
+    --text-darker: #1a202c;
+    --hover-bg: #e2e8f0;
     --button-bg: #3182ce;
     --button-hover: #2c5282;
-    --avatar-bg: #e2e8f0;
+    --avatar-bg: #cbd5e0;
     --error-bg: #fff5f5;
     --error-color: #e53e3e;
     --success-color: #38a169;
@@ -1329,13 +1378,20 @@
     gap: 1.25rem;
     margin-bottom: 1.5rem;
     padding: 1.5rem;
-    background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
+    background: var(--card-bg);
     border-radius: 20px;
+    color: var(--text-color);
+    box-shadow: var(--shadow-color);
+    overflow: visible;
+    transition: all 0.3s ease;
+  }
+
+  :global(body.dark-mode) .event-counters {
+    background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
     color: white;
     box-shadow:
       0 10px 40px rgba(0, 0, 0, 0.3),
       inset 0 1px 0 rgba(255, 255, 255, 0.1);
-    overflow: visible;
   }
 
   .top-row {
@@ -1352,13 +1408,8 @@
   }
 
   .stat-card {
-    background: linear-gradient(
-      135deg,
-      rgba(255, 255, 255, 0.12) 0%,
-      rgba(255, 255, 255, 0.05) 100%
-    );
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
     border-radius: 16px;
     text-align: center;
     padding: 1rem 0.75rem;
@@ -1368,6 +1419,16 @@
     align-items: center;
     min-height: 90px;
     transition: all 0.3s ease;
+  }
+
+  :global(body.dark-mode) .stat-card {
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.12) 0%,
+      rgba(255, 255, 255, 0.05) 100%
+    );
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
   }
 
   .stat-card:hover {
@@ -1390,6 +1451,17 @@
     font-size: 1.75rem;
     font-weight: 800;
     letter-spacing: -0.02em;
+    background: linear-gradient(
+      180deg,
+      var(--primary-dark) 0%,
+      var(--primary-light) 100%
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  :global(body.dark-mode) .stat-value {
     background: linear-gradient(180deg, #ffffff 0%, #b8d4f0 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -1411,6 +1483,14 @@
     align-items: center;
     justify-content: center;
     padding: 1rem 1.25rem;
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    min-width: 180px;
+    gap: 0.75rem;
+  }
+
+  :global(body.dark-mode) .time-period-section {
     background: linear-gradient(
       135deg,
       rgba(255, 255, 255, 0.12) 0%,
@@ -1418,9 +1498,6 @@
     );
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 16px;
-    min-width: 180px;
-    gap: 0.75rem;
   }
 
   .section-label {
@@ -1434,9 +1511,15 @@
   .time-buttons {
     display: flex;
     gap: 0.4rem;
-    background: rgba(0, 0, 0, 0.2);
+    background: var(--secondary-bg);
     padding: 0.3rem;
     border-radius: 24px;
+    border: 1px solid var(--border-color);
+  }
+
+  :global(body.dark-mode) .time-buttons {
+    background: rgba(0, 0, 0, 0.2);
+    border: none;
   }
 
   .time-button {
@@ -1444,26 +1527,46 @@
     background: transparent;
     border: none;
     border-radius: 20px;
-    color: rgba(255, 255, 255, 0.7);
+    color: var(--text-muted);
     font-size: 0.8rem;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.25s ease;
   }
 
+  :global(body.dark-mode) .time-button {
+    color: rgba(255, 255, 255, 0.7);
+  }
+
   .time-button:hover {
+    color: var(--text-color);
+    background: var(--hover-bg);
+  }
+
+  :global(body.dark-mode) .time-button:hover {
     color: white;
     background: rgba(255, 255, 255, 0.1);
   }
 
   .time-button.active {
+    background: var(--primary-color);
+    color: white;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  }
+
+  :global(body.dark-mode) .time-button.active {
     background: white;
     color: #1e3a5f;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   }
 
   .activity-chart-section {
     padding: 1rem 1.25rem;
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+  }
+
+  :global(body.dark-mode) .activity-chart-section {
     background: linear-gradient(
       135deg,
       rgba(255, 255, 255, 0.08) 0%,
@@ -1471,7 +1574,6 @@
     );
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 16px;
   }
 
   .activity-header {
@@ -1505,6 +1607,13 @@
   }
 
   .breakdown-card {
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 1rem;
+  }
+
+  :global(body.dark-mode) .breakdown-card {
     background: linear-gradient(
       135deg,
       rgba(255, 255, 255, 0.1) 0%,
@@ -1512,8 +1621,6 @@
     );
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 16px;
-    padding: 1rem;
   }
 
   .breakdown-header {
@@ -1546,20 +1653,29 @@
     align-items: center;
     position: relative;
     padding: 0.6rem 0.75rem;
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--hover-bg);
     border: none;
     border-radius: 10px;
     cursor: pointer;
     transition: all 0.2s ease;
     min-height: 40px;
     overflow: hidden;
-    color: white;
+    color: var(--text-color);
     text-align: left;
   }
 
+  :global(body.dark-mode) .breakdown-item {
+    background: rgba(255, 255, 255, 0.04);
+    color: white;
+  }
+
   .breakdown-item:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--hover-bg);
     transform: translateX(2px);
+  }
+
+  :global(body.dark-mode) .breakdown-item:hover {
+    background: rgba(255, 255, 255, 0.1);
   }
 
   .breakdown-item-bar {
@@ -1567,14 +1683,14 @@
     left: 0;
     top: 0;
     height: 100%;
-    background: linear-gradient(
-      90deg,
-      rgba(99, 179, 237, 0.3) 0%,
-      rgba(99, 179, 237, 0.05) 100%
-    );
+    background: rgba(49, 130, 206, 0.2);
     border-radius: inherit;
     z-index: 0;
     transition: width 0.5s ease;
+  }
+
+  :global(body.dark-mode) .breakdown-item-bar {
+    background: rgba(99, 179, 237, 0.2);
   }
 
   .breakdown-item-icon {
@@ -1598,20 +1714,24 @@
     z-index: 1;
     font-size: 0.75rem;
     font-weight: 700;
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(0, 0, 0, 0.05);
     padding: 0.25rem 0.6rem;
     border-radius: 8px;
     margin-left: 0.5rem;
     flex-shrink: 0;
   }
 
+  :global(body.dark-mode) .breakdown-item-count {
+    background: rgba(255, 255, 255, 0.15);
+  }
+
   .filter-toggle {
     margin-top: 0.5rem;
     padding: 0.6rem 1.25rem;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: var(--secondary-bg);
+    border: 1px solid var(--border-color);
     border-radius: 24px;
-    color: white;
+    color: var(--text-color);
     font-size: 0.85rem;
     font-weight: 600;
     cursor: pointer;
@@ -1619,9 +1739,19 @@
     align-self: center;
   }
 
+  :global(body.dark-mode) .filter-toggle {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: white;
+  }
+
   .filter-toggle:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--hover-bg);
     transform: translateY(-1px);
+  }
+
+  :global(body.dark-mode) .filter-toggle:hover {
+    background: rgba(255, 255, 255, 0.2);
   }
 
   .filter-toggle.filter-active {

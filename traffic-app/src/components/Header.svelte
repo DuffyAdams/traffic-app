@@ -38,14 +38,25 @@
         text-align: center;
         margin-bottom: 1.5rem;
         padding: 1.5rem;
+        background: linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%);
+        color: #1a365d; /* Deep navy blue for better aesthetics */
+        border-radius: 20px;
+        box-shadow:
+            0 10px 30px rgba(0, 0, 0, 0.04),
+            inset 0 1px 0 rgba(255, 255, 255, 0.6);
+        position: relative;
+        overflow: hidden;
+        transition: all 0.3s ease;
+        border: 1px solid #e2e8f0;
+    }
+
+    :global(body.dark-mode) .header {
         background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
         color: white;
-        border-radius: 20px;
         box-shadow:
             0 10px 40px rgba(0, 0, 0, 0.3),
             inset 0 1px 0 rgba(255, 255, 255, 0.1);
-        position: relative;
-        overflow: hidden;
+        border: none;
     }
 
     .header::before {
@@ -57,24 +68,30 @@
         height: 200%;
         background: radial-gradient(
             circle,
+            rgba(66, 153, 225, 0.08) 0%,
+            rgba(255, 255, 255, 0) 60%
+        );
+        opacity: 1;
+        transform: rotate(30deg);
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+    }
+
+    :global(body.dark-mode) .header::before {
+        background: radial-gradient(
+            circle,
             rgba(255, 255, 255, 0.1) 0%,
             rgba(255, 255, 255, 0) 60%
         );
         opacity: 0.6;
-        transform: rotate(30deg);
-        pointer-events: none;
     }
 
     .dark-mode-toggle {
         position: absolute;
         top: 1rem;
         right: 1rem;
-        background: linear-gradient(
-            135deg,
-            rgba(255, 255, 255, 0.25) 0%,
-            rgba(255, 255, 255, 0.1) 100%
-        );
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: rgba(0, 0, 0, 0.05);
+        border: 1px solid rgba(0, 0, 0, 0.1);
         border-radius: 24px;
         width: 52px;
         height: 28px;
@@ -84,12 +101,23 @@
         z-index: 2;
         display: flex;
         align-items: center;
-        justify-content: flex-start;
+        justify-content: flex-end; /* Align Moon to right in Light Mode */
         padding: 3px;
+        box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+    }
+
+    :global(body.dark-mode) .dark-mode-toggle {
+        background: linear-gradient(
+            135deg,
+            rgba(255, 255, 255, 0.25) 0%,
+            rgba(255, 255, 255, 0.1) 100%
+        );
+        border: 1px solid rgba(255, 255, 255, 0.2);
         box-shadow:
             inset 0 1px 0 rgba(255, 255, 255, 0.2),
             0 2px 8px rgba(0, 0, 0, 0.15);
-        overflow: hidden;
+        justify-content: flex-start; /* Align Sun to left in Dark Mode */
     }
 
     .dark-mode-toggle::before {
@@ -130,7 +158,7 @@
         z-index: 1;
         background: none;
         border: none;
-        color: white;
+        color: inherit;
         width: 100%;
     }
 
@@ -156,35 +184,45 @@
     .stats-toggle {
         display: inline-block;
         padding: 0.4rem 1rem;
-        background: rgba(255, 255, 255, 0.15);
+        background: rgba(0, 0, 0, 0.05);
         border-radius: 20px;
         font-size: 0.9rem;
         font-weight: 600;
         transition: background 0.2s;
+        border: 1px solid rgba(0, 0, 0, 0.05);
+    }
+
+    :global(body.dark-mode) .stats-toggle {
+        background: rgba(255, 255, 255, 0.15);
+        border: none;
     }
 
     .header-content:hover .stats-toggle {
+        background: rgba(0, 0, 0, 0.1);
+    }
+
+    :global(body.dark-mode) .header-content:hover .stats-toggle {
         background: rgba(255, 255, 255, 0.25);
     }
 
     @media (max-width: 768px) {
         .header {
-            padding: 0.8rem;
+            padding: 1.25rem 3rem;
             margin-bottom: 0.8rem;
             border-radius: 12px;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-            overflow: visible;
+            overflow: hidden; /* Ensure 200% width pseudo-element doesn't cause page overflow */
         }
         .header h1 {
-            font-size: 1.5rem;
+            font-size: 1.4rem;
             margin-bottom: 0.3rem;
         }
         .header p {
             font-size: 0.9rem;
         }
         .dark-mode-toggle {
-            top: 0.6rem;
-            right: 0.6rem;
+            top: 0.8rem;
+            right: 0.8rem;
             width: 44px;
             height: 24px;
             border-radius: 20px;
@@ -204,9 +242,12 @@
 
     @media (max-width: 480px) {
         .header {
-            padding: 0.7rem;
+            padding: 0.8rem 3rem 0.8rem 3rem;
             margin-bottom: 0.7rem;
             border-radius: 10px;
+        }
+        .header h1 {
+            font-size: 1.25rem;
         }
     }
 </style>

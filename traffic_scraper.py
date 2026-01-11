@@ -164,6 +164,11 @@ def init_db():
             WHERE type = 'Request CalTrans Notify'
         """)
         
+        # Performance optimization: Create indexes
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_timestamp ON incidents(timestamp)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_active ON incidents(active)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_date ON incidents(date)")
+        
         conn.commit()
 
 def read_incidents(limit=20, offset=0, incident_type=None, active_only=False, cursor=None, date_filter=None):
@@ -820,7 +825,7 @@ def comment_incident(incident_id):
             device_uuid,
             max_age=COOKIE_MAX_AGE,
             secure=False,
-            httpy=True,
+            httponly=True,
             samesite='Lax'
         )
     return response
@@ -835,7 +840,7 @@ def check_user():
             device_uuid,
             max_age=COOKIE_MAX_AGE,
             secure=False,
-            httpy=True,
+            httponly=True,
             samesite='Lax'
         )
     return response
