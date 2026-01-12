@@ -1,5 +1,6 @@
 <script>
     import { createEventDispatcher } from "svelte";
+    import { Sun, Moon, ChevronDown, ChevronUp } from "lucide-svelte";
 
     export let darkMode = false;
     export let showEventCounters = false;
@@ -21,15 +22,24 @@
         on:click={handleToggleDarkMode}
         aria-label="Toggle dark mode"
     >
-        {darkMode ? "☀️" : "🌙"}
+        {#if darkMode}
+            <Sun size={18} />
+        {:else}
+            <Moon size={18} />
+        {/if}
     </button>
 
     <button class="header-content" on:click={handleToggleEventCounters}>
         <h1>San Diego Traffic Watch</h1>
         <p>Real-time incidents from CHP scanner data</p>
-        <span class="stats-toggle"
-            >Incident Stats {showEventCounters ? "▲" : "▼"}</span
-        >
+        <div class="stats-toggle">
+            Incident Stats
+            {#if showEventCounters}
+                <ChevronUp size={16} />
+            {:else}
+                <ChevronDown size={16} />
+            {/if}
+        </div>
     </button>
 </header>
 
@@ -120,22 +130,6 @@
         justify-content: flex-start; /* Align Sun to left in Dark Mode */
     }
 
-    .dark-mode-toggle::before {
-        content: "";
-        position: absolute;
-        width: 22px;
-        height: 22px;
-        background: white;
-        border-radius: 50%;
-        left: 3px;
-        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-    }
-
-    :global(body.dark-mode) .dark-mode-toggle::before {
-        transform: translateX(24px);
-    }
-
     .dark-mode-toggle:hover {
         background: linear-gradient(
             135deg,
@@ -182,7 +176,9 @@
     }
 
     .stats-toggle {
-        display: inline-block;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
         padding: 0.4rem 1rem;
         background: rgba(0, 0, 0, 0.05);
         border-radius: 20px;

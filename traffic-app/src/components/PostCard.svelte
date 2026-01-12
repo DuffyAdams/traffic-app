@@ -7,6 +7,15 @@
         formatTimestamp,
         truncateDescription,
     } from "../utils/helpers.js";
+    import {
+        Zap,
+        Clock,
+        MapPin,
+        Heart,
+        MessageSquare,
+        Share2,
+    } from "lucide-svelte";
+    import IncidentIcon from "./IncidentIcon.svelte";
 
     export let post;
     export let index = 0;
@@ -30,8 +39,11 @@
         dispatch("toggleDescription", { postId: post.id });
     }
 
-    function handleCommentSubmit() {
-        dispatch("submitComment", { postId: post.id });
+    function handleCommentSubmit(event) {
+        dispatch("submitComment", {
+            postId: post.id,
+            comment: event.detail.comment,
+        });
     }
 
     function handleCommentClose() {
@@ -50,14 +62,14 @@
     <div class="post-content">
         <div class="post-image-container">
             <div class="post-badge">
-                <span class="incident-icon"
-                    >{getIconForIncidentType(post.type)}</span
-                >
+                <span class="incident-icon">
+                    <IncidentIcon type={post.type} />
+                </span>
                 <span class="incident-type">{post.type}</span>
             </div>
             {#if post.active}
                 <div class="active-badge">
-                    <span class="active-icon">⚡</span>
+                    <span class="active-icon"><Zap size={12} /></span>
                     <span>Active</span>
                 </div>
             {/if}
@@ -71,8 +83,14 @@
 
         <div class="post-info">
             <div class="post-header">
-                <span class="post-time">{post.time}</span>
-                <span class="post-location">{post.location}</span>
+                <span class="post-time">
+                    <Clock size={14} />
+                    {post.time}
+                </span>
+                <span class="post-location">
+                    <MapPin size={14} />
+                    {post.location}
+                </span>
             </div>
             <div class="post-description">
                 {#if post.description}
@@ -98,25 +116,34 @@
                     class:like-error={post.likeErrorAnimation}
                     on:click={handleLike}
                 >
-                    <span class="button-icon">❤️</span>
+                    <span class="button-icon">
+                        <Heart
+                            size={18}
+                            fill={post.likes > 0 ? "currentColor" : "none"}
+                        />
+                    </span>
                     <span>{post.likes > 0 ? post.likes : "Like"}</span>
                 </button>
                 <button
                     class="action-button comment-button"
                     on:click={handleToggleComments}
                 >
-                    <span class="button-icon">💬</span>
-                    <span
-                        >{post.comments.length > 0
+                    <span class="button-icon">
+                        <MessageSquare size={18} />
+                    </span>
+                    <span>
+                        {post.comments.length > 0
                             ? post.comments.length
-                            : "Comment"}</span
-                    >
+                            : "Comment"}
+                    </span>
                 </button>
                 <button
                     class="action-button share-button"
                     on:click={handleShare}
                 >
-                    <span class="button-icon">🔗</span>
+                    <span class="button-icon">
+                        <Share2 size={18} />
+                    </span>
                     <span>Share</span>
                 </button>
             </div>
@@ -223,11 +250,14 @@
     }
 
     .incident-icon {
-        font-size: 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .active-icon {
-        font-size: 0.7rem;
+        display: flex;
+        align-items: center;
     }
 
     .post-image {
@@ -264,23 +294,7 @@
         gap: 0.3rem;
     }
 
-    .post-time::before {
-        content: "🕒";
-        font-size: 0.8rem;
-    }
-
-    .post-location {
-        color: var(--primary-color);
-        font-weight: 600;
-        display: flex;
-        align-items: center;
-        gap: 0.3rem;
-    }
-
-    .post-location::before {
-        content: "📍";
-        font-size: 0.9rem;
-    }
+    /* Pseudo-elements removed as icons are now inline SVGs */
 
     .post-description {
         font-size: 1rem;

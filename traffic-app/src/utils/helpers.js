@@ -104,31 +104,31 @@ export function truncateDescription(text, length = 150) {
 // Get emoji icon for incident type
 export function getIconForIncidentType(type) {
     const types = {
-        "Aircraft Emergency": "🛩️",
-        "Animal Hazard": "🐾",
-        "Assist CT with Maintenance": "🔧",
-        "Road Closure": "🚧",
-        "Car Fire": "🔥",
-        "Construction": "🏗️",
-        "Defective Traffic Signals": "🚦",
-        "Fatality": "☠️",
-        "Hit and Run No Injuries": "🚗💨",
-        "JUMPER": "🧍‍♂️",
-        "Live or Dead Animal": "🦌",
-        "Maintenance": "🛠️",
-        "Debris From Vehicle": "📦",
-        "Provide Traffic Control": "🚓",
-        "Report of Fire": "🔥",
-        "Request CalTrans Notify": "📞",
-        "Road Conditions": "🛣️",
-        "SIG Alert": "📢",
-        "SPINOUT": "↩️",
-        "Traffic Break": "✋",
-        "Traffic Collision": "🚘",
-        "Traffic Hazard": "⚠️",
-        "Wrong Way Driver": "↪️"
+        "Aircraft Emergency": "plane",
+        "Animal Hazard": "paw-print",
+        "Assist CT with Maintenance": "wrench",
+        "Road Closure": "ban",
+        "Car Fire": "flame",
+        "Construction": "hard-hat",
+        "Defective Traffic Signals": "traffic-cone",
+        "Fatality": "skull",
+        "Hit and Run No Injuries": "car-off",
+        "JUMPER": "user-x",
+        "Live or Dead Animal": "paw-print",
+        "Maintenance": "hammer",
+        "Debris From Vehicle": "box",
+        "Provide Traffic Control": "shield-alert",
+        "Report of Fire": "flame",
+        "Request CalTrans Notify": "phone-call",
+        "Road Conditions": "road",
+        "SIG Alert": "megaphone",
+        "SPINOUT": "rotate-ccw",
+        "Traffic Break": "hand",
+        "Traffic Collision": "car",
+        "Traffic Hazard": "triangle-alert",
+        "Wrong Way Driver": "arrow-left-right"
     };
-    return types[type] || "🚨";
+    return types[type] || "siren";
 }
 
 // Calculate nice step size for chart Y axis

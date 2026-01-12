@@ -58,7 +58,7 @@
     }
 
     .toast-warning {
-        background-color: #ed8936;
+        background-color: var(--accent-color);
         color: white;
     }
 

@@ -63,7 +63,8 @@
   let allPostsLoaded = false;
   let scrollContainer;
   let lastCursor = null;
-  let selectedType = null;
+  let selectedTypes = new Set();
+  let selectedLocations = new Set();
   let condensedView = false;
   let expandedPostId = null;
   let eventsToday = 0;
@@ -442,7 +443,23 @@
   }
 
   function filterByType(type) {
-    selectedType = selectedType === type ? null : type;
+    if (selectedTypes.has(type)) {
+      selectedTypes.delete(type);
+    } else {
+      selectedTypes.add(type);
+    }
+    selectedTypes = new Set(selectedTypes); // Trigger reactivity
+    currentPage = 1;
+    fetchIncidents();
+  }
+
+  function filterByLocation(location) {
+    if (selectedLocations.has(location)) {
+      selectedLocations.delete(location);
+    } else {
+      selectedLocations.add(location);
+    }
+    selectedLocations = new Set(selectedLocations); // Trigger reactivity
     currentPage = 1;
     fetchIncidents();
   }
@@ -470,8 +487,15 @@
       if (currentPage > 1 && lastCursor) {
         url += `&cursor=${encodeURIComponent(lastCursor)}`;
       }
-      if (selectedType) {
-        url += `&type=${encodeURIComponent(selectedType)}`;
+      if (selectedTypes.size > 0) {
+        for (const type of selectedTypes) {
+          url += `&type=${encodeURIComponent(type)}`;
+        }
+      }
+      if (selectedLocations.size > 0) {
+        for (const loc of selectedLocations) {
+          url += `&location=${encodeURIComponent(loc)}`;
+        }
       }
       if (showActiveOnly) {
         url += `&active_only=true`;
@@ -658,16 +682,15 @@
         eventsActive = cachedStats.eventsActive;
         totalIncidents = cachedStats.totalIncidents;
 
-        const limit = 6;
         incidentsByType = Object.fromEntries(
-          Object.entries(cachedStats.incidentsByType)
-            .sort(([, a], [, b]) => b - a)
-            .slice(0, limit),
+          Object.entries(cachedStats.incidentsByType).sort(
+            ([, a], [, b]) => b - a,
+          ),
         );
         topLocations = Object.fromEntries(
-          Object.entries(cachedStats.topLocations)
-            .sort(([, a], [, b]) => b - a)
-            .slice(0, limit),
+          Object.entries(cachedStats.topLocations).sort(
+            ([, a], [, b]) => b - a,
+          ),
         );
         // Important: Create new array reference for caching to trigger Svelte reactivity
         hourlyData = [...(cachedStats.hourlyData || [])];
@@ -694,16 +717,11 @@
       totalIncidents = stats.totalIncidents;
       hourlyData = stats.hourlyData || [];
 
-      const limit = 6;
       incidentsByType = Object.fromEntries(
-        Object.entries(stats.incidentsByType)
-          .sort(([, a], [, b]) => b - a)
-          .slice(0, limit),
+        Object.entries(stats.incidentsByType).sort(([, a], [, b]) => b - a),
       );
       topLocations = Object.fromEntries(
-        Object.entries(stats.topLocations)
-          .sort(([, a], [, b]) => b - a)
-          .slice(0, limit),
+        Object.entries(stats.topLocations).sort(([, a], [, b]) => b - a),
       );
     } catch (err) {
       if (err.name !== "AbortError") {
@@ -787,9 +805,12 @@
     }
   }
 
-  async function submitComment(postId) {
+  async function submitComment(postId, commentContent = null) {
     const post = posts.find((p) => p.id === postId);
-    if (!post || post.newComment.trim() === "") return;
+    const commentText =
+      commentContent !== null ? commentContent : post?.newComment;
+
+    if (!post || !commentText || commentText.trim() === "") return;
 
     const userComments = post.comments.filter(
       (c) => c.username === currentUsername,
@@ -801,7 +822,7 @@
 
     const newCommentObj = {
       username: currentUsername,
-      comment: post.newComment.trim(),
+      comment: commentText.trim(),
       timestamp: new Date().toISOString(),
     };
 
@@ -964,7 +985,7 @@
   }
 
   function handlePostSubmitComment(event) {
-    submitComment(event.detail.postId);
+    submitComment(event.detail.postId, event.detail.comment);
   }
 
   function handleTableToggleExpand(event) {
@@ -1022,7 +1043,14 @@
       });
     }
 
-    onDestroy(() => {
+    const updateInterval = setInterval(() => {
+      if (isOnline && !loading && !loadingMore) {
+        checkForUpdates();
+        fetchIncidentStats();
+      }
+    }, 30000);
+
+    return () => {
       clearInterval(refreshInterval);
       window.removeEventListener("online", updateOnlineStatus);
       window.removeEventListener("offline", updateOnlineStatus);
@@ -1035,8 +1063,104 @@
       if (chartInstance) {
         chartInstance.destroy();
       }
-    });
+    };
   });
+
+  import {
+    Calendar,
+    Clock,
+    Zap,
+    BarChart3,
+    Search,
+    MapPin,
+    List,
+  } from "lucide-svelte";
+  import IncidentIcon from "./components/IncidentIcon.svelte";
+
+  async function checkForUpdates() {
+    try {
+      let url = `/api/incidents?limit=${postsPerPage}`;
+      if (selectedTypes.size > 0) {
+        for (const type of selectedTypes) {
+          url += `&type=${encodeURIComponent(type)}`;
+        }
+      }
+      if (selectedLocations.size > 0) {
+        for (const loc of selectedLocations) {
+          url += `&location=${encodeURIComponent(loc)}`;
+        }
+      }
+      if (showActiveOnly) {
+        url += `&active_only=true`;
+      }
+
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const newIncidents = await res.json();
+
+      if (!Array.isArray(newIncidents)) return;
+
+      const newProcessedPosts = newIncidents
+        .filter((incident) => {
+          if (!incident || typeof incident !== "object") return false;
+          if (
+            !incident.incident_no ||
+            !incident.timestamp ||
+            !incident.map_filename
+          ) {
+            return false;
+          }
+          return true;
+        })
+        .map((incident) => {
+          const date = incident.timestamp
+            ? new Date(incident.timestamp).toLocaleDateString()
+            : "";
+          incident.compositeId = `${incident.incident_no}-${date}`;
+          return incident;
+        })
+        .filter((incident) => {
+          const duplicateKey = `${incident.incident_no}-${incident.timestamp}-${incident.location}`;
+          // If we haven't seen it, it's new.
+          if (seenCompositeKeys.has(duplicateKey)) {
+            return false;
+          }
+          return true;
+        })
+        .map((incident) => {
+          // Add to seen keys so we don't re-add it later
+          const key = `${incident.incident_no}-${incident.timestamp}-${incident.location}`;
+          seenCompositeKeys.add(key);
+
+          return {
+            id: incident.incident_no,
+            compositeId: incident.compositeId,
+            timestamp: incident.timestamp,
+            time: formatTimestamp(incident.timestamp),
+            description: incident.description || "No description available",
+            showFullDescription: false,
+            location: incident.location || "Unknown location",
+            image: `/maps/${incident.map_filename}`,
+            likes: typeof incident.likes === "number" ? incident.likes : 0,
+            comments: Array.isArray(incident.comments) ? incident.comments : [],
+            newComment: "",
+            showComments: false,
+            type: incident.type || "Traffic Incident",
+            likeError: "",
+            commentError: "",
+            likeErrorAnimation: false,
+            active: Boolean(incident.active),
+          };
+        });
+
+      if (newProcessedPosts.length > 0) {
+        posts = [...newProcessedPosts, ...posts];
+        addToast(`${newProcessedPosts.length} new incident(s) found`, "info");
+      }
+    } catch (err) {
+      console.error("Error checking for updates:", err);
+    }
+  }
 </script>
 
 <div class="container" bind:this={scrollContainer}>
@@ -1053,22 +1177,22 @@
       <div class="top-row">
         <div class="stats-grid">
           <div class="stat-card">
-            <div class="stat-icon">📅</div>
+            <div class="stat-icon"><Calendar size={24} /></div>
             <div class="stat-value">{eventsToday}</div>
             <div class="stat-label">Today</div>
           </div>
           <div class="stat-card">
-            <div class="stat-icon">⏰</div>
+            <div class="stat-icon"><Clock size={24} /></div>
             <div class="stat-value">{eventsLastHour}</div>
             <div class="stat-label">Last Hour</div>
           </div>
           <div class="stat-card">
-            <div class="stat-icon">⚡</div>
+            <div class="stat-icon"><Zap size={24} /></div>
             <div class="stat-value">{eventsActive}</div>
             <div class="stat-label">Active</div>
           </div>
           <div class="stat-card">
-            <div class="stat-icon">📊</div>
+            <div class="stat-icon"><BarChart3 size={24} /></div>
             <div class="stat-value">{totalIncidents}</div>
             <div class="stat-label">Total</div>
           </div>
@@ -1114,50 +1238,56 @@
       <div class="incident-breakdown-grid">
         <div class="breakdown-card">
           <div class="breakdown-header">
-            <span class="breakdown-icon">📋</span>
+            <span class="breakdown-icon"><BarChart3 size={18} /></span>
             <span class="breakdown-title">By Type</span>
           </div>
           <div class="breakdown-list">
             {#each Object.entries(incidentsByType) as [type, count]}
               <button
                 class="breakdown-item"
+                class:selected={selectedTypes.has(type)}
                 on:click={() => filterByType(type)}
               >
-                <div
-                  class="breakdown-item-bar"
-                  style="width: {(count /
-                    Math.max(...Object.values(incidentsByType))) *
-                    100}%"
-                ></div>
-                <span class="breakdown-item-icon"
-                  >{getIconForIncidentType(type)}</span
-                >
+                <span class="breakdown-icon">
+                  <IncidentIcon {type} />
+                </span>
                 <span
-                  class="breakdown-item-label"
-                  class:filter-active={selectedType === type}>{type}</span
-                >
-                <span class="breakdown-item-count">{count}</span>
+                  class="breakdown-count-bar"
+                  style="width: {(count /
+                    Math.max(...Object.values(incidentsByType), 1)) *
+                    100}%"
+                ></span>
+                <div class="breakdown-text">
+                  <span class="breakdown-name">{type}</span>
+                  <span class="breakdown-count">{count}</span>
+                </div>
               </button>
             {/each}
           </div>
         </div>
         <div class="breakdown-card">
           <div class="breakdown-header">
-            <span class="breakdown-icon">📍</span>
+            <span class="breakdown-icon"><MapPin size={18} /></span>
             <span class="breakdown-title">Top Locations</span>
           </div>
           <div class="breakdown-list">
             {#each Object.entries(topLocations) as [location, count]}
-              <div class="breakdown-item">
+              <button
+                class="breakdown-item"
+                class:selected={selectedLocations.has(location)}
+                on:click={() => filterByLocation(location)}
+              >
                 <div
-                  class="breakdown-item-bar"
+                  class="breakdown-count-bar"
                   style="width: {(count /
-                    Math.max(...Object.values(topLocations), 5)) *
+                    Math.max(...Object.values(topLocations), 1)) *
                     100}%"
                 ></div>
-                <span class="breakdown-item-label">{location}</span>
-                <span class="breakdown-item-count">{count}</span>
-              </div>
+                <div class="breakdown-text">
+                  <span class="breakdown-name">{location}</span>
+                  <span class="breakdown-count">{count}</span>
+                </div>
+              </button>
             {/each}
           </div>
         </div>
@@ -1168,7 +1298,11 @@
         class:filter-active={showActiveOnly}
         on:click={toggleActiveOnly}
       >
-        {showActiveOnly ? "⚡ Active Only" : "📋 Show All"}
+        {#if showActiveOnly}
+          <Zap size={14} /> Active Only
+        {:else}
+          <List size={14} /> Show All
+        {/if}
       </button>
     </div>
   {/if}
@@ -1198,7 +1332,6 @@
   {:else if condensedView}
     <PostTable
       {posts}
-      {postsPerPage}
       {expandedPostId}
       on:toggleExpand={handleTableToggleExpand}
       on:closeComments={handleTableCloseComments}
@@ -1633,7 +1766,13 @@
   }
 
   .breakdown-icon {
-    font-size: 1.1rem;
+    font-size: 1.2rem;
+    z-index: 2;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .breakdown-title {
@@ -1646,6 +1785,14 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+    max-height: 300px;
+    overflow-y: auto;
+    padding-right: 0.25rem;
+    scrollbar-width: none; /* Firefox */
+  }
+
+  .breakdown-list::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
   }
 
   .breakdown-item {
@@ -1662,6 +1809,7 @@
     overflow: hidden;
     color: var(--text-color);
     text-align: left;
+    gap: 0.75rem;
   }
 
   :global(body.dark-mode) .breakdown-item {
@@ -1674,54 +1822,64 @@
     transform: translateX(2px);
   }
 
+  .breakdown-item.selected {
+    background: var(--primary-lightest);
+    box-shadow: inset 0 0 0 2px var(--primary-color);
+  }
+
+  :global(body.dark-mode) .breakdown-item.selected {
+    background: rgba(66, 153, 225, 0.2);
+    box-shadow: inset 0 0 0 2px var(--primary-light);
+  }
+
   :global(body.dark-mode) .breakdown-item:hover {
     background: rgba(255, 255, 255, 0.1);
   }
 
-  .breakdown-item-bar {
+  .breakdown-count-bar {
     position: absolute;
     left: 0;
-    top: 0;
-    height: 100%;
-    background: rgba(49, 130, 206, 0.2);
-    border-radius: inherit;
+    bottom: 0;
+    height: 4px;
+    background: rgba(49, 130, 206, 0.6);
+    border-radius: 0 0 10px 10px;
     z-index: 0;
     transition: width 0.5s ease;
   }
 
-  :global(body.dark-mode) .breakdown-item-bar {
-    background: rgba(99, 179, 237, 0.2);
+  :global(body.dark-mode) .breakdown-count-bar {
+    background: rgba(99, 179, 237, 0.6);
   }
 
-  .breakdown-item-icon {
-    z-index: 1;
-    font-size: 1rem;
-    flex-shrink: 0;
-  }
-
-  .breakdown-item-label {
+  .breakdown-text {
+    display: flex;
     flex: 1;
-    z-index: 1;
-    font-size: 0.8rem;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 2;
+    min-width: 0; /* Enable truncation in flex child */
+  }
+
+  .breakdown-name {
     font-weight: 500;
-    margin-left: 0.6rem;
+    color: var(--text-darker);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    margin-right: 0.5rem;
   }
 
-  .breakdown-item-count {
-    z-index: 1;
-    font-size: 0.75rem;
-    font-weight: 700;
-    background: rgba(0, 0, 0, 0.05);
-    padding: 0.25rem 0.6rem;
-    border-radius: 8px;
-    margin-left: 0.5rem;
-    flex-shrink: 0;
+  .breakdown-count {
+    font-weight: 600;
+    color: var(--text-muted);
+    background: rgba(0, 0, 0, 0.05); /* subtle pill background */
+    padding: 0.1rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    z-index: 2;
   }
 
-  :global(body.dark-mode) .breakdown-item-count {
+  :global(body.dark-mode) .breakdown-count {
     background: rgba(255, 255, 255, 0.15);
   }
 
@@ -1951,10 +2109,8 @@
       padding: 0.5rem 0.6rem;
       min-height: 36px;
     }
-    .breakdown-item-name {
-      font-size: 0.75rem;
-    }
-    .breakdown-item-count {
+
+    .breakdown-count {
       font-size: 0.7rem;
     }
   }

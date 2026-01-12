@@ -2,6 +2,7 @@
     import { createEventDispatcher } from "svelte";
     import { fly } from "svelte/transition";
     import { formatCommentTimestamp } from "../utils/helpers.js";
+    import { X, User, MessageSquare, Send } from "lucide-svelte";
 
     export let comments = [];
     export let newComment = "";
@@ -14,7 +15,7 @@
     }
 
     function handleSubmit() {
-        dispatch("submit");
+        dispatch("submit", { comment: newComment });
     }
 
     function handleKeyPress(e) {
@@ -29,8 +30,13 @@
     in:fly={{ y: 200, duration: 300 }}
     out:fly={{ y: 200, duration: 200 }}
 >
-    <button class="close-comments" on:click={handleClose}>×</button>
-    <h3 class="comments-title">Comments ({comments.length})</h3>
+    <button class="close-comments" on:click={handleClose}
+        ><X size={20} /></button
+    >
+    <h3 class="comments-title">
+        <MessageSquare size={18} />
+        Comments ({comments.length})
+    </h3>
 
     {#if commentError}
         <p class="error-message">{commentError}</p>
@@ -43,7 +49,9 @@
             {#each comments as comment, i}
                 <div class="comment" style="animation-delay: {i * 20}ms">
                     <div class="comment-header">
-                        <div class="comment-avatar">👤</div>
+                        <div class="comment-avatar">
+                            <User size={14} />
+                        </div>
                         <div class="comment-user-info">
                             <span class="comment-username"
                                 >{comment.username}</span
@@ -71,7 +79,10 @@
             maxlength="150"
             on:keypress={handleKeyPress}
         />
-        <button on:click={handleSubmit}>Send</button>
+        <button on:click={handleSubmit}>
+            <Send size={14} />
+            Send
+        </button>
     </div>
 </div>
 
@@ -135,10 +146,7 @@
         gap: 0.5rem;
     }
 
-    .comments-title::before {
-        content: "💬";
-        font-size: 1rem;
-    }
+    /* Pseudo-element removed */
 
     .comments-container {
         flex: 1;

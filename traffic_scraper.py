@@ -71,7 +71,7 @@ CORS(app, resources={r"/api/*": {"origins": "*"}, r"/maps/*": {"origins": "*"}})
 
 # Test mode flag
 
-TESTMODE = False
+TESTMODE = True
 
 # -----------------------------------
 # Database Functions
@@ -171,7 +171,7 @@ def init_db():
         
         conn.commit()
 
-def read_incidents(limit=20, offset=0, incident_type=None, active_only=False, cursor=None, date_filter=None):
+def read_incidents(limit=20, offset=0, incident_types=None, locations=None, active_only=False, cursor=None, date_filter=None):
     """Read a limited set of incidents from the database along with their comments."""
     with db_lock:
         with sqlite3.connect(DB_FILE) as conn:
@@ -181,9 +181,17 @@ def read_incidents(limit=20, offset=0, incident_type=None, active_only=False, cu
         params = []
         conditions = []
 
-        if incident_type:
-            conditions.append("type = ?")
-            params.append(incident_type)
+        if incident_types:
+            placeholders = ",".join("?" for _ in incident_types)
+            conditions.append(f"type IN ({placeholders})")
+            params.extend(incident_types)
+
+        if locations:
+            placeholders = ",".join("?" for _ in locations)
+            # Use LIKE or exact match? Top locations are usually distinct strings.
+            # Using IN for exact match is safer and faster if exact strings are passed.
+            conditions.append(f"location IN ({placeholders})")
+            params.extend(locations)
 
         if active_only:
             conditions.append("active = 1")
@@ -544,15 +552,16 @@ def get_incidents():
     limit = int(request.args.get("limit", 20))
     offset = int(request.args.get("offset", 0))
     cursor = request.args.get("cursor")  # New cursor parameter for cursor-based pagination
-    incident_type = request.args.get("type") # Added to support filtering by type
+    incident_types = request.args.getlist("type") # Added to support filtering by type (list)
+    locations = request.args.getlist("location") # Added to support filtering by location (list)
     active_only = request.args.get("active_only", "false").lower() == "true"
     date_filter = request.args.get("date_filter")
 
     # Use cursor-based pagination if cursor is provided, otherwise fall back to offset
     if cursor:
-        incidents = read_incidents(limit=limit, cursor=cursor, incident_type=incident_type, active_only=active_only, date_filter=date_filter)
+        incidents = read_incidents(limit=limit, cursor=cursor, incident_types=incident_types, locations=locations, active_only=active_only, date_filter=date_filter)
     else:
-        incidents = read_incidents(limit=limit, offset=offset, incident_type=incident_type, active_only=active_only, date_filter=date_filter)
+        incidents = read_incidents(limit=limit, offset=offset, incident_types=incident_types, locations=locations, active_only=active_only, date_filter=date_filter)
 
     response = jsonify(incidents)
     if COOKIE_NAME not in request.cookies:

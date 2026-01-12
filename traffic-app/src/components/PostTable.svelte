@@ -10,9 +10,20 @@
     } from "../utils/helpers.js";
     import CommentOverlay from "./CommentOverlay.svelte";
     import { fly } from "svelte/transition";
+    import {
+        Zap,
+        Heart,
+        MessageSquare,
+        Share2,
+        User,
+        X,
+        ChevronDown,
+        Send,
+    } from "lucide-svelte";
+    import IncidentIcon from "./IncidentIcon.svelte";
 
     export let posts = [];
-    export let postsPerPage = 30;
+
     export let expandedPostId = null;
 
     const dispatch = createEventDispatcher();
@@ -45,8 +56,8 @@
         dispatch("toggleDescription", { postId });
     }
 
-    function handleCommentSubmit(postId) {
-        dispatch("submitComment", { postId });
+    function handleCommentSubmit(postId, comment) {
+        dispatch("submitComment", { postId, comment });
     }
 
     function handleCommentClose(postId) {
@@ -67,13 +78,17 @@
             class="table-row"
             class:active={post.active}
             class:expanded={expandedPostId === post.id}
+            role="button"
+            tabindex="0"
             on:click={() => handleRowClick(post)}
+            on:keydown={(e) =>
+                (e.key === "Enter" || e.key === " ") && handleRowClick(post)}
             in:slide={{ delay: Math.min(i * 30, 300), duration: 150 }}
         >
             <div class="table-cell type-cell">
-                <span class="incident-icon-small"
-                    >{getIconForIncidentType(post.type)}</span
-                >
+                <span class="incident-icon-small">
+                    <IncidentIcon type={post.type} />
+                </span>
                 <span class="incident-type-small">{post.type}</span>
             </div>
             <div class="table-cell time-cell">
@@ -84,11 +99,14 @@
             <div class="table-cell location-cell">{post.location}</div>
             <div class="table-cell status-cell">
                 {#if post.active}
-                    <span class="status-badge active">Active</span>
+                    <span class="status-badge active"
+                        ><Zap size={10} fill="currentColor" /> Active</span
+                    >
                 {:else}
                     <span class="status-badge">Inactive</span>
                 {/if}
             </div>
+            <span class="row-arrow"><ChevronDown size={16} /></span>
         </div>
 
         {#if expandedPostId === post.id}
@@ -129,7 +147,14 @@
                                 class:like-error={post.likeErrorAnimation}
                                 on:click={(e) => handleLike(e, post.id)}
                             >
-                                <span class="button-icon">❤️</span>
+                                <span class="button-icon">
+                                    <Heart
+                                        size={18}
+                                        fill={post.likes > 0
+                                            ? "currentColor"
+                                            : "none"}
+                                    />
+                                </span>
                                 <span
                                     >{post.likes > 0
                                         ? post.likes
@@ -141,7 +166,9 @@
                                 on:click={(e) =>
                                     handleToggleComments(e, post.id)}
                             >
-                                <span class="button-icon">💬</span>
+                                <span class="button-icon">
+                                    <MessageSquare size={18} />
+                                </span>
                                 <span
                                     >{post.comments.length > 0
                                         ? post.comments.length
@@ -152,7 +179,9 @@
                                 class="action-button share-button"
                                 on:click={(e) => handleShare(e, post)}
                             >
-                                <span class="button-icon">🔗</span>
+                                <span class="button-icon">
+                                    <Share2 size={18} />
+                                </span>
                                 <span>Share</span>
                             </button>
                         </div>
@@ -170,9 +199,10 @@
                             on:click={(e) => {
                                 e.stopPropagation();
                                 handleCommentClose(post.id);
-                            }}>×</button
+                            }}><X size={18} /></button
                         >
                         <h3 class="comments-title">
+                            <MessageSquare size={18} />
                             Comments ({post.comments.length})
                         </h3>
                         {#if post.commentError}
@@ -190,7 +220,9 @@
                                         style="animation-delay: {i * 20}ms"
                                     >
                                         <div class="comment-header">
-                                            <div class="comment-avatar">👤</div>
+                                            <div class="comment-avatar">
+                                                <User size={14} />
+                                            </div>
                                             <div class="comment-user-info">
                                                 <span class="comment-username"
                                                     >{comment.username}</span
@@ -217,14 +249,23 @@
                                 maxlength="150"
                                 on:keypress={(e) =>
                                     e.key === "Enter" &&
-                                    handleCommentSubmit(post.id)}
+                                    handleCommentSubmit(
+                                        post.id,
+                                        post.newComment,
+                                    )}
                             />
                             <button
                                 on:click={(e) => {
                                     e.stopPropagation();
-                                    handleCommentSubmit(post.id);
-                                }}>Send</button
+                                    handleCommentSubmit(
+                                        post.id,
+                                        post.newComment,
+                                    );
+                                }}
                             >
+                                <Send size={14} />
+                                Send
+                            </button>
                         </div>
                     </div>
                 {/if}
@@ -287,18 +328,16 @@
         box-shadow: 0 2px 8px var(--shadow-color);
     }
 
-    .table-row::after {
-        content: "▼";
-        position: absolute;
-        right: 1rem;
-        top: 50%;
-        transform: translateY(-50%);
+    .table-row .row-arrow {
         color: var(--text-muted);
         transition: transform 0.2s ease;
+        display: flex;
+        align-items: center;
+        margin-left: auto;
     }
 
-    .table-row.expanded::after {
-        transform: translateY(-50%) rotate(180deg);
+    .table-row.expanded .row-arrow {
+        transform: rotate(180deg);
     }
 
     .table-cell {
@@ -509,10 +548,7 @@
         gap: 0.5rem;
     }
 
-    .comments-title::before {
-        content: "💬";
-        font-size: 1rem;
-    }
+    /* Pseudo-element removed */
 
     .comments-container {
         flex: 1;
