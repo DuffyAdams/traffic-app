@@ -21,6 +21,7 @@
         Send,
     } from "lucide-svelte";
     import IncidentIcon from "./IncidentIcon.svelte";
+    import LazyImage from "./LazyImage.svelte";
 
     export let posts = [];
 
@@ -113,10 +114,11 @@
             <div class="expanded-details" transition:slide={{ duration: 200 }}>
                 <div class="expanded-content">
                     <div class="expanded-image">
-                        <img
+                        <LazyImage
                             src={post.image}
                             alt="Incident location map"
-                            loading="lazy"
+                            className=""
+                            priority={i < 3}
                         />
                     </div>
                     <div class="expanded-info">
@@ -416,7 +418,7 @@
         overflow: hidden;
     }
 
-    .expanded-image img {
+    .expanded-image :global(img) {
         width: 100%;
         height: 200px;
         object-fit: cover;

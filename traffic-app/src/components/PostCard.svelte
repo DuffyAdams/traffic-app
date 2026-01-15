@@ -16,6 +16,7 @@
         Share2,
     } from "lucide-svelte";
     import IncidentIcon from "./IncidentIcon.svelte";
+    import LazyImage from "./LazyImage.svelte";
 
     export let post;
     export let index = 0;
@@ -73,11 +74,11 @@
                     <span>Active</span>
                 </div>
             {/if}
-            <img
+            <LazyImage
                 src={post.image}
                 alt="Incident location map"
-                class="post-image"
-                loading="lazy"
+                className="post-image"
+                priority={index < 3}
             />
         </div>
 
@@ -260,11 +261,25 @@
         align-items: center;
     }
 
+    :global(.post-image) {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: 8px;
+        transition: transform 0.3s ease;
+    }
+
+    .post:hover :global(.post-image) {
+        transform: scale(1.05);
+    }
+
+    /* Keep this as a backup in case the global selector doesn't work */
     .post-image {
         width: 100%;
         height: 100%;
         object-fit: cover;
-        transition: transform 0.5s ease;
+        border-radius: 8px;
+        transition: transform 0.3s ease;
     }
 
     .post:hover .post-image {

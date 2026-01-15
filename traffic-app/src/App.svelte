@@ -1,20 +1,27 @@
 <script>
   import { onMount, onDestroy } from "svelte";
   import { fade, slide } from "svelte/transition";
-  import {
-    Chart as ChartJS,
-    CategoryScale,
-    TimeScale,
-    LinearScale,
-    PointElement,
-    LineElement,
-    Title,
-    Tooltip,
-    Legend,
-    Filler,
-    LineController,
-  } from "chart.js";
-  import "chartjs-adapter-date-fns";
+
+  // Lazy load Chart.js components
+  let ChartJS, CategoryScale, TimeScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler, LineController;
+
+  async function loadChartDependencies() {
+    if (!ChartJS) {
+      const chartModule = await import("chart.js");
+      ChartJS = chartModule.Chart;
+      CategoryScale = chartModule.CategoryScale;
+      TimeScale = chartModule.TimeScale;
+      LinearScale = chartModule.LinearScale;
+      PointElement = chartModule.PointElement;
+      LineElement = chartModule.LineElement;
+      Title = chartModule.Title;
+      Tooltip = chartModule.Tooltip;
+      Legend = chartModule.Legend;
+      Filler = chartModule.Filler;
+      LineController = chartModule.LineController;
+      await import("chartjs-adapter-date-fns");
+    }
+  }
 
   // Import components
   import Header from "./components/Header.svelte";
@@ -37,19 +44,7 @@
   // Import stores
   import { addToast } from "./stores/appStore.js";
 
-  // Register Chart.js components
-  ChartJS.register(
-    CategoryScale,
-    TimeScale,
-    LinearScale,
-    PointElement,
-    LineElement,
-    Title,
-    Tooltip,
-    Legend,
-    Filler,
-    LineController,
-  );
+  // Chart.js registration moved to initializeChart function
 
   // State variables
   let posts = [];
@@ -146,8 +141,25 @@
             });
 
   // Initialize Chart.js chart
-  function initializeChart() {
+  async function initializeChart() {
     if (!chartCanvas || !hourlyData || hourlyData.length === 0) return;
+
+    // Load Chart.js dependencies if not already loaded
+    await loadChartDependencies();
+
+    // Register Chart.js components
+    ChartJS.register(
+      CategoryScale,
+      TimeScale,
+      LinearScale,
+      PointElement,
+      LineElement,
+      Title,
+      Tooltip,
+      Legend,
+      Filler,
+      LineController,
+    );
 
     // Destroy existing chart if it exists
     if (chartInstance) {
@@ -304,10 +316,14 @@
   }
 
   // Update chart data
-  function updateChart() {
+  async function updateChart() {
     if (!chartInstance) {
-      initializeChart();
-      return;
+      try {
+        await initializeChart();
+      } catch (error) {
+        console.error('Failed to initialize chart:', error);
+        return;
+      }
     }
 
     if (!hourlyData || hourlyData.length === 0) return;
@@ -363,8 +379,16 @@
   }
 
   // Reload chart when dark mode changes to update colors
+  let chartNeedsUpdate = false;
+
   $: if (darkMode !== undefined && chartInstance) {
-    initializeChart();
+    // Mark chart for update
+    chartNeedsUpdate = true;
+  }
+
+  $: if (chartNeedsUpdate) {
+    chartNeedsUpdate = false;
+    initializeChart().catch(console.error);
   }
 
   // Cleanup chart when stats panel is closed
@@ -453,13 +477,25 @@
     fetchIncidents();
   }
 
-  function filterByLocation(location) {
+function filterByLocation(location) {
     if (selectedLocations.has(location)) {
       selectedLocations.delete(location);
     } else {
       selectedLocations.add(location);
     }
     selectedLocations = new Set(selectedLocations); // Trigger reactivity
+    currentPage = 1;
+    fetchIncidents();
+  }
+
+  function resetTypeFilters() {
+    selectedTypes = new Set();
+    currentPage = 1;
+    fetchIncidents();
+  }
+
+  function resetLocationFilters() {
+    selectedLocations = new Set();
     currentPage = 1;
     fetchIncidents();
   }
@@ -1066,15 +1102,7 @@
     };
   });
 
-  import {
-    Calendar,
-    Clock,
-    Zap,
-    BarChart3,
-    Search,
-    MapPin,
-    List,
-  } from "lucide-svelte";
+  import { Calendar, Clock, Zap, BarChart3, Search, MapPin, List, X } from "lucide-svelte";
   import IncidentIcon from "./components/IncidentIcon.svelte";
 
   async function checkForUpdates() {
@@ -1230,16 +1258,34 @@
           <span class="section-title">{sectionTitle}</span>
         </div>
         <div class="chart-container">
-          <canvas bind:this={chartCanvas}></canvas>
+          {#if !ChartJS}
+            <div class="chart-loading">
+              <div class="loading-spinner"></div>
+              <span>Loading chart...</span>
+            </div>
+          {:else}
+            <canvas bind:this={chartCanvas}></canvas>
+          {/if}
         </div>
       </div>
 
       <!-- Breakdowns -->
       <div class="incident-breakdown-grid">
         <div class="breakdown-card">
-          <div class="breakdown-header">
-            <span class="breakdown-icon"><BarChart3 size={18} /></span>
-            <span class="breakdown-title">By Type</span>
+<div class="breakdown-header">
+            <div class="breakdown-title-section">
+              <span class="breakdown-icon"><BarChart3 size={18} /></span>
+              <span class="breakdown-title">By Type</span>
+            </div>
+            {#if selectedTypes.size > 0}
+              <button 
+                class="reset-button" 
+                on:click={resetTypeFilters}
+                title="Reset type filters"
+              >
+                <X size={14} />
+              </button>
+            {/if}
           </div>
           <div class="breakdown-list">
             {#each Object.entries(incidentsByType) as [type, count]}
@@ -1266,9 +1312,20 @@
           </div>
         </div>
         <div class="breakdown-card">
-          <div class="breakdown-header">
-            <span class="breakdown-icon"><MapPin size={18} /></span>
-            <span class="breakdown-title">Top Locations</span>
+<div class="breakdown-header">
+            <div class="breakdown-title-section">
+              <span class="breakdown-icon"><MapPin size={18} /></span>
+              <span class="breakdown-title">Top Locations</span>
+            </div>
+            {#if selectedLocations.size > 0}
+              <button 
+                class="reset-button" 
+                on:click={resetLocationFilters}
+                title="Reset location filters"
+              >
+                <X size={14} />
+              </button>
+            {/if}
           </div>
           <div class="breakdown-list">
             {#each Object.entries(topLocations) as [location, count]}
@@ -1699,6 +1756,30 @@
     border-radius: 16px;
   }
 
+  .chart-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 0.5rem;
+    color: var(--text-secondary);
+  }
+
+  .loading-spinner {
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--border-color);
+    border-top: 2px solid var(--accent-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
   :global(body.dark-mode) .activity-chart-section {
     background: linear-gradient(
       135deg,
@@ -1756,13 +1837,39 @@
     border: 1px solid rgba(255, 255, 255, 0.12);
   }
 
-  .breakdown-header {
+.breakdown-header {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 0.6rem;
     margin-bottom: 0.75rem;
     padding-bottom: 0.6rem;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .breakdown-title-section {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .reset-button {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: rgba(255, 255, 255, 0.7);
+    border-radius: 4px;
+    padding: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+  }
+
+  .reset-button:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: rgba(255, 255, 255, 0.9);
+    border-color: rgba(255, 255, 255, 0.3);
   }
 
   .breakdown-icon {
@@ -2026,18 +2133,32 @@
       padding: 0.75rem;
       align-items: center;
     }
-    .time-buttons {
+.time-buttons {
       display: flex;
-      flex-wrap: nowrap;
+      flex-wrap: wrap;
       justify-content: center;
       width: auto;
+      gap: 0.25rem;
     }
     .time-button {
       padding: 0.45rem 0.7rem;
       font-size: 0.75rem;
     }
-    .incident-breakdown-grid {
+.incident-breakdown-grid {
       grid-template-columns: 1fr;
+    }
+    .breakdown-list {
+      max-height: 280px;
+    }
+    .breakdown-item {
+      min-height: 40px;
+      padding: 0.6rem 0.75rem;
+    }
+    .event-counters {
+      overflow: hidden;
+    }
+    .breakdown-card {
+      overflow: hidden;
     }
   }
 
@@ -2098,24 +2219,24 @@
     .section-title {
       font-size: 0.9rem;
     }
-    .breakdown-card {
+.breakdown-card {
       padding: 0.75rem;
       border-radius: 12px;
+      overflow: hidden;
     }
-    .breakdown-title {
-      font-size: 0.8rem;
+    .breakdown-list {
+      max-height: 260px;
     }
     .breakdown-item {
-      padding: 0.5rem 0.6rem;
-      min-height: 36px;
+      padding: 0.55rem 0.7rem;
+      min-height: 38px;
+    }
+.time-button {
+      flex: 1 1 calc(50% - 0.125rem);
+      min-width: 0;
     }
 
-    .breakdown-count {
-      font-size: 0.7rem;
-    }
-  }
-
-  @media (max-width: 360px) {
+    @media (max-width: 360px) {
     .container {
       padding: 0.5rem;
     }
@@ -2144,8 +2265,22 @@
       padding: 0.35rem 0.6rem;
       font-size: 0.7rem;
     }
-    .chart-container {
+.chart-container {
       height: 130px;
+    }
+    .breakdown-list {
+      max-height: 240px;
+    }
+    .breakdown-item {
+      padding: 0.5rem 0.65rem;
+      min-height: 36px;
+    }
+    .breakdown-name {
+      font-size: 0.85rem;
+    }
+    .breakdown-count {
+      font-size: 0.8rem;
+    }
     }
   }
 </style>
