@@ -25,11 +25,11 @@
     }
 </script>
 
-<div
-    class="comments-overlay"
-    in:fly={{ y: 200, duration: 300 }}
-    out:fly={{ y: 200, duration: 200 }}
->
+ <div
+     class="comments-overlay"
+     in:fly={{ y: 400, duration: 400, opacity: false }}
+     out:fly={{ y: 400, duration: 300, opacity: false }}
+ >
     <button class="close-comments" on:click={handleClose}
         ><X size={20} /></button
     >
@@ -200,8 +200,8 @@
     .comment-avatar {
         width: 24px;
         height: 24px;
-        background-color: var(--primary-light);
-        color: white;
+        background: linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%);
+        color: #1a365d;
         border-radius: 50%;
         display: flex;
         align-items: center;
@@ -209,6 +209,7 @@
         flex-shrink: 0;
         font-size: 0.75rem;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        border: 1px solid #e2e8f0;
     }
 
     .comment-user-info {
@@ -219,7 +220,7 @@
 
     .comment-username {
         font-weight: 600;
-        color: var(--primary-color);
+        color: #1a365d;
         font-size: 0.8rem;
         white-space: nowrap;
     }
@@ -295,9 +296,9 @@
     }
 
     .add-comment button {
-        background-color: var(--primary-color);
-        color: white;
-        border: none;
+        background: linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%);
+        color: #1a365d;
+        border: 1px solid #e2e8f0;
         border-radius: 24px;
         padding: 0.7rem 1.2rem;
         font-weight: 600;
@@ -309,9 +310,19 @@
     }
 
     .add-comment button:hover {
-        background-color: var(--primary-dark);
+        background: linear-gradient(135deg, #f0f7ff 0%, #e0f0ff 100%);
         box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
         transform: translateY(-1px);
+    }
+
+    :global(body.dark-mode) .add-comment button {
+        background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
+        color: white;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    :global(body.dark-mode) .add-comment button:hover {
+        background: linear-gradient(135deg, #2a4a7a 0%, #1a2f4a 100%);
     }
 
     .error-message {
@@ -322,6 +333,16 @@
         margin-top: 0.6rem;
         font-size: 0.85rem;
         border-radius: 6px;
+    }
+
+    :global(body.dark-mode) .comment-avatar {
+        background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
+        color: white;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    :global(body.dark-mode) .comment-username {
+        color: white;
     }
 
     @keyframes fadeIn {

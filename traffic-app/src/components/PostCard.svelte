@@ -314,7 +314,7 @@
     .post-description {
         font-size: 1rem;
         line-height: 1.5;
-        margin-bottom: 1.2rem;
+        margin-bottom: 1rem;
         color: var(--text-darker);
         position: relative;
         text-align: center;
@@ -343,7 +343,7 @@
         display: flex;
         justify-content: space-between;
         border-top: 1px solid var(--border-color);
-        padding-top: 0.7rem;
+        padding-top: 1rem;
         margin-bottom: 0.5rem;
         gap: 0.3rem;
     }
@@ -469,7 +469,7 @@
         .post-description {
             font-size: 0.95rem;
             line-height: 1.4;
-            margin-bottom: 1rem;
+            margin-bottom: 0.8rem;
         }
     }
 
@@ -490,7 +490,7 @@
         .post-description {
             font-size: 0.9rem;
             line-height: 1.35;
-            margin-bottom: 0.8rem;
+            margin-bottom: 0.7rem;
         }
         .post-actions {
             gap: 0.2rem;

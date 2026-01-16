@@ -28,21 +28,7 @@
     </div>
 {/if}
 
-<!-- Pull-to-refresh indicator -->
-{#if isPulling || refreshing}
-    <div
-        class="pull-refresh-indicator {refreshing ? 'refreshing' : ''}"
-        style="transform: translateX(-50%) translateY({isPulling
-            ? pullDistance
-            : 0}px)"
-    >
-        {#if refreshing}
-            <span>🔄 Refreshing...</span>
-        {:else}
-            <span>⬇️ Pull to refresh</span>
-        {/if}
-    </div>
-{/if}
+
 
 <!-- Side toggle button -->
 <button
@@ -118,7 +104,7 @@
 
     .side-toggle {
         position: fixed;
-        right: 0;
+        right: -10px;
         top: 50%;
         transform: translateY(-50%);
         background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);

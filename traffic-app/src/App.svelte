@@ -2,26 +2,8 @@
   import { onMount, onDestroy } from "svelte";
   import { fade, slide } from "svelte/transition";
 
-  // Lazy load Chart.js components
-  let ChartJS, CategoryScale, TimeScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler, LineController;
-
-  async function loadChartDependencies() {
-    if (!ChartJS) {
-      const chartModule = await import("chart.js");
-      ChartJS = chartModule.Chart;
-      CategoryScale = chartModule.CategoryScale;
-      TimeScale = chartModule.TimeScale;
-      LinearScale = chartModule.LinearScale;
-      PointElement = chartModule.PointElement;
-      LineElement = chartModule.LineElement;
-      Title = chartModule.Title;
-      Tooltip = chartModule.Tooltip;
-      Legend = chartModule.Legend;
-      Filler = chartModule.Filler;
-      LineController = chartModule.LineController;
-      await import("chartjs-adapter-date-fns");
-    }
-  }
+import { Chart as ChartJS, CategoryScale, TimeScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler, LineController } from "chart.js";
+import "chartjs-adapter-date-fns";
 
   // Import components
   import Header from "./components/Header.svelte";
@@ -143,9 +125,6 @@
   // Initialize Chart.js chart
   async function initializeChart() {
     if (!chartCanvas || !hourlyData || hourlyData.length === 0) return;
-
-    // Load Chart.js dependencies if not already loaded
-    await loadChartDependencies();
 
     // Register Chart.js components
     ChartJS.register(
@@ -747,11 +726,11 @@ function filterByLocation(location) {
 
       statsCache[cacheKey] = { data: stats, timestamp: Date.now() };
 
-      eventsToday = stats.eventsToday;
-      eventsLastHour = stats.eventsLastHour;
-      eventsActive = stats.eventsActive;
-      totalIncidents = stats.totalIncidents;
-      hourlyData = stats.hourlyData || [];
+       eventsToday = stats.eventsToday;
+       eventsLastHour = stats.eventsLastHour;
+       eventsActive = stats.eventsActive;
+       totalIncidents = stats.totalIncidents;
+       hourlyData = (stats.hourlyData || []).map(Number);
 
       incidentsByType = Object.fromEntries(
         Object.entries(stats.incidentsByType).sort(([, a], [, b]) => b - a),
@@ -999,9 +978,12 @@ function filterByLocation(location) {
     pullDistance = 0;
   }
 
-  function toggleView() {
-    condensedView = !condensedView;
-  }
+   function toggleView() {
+     condensedView = !condensedView;
+     if (showEventCounters) {
+       showEventCounters = false;
+     }
+   }
 
   // Event handlers for components
   function handlePostLike(event) {
@@ -1257,16 +1239,9 @@ function filterByLocation(location) {
         <div class="activity-header">
           <span class="section-title">{sectionTitle}</span>
         </div>
-        <div class="chart-container">
-          {#if !ChartJS}
-            <div class="chart-loading">
-              <div class="loading-spinner"></div>
-              <span>Loading chart...</span>
-            </div>
-          {:else}
-            <canvas bind:this={chartCanvas}></canvas>
-          {/if}
-        </div>
+         <div class="chart-container">
+           <canvas bind:this={chartCanvas}></canvas>
+         </div>
       </div>
 
       <!-- Breakdowns -->
@@ -1350,29 +1325,21 @@ function filterByLocation(location) {
         </div>
       </div>
 
-      <button
-        class="filter-toggle"
-        class:filter-active={showActiveOnly}
-        on:click={toggleActiveOnly}
-      >
-        {#if showActiveOnly}
-          <Zap size={14} /> Active Only
-        {:else}
-          <List size={14} /> Show All
-        {/if}
-      </button>
+
     </div>
   {/if}
 
-  <ViewToggle
-    {condensedView}
-    {swipeIndicator}
-    {swipeDirection}
-    {isPulling}
-    {pullDistance}
-    {refreshing}
-    on:toggle={toggleView}
-  />
+   <ViewToggle
+     {condensedView}
+     {swipeIndicator}
+     {swipeDirection}
+     {isPulling}
+     {pullDistance}
+     {refreshing}
+     on:toggle={toggleView}
+   />
+
+
 
   {#if loading && posts.length === 0}
     <div class="loading-container" in:fade={{ duration: 150 }}>
@@ -1597,19 +1564,19 @@ function filterByLocation(location) {
     flex: 1;
   }
 
-  .stat-card {
-    background: var(--bg-color);
-    border: 1px solid var(--border-color);
-    border-radius: 16px;
-    text-align: center;
-    padding: 1rem 0.75rem;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    min-height: 90px;
-    transition: all 0.3s ease;
-  }
+   .stat-card {
+     background: var(--bg-color);
+     border: 1px solid var(--border-color);
+     border-radius: 16px;
+     text-align: center;
+     padding: 0.75rem 0.75rem;
+     display: flex;
+     flex-direction: column;
+     justify-content: center;
+     align-items: center;
+     min-height: 70px;
+     transition: all 0.3s ease;
+   }
 
   :global(body.dark-mode) .stat-card {
     background: linear-gradient(
@@ -1667,18 +1634,18 @@ function filterByLocation(location) {
     margin-top: 0.25rem;
   }
 
-  .time-period-section {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 1rem 1.25rem;
-    background: var(--bg-color);
-    border: 1px solid var(--border-color);
-    border-radius: 16px;
-    min-width: 180px;
-    gap: 0.75rem;
-  }
+   .time-period-section {
+     display: flex;
+     flex-direction: column;
+     align-items: center;
+     justify-content: center;
+     padding: 0.75rem 1rem;
+     background: var(--bg-color);
+     border: 1px solid var(--border-color);
+     border-radius: 16px;
+     min-width: 180px;
+     gap: 0.5rem;
+   }
 
   :global(body.dark-mode) .time-period-section {
     background: linear-gradient(
@@ -1990,45 +1957,7 @@ function filterByLocation(location) {
     background: rgba(255, 255, 255, 0.15);
   }
 
-  .filter-toggle {
-    margin-top: 0.5rem;
-    padding: 0.6rem 1.25rem;
-    background: var(--secondary-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 24px;
-    color: var(--text-color);
-    font-size: 0.85rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.25s ease;
-    align-self: center;
-  }
 
-  :global(body.dark-mode) .filter-toggle {
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    color: white;
-  }
-
-  .filter-toggle:hover {
-    background: var(--hover-bg);
-    transform: translateY(-1px);
-  }
-
-  :global(body.dark-mode) .filter-toggle:hover {
-    background: rgba(255, 255, 255, 0.2);
-  }
-
-  .filter-toggle.filter-active {
-    background: #e53e3e;
-    border-color: #e53e3e;
-    box-shadow: 0 4px 15px rgba(229, 62, 62, 0.4);
-  }
-
-  .filter-active {
-    color: #fbd38d !important;
-    font-weight: 700;
-  }
 
   /* Scroll indicator */
   .scroll-indicator {
