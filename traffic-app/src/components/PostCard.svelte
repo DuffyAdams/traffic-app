@@ -24,6 +24,35 @@
 
     const dispatch = createEventDispatcher();
 
+    const incidentColors = {
+        "Traffic Hazard": "#fbbf24",
+        "Traffic Collision": "#ef4444",
+        "Car Fire": "#f97316",
+        "Report of Fire": "#f97316",
+        "Fatality": "#991b1b",
+        "Hit and Run No Injuries": "#dc2626",
+        "Road Closure": "#374151",
+        "Construction": "#f59e0b",
+        "Debris From Vehicle": "#9ca3af",
+        "Live or Dead Animal": "#a78bfa",
+        "Animal Hazard": "#a78bfa",
+        "Defective Traffic Signals": "#eab308",
+        "JUMPER": "#8b5cf6",
+        "SPINOUT": "#06b6d4",
+        "Wrong Way Driver": "#ec4899",
+        "SIG Alert": "#dc2626",
+        "Aircraft Emergency": "#3b82f6",
+        "Provide Traffic Control": "#6366f1",
+        "Assist CT with Maintenance": "#8b5cf6",
+        "Maintenance": "#6b7280",
+        "Request CalTrans Notify": "#64748b",
+        "Road Conditions": "#84cc16",
+        "Traffic Break": "#0ea5e9",
+    };
+
+    $: badgeColor = incidentColors[post.type] || "#fbbf24";
+    $: isSigAlert = post.type === "SIG Alert";
+
     function handleLike() {
         dispatch("like", { postId: post.id });
     }
@@ -55,6 +84,7 @@
 <div
     class="post"
     class:active={post.active}
+    class:sig-alert={isSigAlert}
     in:slide={{
         delay: Math.min((index % postsPerPage) * 50, 300),
         duration: 200,
@@ -62,7 +92,7 @@
 >
     <div class="post-content">
         <div class="post-image-container">
-            <div class="post-badge">
+            <div class="post-badge" class:sig-alert-badge={isSigAlert} style="--badge-color: {badgeColor}">
                 <span class="incident-icon">
                     <IncidentIcon type={post.type} />
                 </span>
@@ -195,6 +225,25 @@
         box-shadow: 0 6px 15px var(--shadow-color);
     }
 
+    .post.sig-alert {
+        box-shadow:
+            0 4px 20px var(--shadow-color),
+            0 0 0 1px rgba(220, 38, 38, 0.15),
+            0 0 12px color-mix(in srgb, #dc2626 30%, transparent),
+            0 0 24px color-mix(in srgb, #dc2626 20%, transparent),
+            0 0 36px color-mix(in srgb, #dc2626 10%, transparent);
+    }
+
+    .post.sig-alert:hover {
+        box-shadow:
+            0 12px 28px var(--shadow-color),
+            0 0 0 1px rgba(220, 38, 38, 0.2),
+            0 0 18px color-mix(in srgb, #dc2626 35%, transparent),
+            0 0 36px color-mix(in srgb, #dc2626 25%, transparent),
+            0 0 54px color-mix(in srgb, #dc2626 15%, transparent);
+        transform: translateY(-3px);
+    }
+
     .post-content {
         padding: 0;
         display: flex;
@@ -206,7 +255,7 @@
     .post-image-container {
         position: relative;
         width: 100%;
-        height: 200px;
+        height: 190px;
         overflow: hidden;
         border-radius: 18px 18px 0 0;
     }
@@ -226,8 +275,41 @@
         gap: 0.4rem;
         z-index: 1;
         backdrop-filter: blur(8px);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 
+            0 2px 8px rgba(0, 0, 0, 0.2),
+            0 0 4px color-mix(in srgb, var(--badge-color) 40%, transparent),
+            0 0 8px color-mix(in srgb, var(--badge-color) 25%, transparent),
+            0 0 12px color-mix(in srgb, var(--badge-color) 12%, transparent);
+        border: none;
+        transition: all 0.3s ease;
+    }
+
+    .post-badge:hover {
+        box-shadow: 
+            0 4px 12px rgba(0, 0, 0, 0.3),
+            0 0 6px color-mix(in srgb, var(--badge-color) 50%, transparent),
+            0 0 12px color-mix(in srgb, var(--badge-color) 30%, transparent),
+            0 0 18px color-mix(in srgb, var(--badge-color) 18%, transparent),
+            0 0 24px color-mix(in srgb, var(--badge-color) 8%, transparent);
+    }
+
+    .post-badge.sig-alert-badge {
+        border: none;
+        box-shadow: 
+            0 2px 8px rgba(0, 0, 0, 0.2),
+            0 0 6px color-mix(in srgb, #dc2626 35%, transparent),
+            0 0 12px color-mix(in srgb, #dc2626 25%, transparent),
+            0 0 18px color-mix(in srgb, #dc2626 15%, transparent),
+            0 0 24px color-mix(in srgb, #dc2626 8%, transparent);
+    }
+
+    .post-badge.sig-alert-badge:hover {
+        box-shadow: 
+            0 4px 12px rgba(0, 0, 0, 0.3),
+            0 0 10px color-mix(in srgb, #dc2626 40%, transparent),
+            0 0 20px color-mix(in srgb, #dc2626 30%, transparent),
+            0 0 30px color-mix(in srgb, #dc2626 20%, transparent),
+            0 0 40px color-mix(in srgb, #dc2626 12%, transparent);
     }
 
     .active-badge {
@@ -288,6 +370,7 @@
 
     .post-info {
         padding: 1.4rem;
+        padding-bottom: 4rem;
         flex-grow: 1;
         display: flex;
         flex-direction: column;
@@ -343,9 +426,13 @@
         display: flex;
         justify-content: space-between;
         border-top: 1px solid var(--border-color);
-        padding-top: 1rem;
-        margin-bottom: 0.5rem;
+        padding: 1rem 1.4rem 1rem 1.4rem;
         gap: 0.3rem;
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: var(--card-bg);
     }
 
     .action-button {
@@ -442,7 +529,7 @@
 
     @keyframes badgePulse {
         0% {
-            box-shadow: 0 0 0 0 rgba(255, 99, 71, 0.4);
+            box-shadow: 0 0 0 0 rgba(255, 99, 71, 0.7);
         }
         70% {
             box-shadow: 0 0 0 6px rgba(255, 99, 71, 0);
@@ -464,7 +551,7 @@
             border-radius: 14px 14px 0 0;
         }
         .post-info {
-            padding: 1rem 1rem 0.6rem;
+            padding: 1rem 1rem 4rem;
         }
         .post-description {
             font-size: 0.95rem;
@@ -482,7 +569,7 @@
             border-radius: 12px 12px 0 0;
         }
         .post-info {
-            padding: 0.7rem 0.7rem 0.5rem;
+            padding: 0.7rem 0.7rem 4rem;
         }
         .post-header {
             margin-bottom: 0.7rem;
@@ -494,7 +581,7 @@
         }
         .post-actions {
             gap: 0.2rem;
-            padding-top: 0.7rem;
+            padding: 0.7rem 0.7rem 1rem 0.7rem;
         }
         .action-button {
             padding: 0.4rem 0.2rem;
@@ -518,7 +605,11 @@
             border-radius: 8px 8px 0 0;
         }
         .post-info {
-            padding: 0.5rem 0.5rem 0.3rem;
+            padding: 0.5rem 0.5rem 4rem;
+        }
+        .post-actions {
+            gap: 0.2rem;
+            padding: 0.5rem 0.5rem 1rem 0.5rem;
         }
         .action-button {
             padding: 0.3rem 0.1rem;

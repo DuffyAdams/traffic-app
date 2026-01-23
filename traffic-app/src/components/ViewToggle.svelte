@@ -1,5 +1,6 @@
 <script>
     import { fade } from "svelte/transition";
+    import { ChevronLeft, ChevronRight, LayoutGrid, LayoutList } from "lucide-svelte";
 
     export let condensedView = false;
     export let swipeIndicator = false;
@@ -18,13 +19,26 @@
 
 <!-- Swipe indicator -->
 {#if swipeIndicator}
-    <div class="swipe-indicator {swipeDirection}" in:fade={{ duration: 100 }}>
-        <span class="swipe-arrow"
-            >{swipeDirection === "left" ? "👈" : "👉"}</span
-        >
-        <span class="swipe-text"
-            >{swipeDirection === "left" ? "Table View" : "Card View"}</span
-        >
+    <div class="swipe-indicator {swipeDirection}" in:fade={{ duration: 150 }}>
+        <div class="swipe-content">
+            <span class="swipe-icon">
+                {#if swipeDirection === "left"}
+                    <ChevronLeft size={32} />
+                {:else}
+                    <ChevronRight size={32} />
+                {/if}
+            </span>
+            <span class="swipe-label">
+                {swipeDirection === "left" ? "Table View" : "Card View"}
+            </span>
+            <span class="swipe-icon-secondary">
+                {#if swipeDirection === "left"}
+                    <LayoutList size={20} />
+                {:else}
+                    <LayoutGrid size={20} />
+                {/if}
+            </span>
+        </div>
     </div>
 {/if}
 
@@ -48,19 +62,24 @@
         position: fixed;
         top: 50%;
         transform: translateY(-50%);
-        background-color: rgba(0, 0, 0, 0.7);
+        background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
         color: white;
-        padding: 1rem;
-        border-radius: 8px;
+        padding: 0;
+        border-radius: 16px;
         display: flex;
         flex-direction: column;
         align-items: center;
+        justify-content: center;
         z-index: 100;
         pointer-events: none;
-        backdrop-filter: blur(4px);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-        width: 100px;
+        backdrop-filter: blur(12px);
+        box-shadow: 
+            0 8px 32px rgba(0, 0, 0, 0.3),
+            0 0 0 1px rgba(255, 255, 255, 0.1);
+        width: 120px;
+        height: 100px;
         text-align: center;
+        opacity: 0.95;
     }
 
     .swipe-indicator.left {
@@ -73,14 +92,59 @@
         animation: slideInLeft 0.3s forwards;
     }
 
-    .swipe-arrow {
-        font-size: 1.8rem;
-        margin-bottom: 0.5rem;
+    .swipe-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+        height: 100%;
+        justify-content: center;
     }
 
-    .swipe-text {
-        font-size: 0.9rem;
+    .swipe-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: rgba(255, 255, 255, 0.95);
+        animation: bounce 0.6s ease-in-out;
+    }
+
+    .swipe-label {
+        font-size: 0.85rem;
         font-weight: 600;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.9);
+    }
+
+    .swipe-icon-secondary {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: rgba(255, 255, 255, 0.5);
+        margin-top: -0.25rem;
+    }
+
+    @keyframes bounce {
+        0%, 100% {
+            transform: translateX(0);
+        }
+        50% {
+            transform: translateX(-6px);
+        }
+    }
+
+    .swipe-indicator.right .swipe-icon {
+        animation: bounceRight 0.6s ease-in-out;
+    }
+
+    @keyframes bounceRight {
+        0%, 100% {
+            transform: translateX(0);
+        }
+        50% {
+            transform: translateX(6px);
+        }
     }
 
     .pull-refresh-indicator {
@@ -145,22 +209,22 @@
     @keyframes slideInRight {
         from {
             opacity: 0;
-            transform: translate(20px, -50%);
+            transform: translate(30px, -50%) scale(0.9);
         }
         to {
-            opacity: 1;
-            transform: translate(0, -50%);
+            opacity: 0.95;
+            transform: translate(0, -50%) scale(1);
         }
     }
 
     @keyframes slideInLeft {
         from {
             opacity: 0;
-            transform: translate(-20px, -50%);
+            transform: translate(-30px, -50%) scale(0.9);
         }
         to {
-            opacity: 1;
-            transform: translate(0, -50%);
+            opacity: 0.95;
+            transform: translate(0, -50%) scale(1);
         }
     }
 
@@ -177,6 +241,25 @@
     @media (max-width: 768px) {
         .side-toggle {
             display: none;
+        }
+
+        .swipe-indicator {
+            width: 100px;
+            height: 85px;
+        }
+
+        .swipe-icon :global(svg) {
+            width: 28px;
+            height: 28px;
+        }
+
+        .swipe-label {
+            font-size: 0.75rem;
+        }
+
+        .swipe-icon-secondary :global(svg) {
+            width: 16px;
+            height: 16px;
         }
     }
 </style>

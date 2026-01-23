@@ -29,6 +29,32 @@
 
     const dispatch = createEventDispatcher();
 
+    const incidentColors = {
+        "Traffic Hazard": "#fbbf24",
+        "Traffic Collision": "#ef4444",
+        "Car Fire": "#f97316",
+        "Report of Fire": "#f97316",
+        "Fatality": "#991b1b",
+        "Hit and Run No Injuries": "#dc2626",
+        "Road Closure": "#374151",
+        "Construction": "#f59e0b",
+        "Debris From Vehicle": "#9ca3af",
+        "Live or Dead Animal": "#a78bfa",
+        "Animal Hazard": "#a78bfa",
+        "Defective Traffic Signals": "#eab308",
+        "JUMPER": "#8b5cf6",
+        "SPINOUT": "#06b6d4",
+        "Wrong Way Driver": "#ec4899",
+        "SIG Alert": "#dc2626",
+        "Aircraft Emergency": "#3b82f6",
+        "Provide Traffic Control": "#6366f1",
+        "Assist CT with Maintenance": "#8b5cf6",
+        "Maintenance": "#6b7280",
+        "Request CalTrans Notify": "#64748b",
+        "Road Conditions": "#84cc16",
+        "Traffic Break": "#0ea5e9",
+    };
+
     function handleRowClick(post) {
         // If closing the currently expanded row and its comments are open, close comments first
         if (expandedPostId === post.id && post.showComments) {
@@ -87,7 +113,7 @@
             in:slide={{ delay: Math.min(i * 30, 300), duration: 150 }}
         >
             <div class="table-cell type-cell">
-                <span class="incident-icon-small">
+                <span class="incident-icon-small" style="color: {incidentColors[post.type] || '#fbbf24'}">
                     <IncidentIcon type={post.type} />
                 </span>
                 <span class="incident-type-small">{post.type}</span>
@@ -657,18 +683,33 @@
     }
 
     .add-comment button {
-        background-color: var(--primary-color);
-        color: white;
-        border: none;
+        background: linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%);
+        color: #1a365d;
+        border: 1px solid #e2e8f0;
         border-radius: 24px;
         padding: 0.7rem 1.2rem;
         font-weight: 600;
         font-size: 0.9rem;
         cursor: pointer;
+        transition: all 0.2s;
+        outline: none;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
     }
 
     .add-comment button:hover {
-        background-color: var(--primary-dark);
+        background: linear-gradient(135deg, #f0f7ff 0%, #e0f0ff 100%);
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+        transform: translateY(-1px);
+    }
+
+    :global(body.dark-mode) .add-comment button {
+        background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
+        color: white;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    :global(body.dark-mode) .add-comment button:hover {
+        background: linear-gradient(135deg, #2a4a7a 0%, #1a2f4a 100%);
     }
 
     .error-message {
