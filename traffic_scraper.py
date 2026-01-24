@@ -378,10 +378,26 @@ def get_viewstate(html_text):
 
 def extract_traffic_info(response_text):
     matches = LAT_LON_PATTERN.findall(response_text)
-    details_pattern = re.compile(r'<td[^>]*colspan="6"[^>]*>(.*?)</td>', re.DOTALL)
-    raw_details = details_pattern.findall(response_text)
-    details = [BRACKETS_PATTERN.sub("", detail).strip() for detail in raw_details
-               if not any(excluded in detail for excluded in EXCLUDED_DETAILS)]
+    
+    # Parse with BeautifulSoup to properly extract time + details
+    soup = BeautifulSoup(response_text, "html.parser")
+    details_table = soup.find("table", id="tblDetails")
+    details = []
+    
+    if details_table:
+        rows = details_table.find_all("tr")
+        for row in rows:
+            cells = row.find_all("td")
+            if len(cells) >= 3:
+                # First cell is time, last cell (colspan=6) is detail text
+                time_cell = cells[0].get_text(strip=True)
+                detail_cell = cells[-1].get_text(strip=True) if cells[-1].get("colspan") else ""
+                
+                if detail_cell and not any(excluded in detail_cell for excluded in EXCLUDED_DETAILS):
+                    # Combine time with detail
+                    combined = f"[{time_cell}] {detail_cell}" if time_cell else detail_cell
+                    details.append(combined)
+    
     if matches:
         last_valid_coords = {}
         for match in matches:

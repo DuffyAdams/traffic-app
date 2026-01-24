@@ -1,6 +1,6 @@
 <script>
     import { createEventDispatcher } from "svelte";
-    import { slide } from "svelte/transition";
+    import { slide, fly } from "svelte/transition";
     import CommentOverlay from "./CommentOverlay.svelte";
     import {
         getIconForIncidentType,
@@ -14,6 +14,8 @@
         Heart,
         MessageSquare,
         Share2,
+        Info,
+        X,
     } from "lucide-svelte";
     import IncidentIcon from "./IncidentIcon.svelte";
     import LazyImage from "./LazyImage.svelte";
@@ -29,22 +31,22 @@
         "Traffic Collision": "#ef4444",
         "Car Fire": "#f97316",
         "Report of Fire": "#f97316",
-        "Fatality": "#991b1b",
+        Fatality: "#991b1b",
         "Hit and Run No Injuries": "#dc2626",
         "Road Closure": "#374151",
-        "Construction": "#f59e0b",
+        Construction: "#f59e0b",
         "Debris From Vehicle": "#9ca3af",
         "Live or Dead Animal": "#a78bfa",
         "Animal Hazard": "#a78bfa",
         "Defective Traffic Signals": "#eab308",
-        "JUMPER": "#8b5cf6",
-        "SPINOUT": "#06b6d4",
+        JUMPER: "#8b5cf6",
+        SPINOUT: "#06b6d4",
         "Wrong Way Driver": "#ec4899",
         "SIG Alert": "#dc2626",
         "Aircraft Emergency": "#3b82f6",
         "Provide Traffic Control": "#6366f1",
         "Assist CT with Maintenance": "#8b5cf6",
-        "Maintenance": "#6b7280",
+        Maintenance: "#6b7280",
         "Request CalTrans Notify": "#64748b",
         "Road Conditions": "#84cc16",
         "Traffic Break": "#0ea5e9",
@@ -52,6 +54,12 @@
 
     $: badgeColor = incidentColors[post.type] || "#fbbf24";
     $: isSigAlert = post.type === "SIG Alert";
+
+    let showRawDetails = false;
+
+    function toggleRawDetails() {
+        showRawDetails = !showRawDetails;
+    }
 
     function handleLike() {
         dispatch("like", { postId: post.id });
@@ -92,7 +100,11 @@
 >
     <div class="post-content">
         <div class="post-image-container">
-            <div class="post-badge" class:sig-alert-badge={isSigAlert} style="--badge-color: {badgeColor}">
+            <div
+                class="post-badge"
+                class:sig-alert-badge={isSigAlert}
+                style="--badge-color: {badgeColor}"
+            >
                 <span class="incident-icon">
                     <IncidentIcon type={post.type} />
                 </span>
@@ -104,12 +116,43 @@
                     <span>Active</span>
                 </div>
             {/if}
+            {#if post.details && post.details.length > 0}
+                <button
+                    class="raw-details-button"
+                    on:click={toggleRawDetails}
+                    title="View raw details"
+                >
+                    <Info size={12} />
+                    <span class="details-text">Details</span>
+                </button>
+            {/if}
             <LazyImage
                 src={post.image}
                 alt="Incident location map"
                 className="post-image"
                 priority={index < 3}
             />
+            {#if showRawDetails}
+                <div
+                    class="raw-details-inline-overlay"
+                    transition:fly={{ y: 200, duration: 300 }}
+                >
+                    <div class="raw-details-inline-header">
+                        <h4>Raw Event Details</h4>
+                        <button
+                            class="close-inline-button"
+                            on:click={() => (showRawDetails = false)}
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
+                    <div class="raw-details-inline-content">
+                        {#each post.details as detail}
+                            <div class="detail-item">{detail}</div>
+                        {/each}
+                    </div>
+                </div>
+            {/if}
         </div>
 
         <div class="post-info">
@@ -275,7 +318,7 @@
         gap: 0.4rem;
         z-index: 1;
         backdrop-filter: blur(8px);
-        box-shadow: 
+        box-shadow:
             0 2px 8px rgba(0, 0, 0, 0.2),
             0 0 4px color-mix(in srgb, var(--badge-color) 40%, transparent),
             0 0 8px color-mix(in srgb, var(--badge-color) 25%, transparent),
@@ -285,7 +328,7 @@
     }
 
     .post-badge:hover {
-        box-shadow: 
+        box-shadow:
             0 4px 12px rgba(0, 0, 0, 0.3),
             0 0 6px color-mix(in srgb, var(--badge-color) 50%, transparent),
             0 0 12px color-mix(in srgb, var(--badge-color) 30%, transparent),
@@ -295,7 +338,7 @@
 
     .post-badge.sig-alert-badge {
         border: none;
-        box-shadow: 
+        box-shadow:
             0 2px 8px rgba(0, 0, 0, 0.2),
             0 0 6px color-mix(in srgb, #dc2626 35%, transparent),
             0 0 12px color-mix(in srgb, #dc2626 25%, transparent),
@@ -304,7 +347,7 @@
     }
 
     .post-badge.sig-alert-badge:hover {
-        box-shadow: 
+        box-shadow:
             0 4px 12px rgba(0, 0, 0, 0.3),
             0 0 10px color-mix(in srgb, #dc2626 40%, transparent),
             0 0 20px color-mix(in srgb, #dc2626 30%, transparent),
@@ -330,6 +373,122 @@
         box-shadow: 0 2px 6px #0003;
         border: 1px solid rgba(255, 255, 255, 0.1);
         animation: badgePulse 2s linear infinite;
+    }
+
+    .raw-details-button {
+        position: absolute;
+        bottom: 0.6rem;
+        left: 0.6rem;
+        background-color: rgba(0, 0, 0, 0.65);
+        color: white;
+        border: none;
+        border-radius: 13px;
+        height: 26px;
+        padding: 0 7px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        z-index: 2;
+        backdrop-filter: blur(8px);
+        box-shadow: 0 2px 6px #0003;
+        transition:
+            background-color 0.2s ease,
+            transform 0.15s ease;
+        font-size: 0.65rem;
+        font-weight: 600;
+    }
+
+    .raw-details-button :global(svg) {
+        flex-shrink: 0;
+    }
+
+    .raw-details-button .details-text {
+        max-width: 0;
+        opacity: 0;
+        margin-left: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        transition:
+            max-width 0.25s ease,
+            opacity 0.2s ease,
+            margin-left 0.25s ease;
+    }
+
+    .raw-details-button:hover {
+        background-color: rgba(0, 0, 0, 0.85);
+        transform: scale(1.05);
+    }
+
+    .raw-details-button:hover .details-text {
+        max-width: 50px;
+        opacity: 1;
+        margin-left: 5px;
+    }
+
+    .raw-details-inline-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.92);
+        display: flex;
+        flex-direction: column;
+        z-index: 10;
+        border-radius: 18px 18px 0 0;
+        overflow: hidden;
+    }
+
+    .raw-details-inline-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        flex-shrink: 0;
+    }
+
+    .raw-details-inline-header h4 {
+        margin: 0;
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: white;
+    }
+
+    .close-inline-button {
+        background: rgba(255, 255, 255, 0.1);
+        border: none;
+        color: white;
+        cursor: pointer;
+        padding: 0.3rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        transition: all 0.2s;
+    }
+
+    .close-inline-button:hover {
+        background-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .raw-details-inline-content {
+        padding: 0.75rem 1rem;
+        overflow-y: auto;
+        flex: 1;
+    }
+
+    .detail-item {
+        padding: 0.5rem 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        font-size: 0.8rem;
+        color: rgba(255, 255, 255, 0.9);
+        line-height: 1.4;
+    }
+
+    .detail-item:last-child {
+        border-bottom: none;
     }
 
     .incident-icon {

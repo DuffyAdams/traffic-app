@@ -2,8 +2,20 @@
   import { onMount, onDestroy } from "svelte";
   import { fade, slide } from "svelte/transition";
 
-import { Chart as ChartJS, CategoryScale, TimeScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler, LineController } from "chart.js";
-import "chartjs-adapter-date-fns";
+  import {
+    Chart as ChartJS,
+    CategoryScale,
+    TimeScale,
+    LinearScale,
+    PointElement,
+    LineElement,
+    Title,
+    Tooltip,
+    Legend,
+    Filler,
+    LineController,
+  } from "chart.js";
+  import "chartjs-adapter-date-fns";
 
   // Import components
   import Header from "./components/Header.svelte";
@@ -300,7 +312,7 @@ import "chartjs-adapter-date-fns";
       try {
         await initializeChart();
       } catch (error) {
-        console.error('Failed to initialize chart:', error);
+        console.error("Failed to initialize chart:", error);
         return;
       }
     }
@@ -456,7 +468,7 @@ import "chartjs-adapter-date-fns";
     fetchIncidents();
   }
 
-function filterByLocation(location) {
+  function filterByLocation(location) {
     if (selectedLocations.has(location)) {
       selectedLocations.delete(location);
     } else {
@@ -622,6 +634,7 @@ function filterByLocation(location) {
       .map((incident) => ({
         id: incident.incident_no,
         compositeId: incident.compositeId,
+        details: Array.isArray(incident.Details) ? incident.Details : [],
         timestamp: incident.timestamp,
         time: formatTimestamp(incident.timestamp),
         description: incident.description || "No description available",
@@ -726,11 +739,11 @@ function filterByLocation(location) {
 
       statsCache[cacheKey] = { data: stats, timestamp: Date.now() };
 
-       eventsToday = stats.eventsToday;
-       eventsLastHour = stats.eventsLastHour;
-       eventsActive = stats.eventsActive;
-       totalIncidents = stats.totalIncidents;
-       hourlyData = (stats.hourlyData || []).map(Number);
+      eventsToday = stats.eventsToday;
+      eventsLastHour = stats.eventsLastHour;
+      eventsActive = stats.eventsActive;
+      totalIncidents = stats.totalIncidents;
+      hourlyData = (stats.hourlyData || []).map(Number);
 
       incidentsByType = Object.fromEntries(
         Object.entries(stats.incidentsByType).sort(([, a], [, b]) => b - a),
@@ -978,12 +991,12 @@ function filterByLocation(location) {
     pullDistance = 0;
   }
 
-   function toggleView() {
-     condensedView = !condensedView;
-     if (showEventCounters) {
-       showEventCounters = false;
-     }
-   }
+  function toggleView() {
+    condensedView = !condensedView;
+    if (showEventCounters) {
+      showEventCounters = false;
+    }
+  }
 
   // Event handlers for components
   function handlePostLike(event) {
@@ -1084,7 +1097,16 @@ function filterByLocation(location) {
     };
   });
 
-  import { Calendar, Clock, Zap, BarChart3, Search, MapPin, List, X } from "lucide-svelte";
+  import {
+    Calendar,
+    Clock,
+    Zap,
+    BarChart3,
+    Search,
+    MapPin,
+    List,
+    X,
+  } from "lucide-svelte";
   import IncidentIcon from "./components/IncidentIcon.svelte";
 
   async function checkForUpdates() {
@@ -1239,22 +1261,22 @@ function filterByLocation(location) {
         <div class="activity-header">
           <span class="section-title">{sectionTitle}</span>
         </div>
-         <div class="chart-container">
-           <canvas bind:this={chartCanvas}></canvas>
-         </div>
+        <div class="chart-container">
+          <canvas bind:this={chartCanvas}></canvas>
+        </div>
       </div>
 
       <!-- Breakdowns -->
       <div class="incident-breakdown-grid">
         <div class="breakdown-card">
-<div class="breakdown-header">
+          <div class="breakdown-header">
             <div class="breakdown-title-section">
               <span class="breakdown-icon"><BarChart3 size={18} /></span>
               <span class="breakdown-title">By Type</span>
             </div>
             {#if selectedTypes.size > 0}
-              <button 
-                class="reset-button" 
+              <button
+                class="reset-button"
                 on:click={resetTypeFilters}
                 title="Reset type filters"
               >
@@ -1287,14 +1309,14 @@ function filterByLocation(location) {
           </div>
         </div>
         <div class="breakdown-card">
-<div class="breakdown-header">
+          <div class="breakdown-header">
             <div class="breakdown-title-section">
               <span class="breakdown-icon"><MapPin size={18} /></span>
               <span class="breakdown-title">Top Locations</span>
             </div>
             {#if selectedLocations.size > 0}
-              <button 
-                class="reset-button" 
+              <button
+                class="reset-button"
                 on:click={resetLocationFilters}
                 title="Reset location filters"
               >
@@ -1324,22 +1346,18 @@ function filterByLocation(location) {
           </div>
         </div>
       </div>
-
-
     </div>
   {/if}
 
-   <ViewToggle
-     {condensedView}
-     {swipeIndicator}
-     {swipeDirection}
-     {isPulling}
-     {pullDistance}
-     {refreshing}
-     on:toggle={toggleView}
-   />
-
-
+  <ViewToggle
+    {condensedView}
+    {swipeIndicator}
+    {swipeDirection}
+    {isPulling}
+    {pullDistance}
+    {refreshing}
+    on:toggle={toggleView}
+  />
 
   {#if loading && posts.length === 0}
     <div class="loading-container" in:fade={{ duration: 150 }}>
@@ -1564,19 +1582,19 @@ function filterByLocation(location) {
     flex: 1;
   }
 
-   .stat-card {
-     background: var(--bg-color);
-     border: 1px solid var(--border-color);
-     border-radius: 16px;
-     text-align: center;
-     padding: 0.75rem 0.75rem;
-     display: flex;
-     flex-direction: column;
-     justify-content: center;
-     align-items: center;
-     min-height: 70px;
-     transition: all 0.3s ease;
-   }
+  .stat-card {
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    text-align: center;
+    padding: 0.75rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 70px;
+    transition: all 0.3s ease;
+  }
 
   :global(body.dark-mode) .stat-card {
     background: linear-gradient(
@@ -1634,18 +1652,18 @@ function filterByLocation(location) {
     margin-top: 0.25rem;
   }
 
-   .time-period-section {
-     display: flex;
-     flex-direction: column;
-     align-items: center;
-     justify-content: center;
-     padding: 0.75rem 1rem;
-     background: var(--bg-color);
-     border: 1px solid var(--border-color);
-     border-radius: 16px;
-     min-width: 180px;
-     gap: 0.5rem;
-   }
+  .time-period-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0.75rem 1rem;
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    min-width: 180px;
+    gap: 0.5rem;
+  }
 
   :global(body.dark-mode) .time-period-section {
     background: linear-gradient(
@@ -1743,8 +1761,12 @@ function filterByLocation(location) {
   }
 
   @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+    0% {
+      transform: rotate(0deg);
+    }
+    100% {
+      transform: rotate(360deg);
+    }
   }
 
   :global(body.dark-mode) .activity-chart-section {
@@ -1804,7 +1826,7 @@ function filterByLocation(location) {
     border: 1px solid rgba(255, 255, 255, 0.12);
   }
 
-.breakdown-header {
+  .breakdown-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1957,8 +1979,6 @@ function filterByLocation(location) {
     background: rgba(255, 255, 255, 0.15);
   }
 
-
-
   /* Scroll indicator */
   .scroll-indicator {
     width: 100%;
@@ -2062,7 +2082,7 @@ function filterByLocation(location) {
       padding: 0.75rem;
       align-items: center;
     }
-.time-buttons {
+    .time-buttons {
       display: flex;
       flex-wrap: wrap;
       justify-content: center;
@@ -2073,7 +2093,7 @@ function filterByLocation(location) {
       padding: 0.45rem 0.7rem;
       font-size: 0.75rem;
     }
-.incident-breakdown-grid {
+    .incident-breakdown-grid {
       grid-template-columns: 1fr;
     }
     .breakdown-list {
@@ -2148,7 +2168,7 @@ function filterByLocation(location) {
     .section-title {
       font-size: 0.9rem;
     }
-.breakdown-card {
+    .breakdown-card {
       padding: 0.75rem;
       border-radius: 12px;
       overflow: hidden;
@@ -2160,56 +2180,56 @@ function filterByLocation(location) {
       padding: 0.55rem 0.7rem;
       min-height: 38px;
     }
-.time-button {
+    .time-button {
       flex: 1 1 calc(50% - 0.125rem);
       min-width: 0;
     }
 
     @media (max-width: 360px) {
-    .container {
-      padding: 0.5rem;
-    }
-    .event-counters {
-      padding: 0.75rem;
-      gap: 0.5rem;
-      border-radius: 12px;
-    }
-    .stats-grid {
-      gap: 0.3rem;
-    }
-    .stat-card {
-      padding: 0.5rem 0.3rem;
-      min-height: 65px;
-    }
-    .stat-value {
-      font-size: 1.25rem;
-    }
-    .stat-icon {
-      font-size: 1rem;
-    }
-    .stat-label {
-      font-size: 0.6rem;
-    }
-    .time-button {
-      padding: 0.35rem 0.6rem;
-      font-size: 0.7rem;
-    }
-.chart-container {
-      height: 130px;
-    }
-    .breakdown-list {
-      max-height: 240px;
-    }
-    .breakdown-item {
-      padding: 0.5rem 0.65rem;
-      min-height: 36px;
-    }
-    .breakdown-name {
-      font-size: 0.85rem;
-    }
-    .breakdown-count {
-      font-size: 0.8rem;
-    }
+      .container {
+        padding: 0.5rem;
+      }
+      .event-counters {
+        padding: 0.75rem;
+        gap: 0.5rem;
+        border-radius: 12px;
+      }
+      .stats-grid {
+        gap: 0.3rem;
+      }
+      .stat-card {
+        padding: 0.5rem 0.3rem;
+        min-height: 65px;
+      }
+      .stat-value {
+        font-size: 1.25rem;
+      }
+      .stat-icon {
+        font-size: 1rem;
+      }
+      .stat-label {
+        font-size: 0.6rem;
+      }
+      .time-button {
+        padding: 0.35rem 0.6rem;
+        font-size: 0.7rem;
+      }
+      .chart-container {
+        height: 130px;
+      }
+      .breakdown-list {
+        max-height: 240px;
+      }
+      .breakdown-item {
+        padding: 0.5rem 0.65rem;
+        min-height: 36px;
+      }
+      .breakdown-name {
+        font-size: 0.85rem;
+      }
+      .breakdown-count {
+        font-size: 0.8rem;
+      }
     }
   }
 </style>
