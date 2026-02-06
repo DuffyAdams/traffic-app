@@ -1,0 +1,3 @@
+traffic-app.duffyadams.com {
+    reverse_proxy traffic-app:5000
+}
