@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  traffic-app:
+    build: .
+    container_name: traffic-alert-system
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./traffic_data.db:/app/traffic_data.db
+      - ./traffic-app/maps:/app/traffic-app/maps
+    env_file:
+      - .env
+    restart: unless-stopped
