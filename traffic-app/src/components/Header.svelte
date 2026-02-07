@@ -19,14 +19,12 @@
 <header class="header">
     <button
         class="dark-mode-toggle"
+        class:is-dark={darkMode}
         on:click={handleToggleDarkMode}
         aria-label="Toggle dark mode"
     >
-        {#if darkMode}
-            <Sun size={18} />
-        {:else}
-            <Moon size={18} />
-        {/if}
+        <Sun size={18} class="sun-icon" />
+        <Moon size={18} class="moon-icon" />
     </button>
 
     <button class="header-content" on:click={handleToggleEventCounters}>
@@ -99,47 +97,70 @@
     .dark-mode-toggle {
         position: absolute;
         top: 1rem;
-        right: 1rem;
-        background: rgba(0, 0, 0, 0.05);
-        border: 1px solid rgba(0, 0, 0, 0.1);
-        border-radius: 24px;
-        width: 52px;
-        height: 28px;
-        font-size: 0.9rem;
+        right: 1.5rem;
+        background: rgba(255, 255, 255, 0.9);
+        border: 1px solid #e2e8f0;
+        border-radius: 50%;
+        width: 36px;
+        height: 36px;
         cursor: pointer;
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        z-index: 2;
+        z-index: 10;
         display: flex;
         align-items: center;
-        justify-content: flex-end; /* Align Moon to right in Light Mode */
-        padding: 3px;
-        box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
-        overflow: hidden;
+        justify-content: center;
+        padding: 0;
+        box-shadow:
+            0 4px 6px -1px rgba(0, 0, 0, 0.1),
+            0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        color: #4a5568;
     }
 
-    :global(body.dark-mode) .dark-mode-toggle {
-        background: linear-gradient(
-            135deg,
-            rgba(255, 255, 255, 0.25) 0%,
-            rgba(255, 255, 255, 0.1) 100%
-        );
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.2),
-            0 2px 8px rgba(0, 0, 0, 0.15);
-        justify-content: flex-start; /* Align Sun to left in Dark Mode */
+    .dark-mode-toggle.is-dark {
+        background: rgba(30, 41, 59, 0.8);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        color: #f7fafc;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
     }
 
     .dark-mode-toggle:hover {
-        background: linear-gradient(
-            135deg,
-            rgba(255, 255, 255, 0.35) 0%,
-            rgba(255, 255, 255, 0.15) 100%
-        );
-        transform: scale(1.05);
-        box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.3),
-            0 4px 12px rgba(0, 0, 0, 0.2);
+        transform: scale(1.1);
+        background: #ffffff;
+        color: #2b6cb0;
+        border-color: #cbd5e0;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    }
+
+    .dark-mode-toggle.is-dark:hover {
+        background: #1e293b;
+        color: #63b3ed;
+        border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    :global(.sun-icon),
+    :global(.moon-icon) {
+        position: absolute;
+        transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Icons in Light Mode (Default) */
+    :global(.sun-icon) {
+        transform: scale(1) rotate(0deg);
+        opacity: 1;
+    }
+    :global(.moon-icon) {
+        transform: scale(0) rotate(90deg);
+        opacity: 0;
+    }
+
+    /* Icons in Dark Mode */
+    .is-dark :global(.sun-icon) {
+        transform: scale(0) rotate(-90deg);
+        opacity: 0;
+    }
+    .is-dark :global(.moon-icon) {
+        transform: scale(1) rotate(0deg);
+        opacity: 1;
     }
 
     .header-content {
@@ -219,20 +240,8 @@
         .dark-mode-toggle {
             top: 0.8rem;
             right: 0.8rem;
-            width: 44px;
-            height: 24px;
-            border-radius: 20px;
-            padding: 2px;
-        }
-        .dark-mode-toggle::before {
-            width: 18px;
-            height: 18px;
-            left: 3px;
-        }
-    }
-    @media (max-width: 768px) {
-        :global(body.dark-mode) .dark-mode-toggle::before {
-            transform: translateX(18px);
+            width: 32px;
+            height: 32px;
         }
     }
 
