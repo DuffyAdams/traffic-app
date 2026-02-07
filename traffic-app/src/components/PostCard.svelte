@@ -50,6 +50,21 @@
         "Request CalTrans Notify": "#64748b",
         "Road Conditions": "#84cc16",
         "Traffic Break": "#0ea5e9",
+        // Police
+        "AUTO THEFT": "#3b82f6",
+        "MISD HIT/RUN": "#ef4444",
+        VANDALISM: "#8b5cf6",
+        ROBBERY: "#1d4ed8",
+        "SUICIDE-THREATS": "#9333ea",
+        "DISTURBING PEACE": "#6366f1",
+        "REPORT OF DEATH": "#000000",
+        "PRISONER IN CUSTODY": "#374151",
+        "MENTAL CASE": "#ec4899",
+        // Fire
+        MEDICAL: "#ef4444",
+        "STRUCTURE FIRE": "#b91c1c",
+        "VEGETATION FIRE": "#166534",
+        "TRAFFIC ACCIDENT": "#f59e0b",
     };
 
     $: badgeColor = incidentColors[post.type] || "#fbbf24";
@@ -126,12 +141,23 @@
                     <span class="details-text">Details</span>
                 </button>
             {/if}
-            <LazyImage
-                src={post.image}
-                alt="Incident location map"
-                className="post-image"
-                priority={index < 3}
-            />
+            <div
+                class={`placeholder-container ${post.active ? "active" : ""}`}
+                style="--bg-color: {badgeColor}"
+            >
+                {#if post.image && post.image !== "/maps/" && post.image !== "/maps/"}
+                    <LazyImage
+                        src={post.image}
+                        alt="Incident location map"
+                        className="post-image"
+                        priority={index < 3}
+                    />
+                {:else}
+                    <div class="placeholder-content">
+                        <IncidentIcon type={post.type} size={48} />
+                    </div>
+                {/if}
+            </div>
             {#if showRawDetails}
                 <div
                     class="raw-details-inline-overlay"
@@ -300,7 +326,30 @@
         width: 100%;
         height: 190px;
         overflow: hidden;
+        overflow: hidden;
         border-radius: 18px 18px 0 0;
+        background-color: var(--secondary-bg);
+    }
+
+    .placeholder-container {
+        width: 100%;
+        height: 100%;
+        position: relative;
+    }
+
+    .placeholder-content {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(
+            135deg,
+            var(--bg-color) 0%,
+            var(--card-bg) 100%
+        );
+        opacity: 0.8;
+        color: var(--text-muted);
     }
 
     .post-badge {

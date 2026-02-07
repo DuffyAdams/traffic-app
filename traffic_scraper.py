@@ -8,20 +8,32 @@ import uuid
 import sqlite3
 import subprocess
 import threading
+import hashlib
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 
 # Database lock for thread safety
 db_lock = threading.Lock()
+# Print lock for thread-safe logging
+print_lock = threading.Lock()
+
+def safe_print(*args, **kwargs):
+    """Thread-safe print function."""
+    with print_lock:
+        print(*args, **kwargs)
+        sys.stdout.flush()
 
 import requests
 from bs4 import BeautifulSoup
-from geopy.geocoders import Nominatim
 import pytz
 from flask import Flask, jsonify, send_from_directory, request, make_response
 from flask_cors import CORS
 from dotenv import load_dotenv
 from openai import OpenAI
+
+# Import geocoding module
+from geocoding import GeocodingCache, geocode_location as geo_geocode_location, reverse_geocode
 
 # -----------------------------------
 # Configuration and Setup
@@ -35,6 +47,9 @@ MAP_GENERATOR = os.path.join(BASE_DIR, "generate_map.py")
 
 os.makedirs(TARGET_DIR, exist_ok=True)
 
+# Initialize geocoding cache
+geo_cache = GeocodingCache(DB_FILE)
+
 # Retrieve the API key from the environment
 GPT_KEY = os.getenv("GPT_KEY")
 
@@ -46,11 +61,14 @@ GPT_KEY = os.getenv("GPT_KEY")
 client = OpenAI(api_key=GPT_KEY)
 
 HEADERS = {
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+    "Accept": "application/json, text/javascript, */*; q=0.01",
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+    "X-Requested-With": "XMLHttpRequest",
 }
 PARAMS = {"ddlComCenter": "BCCC"}
-SCRAPE_URL = "https://cad.chp.ca.gov/traffic.aspx?__EVENTTARGET=ddlComCenter&ddlComCenter=BCCC"
+CHP_SCRAPE_URL = "https://cad.chp.ca.gov/traffic.aspx?__EVENTTARGET=ddlComCenter&ddlComCenter=BCCC"
+SDPD_SCRAPE_URL = "https://webapps.sandiego.gov/sdpdonline"
+SDFD_API_URL = "https://webapps.sandiego.gov/SDFireDispatch/api/v1/Incidents"
 HEALTHCHECK_URL = "https://hc-ping.com/7299c402-d91d-4d89-8f84-5e6b510631c0"
 
 # Regex patterns
@@ -71,14 +89,16 @@ CORS(app, resources={r"/api/*": {"origins": "*"}, r"/maps/*": {"origins": "*"}})
 
 # Test mode flag
 
-TESTMODE = False
+TESTMODE = True
 
 # -----------------------------------
 # Database Functions
 # -----------------------------------
 def init_db():
     """Initialize SQLite database with updated schema."""
-    with sqlite3.connect(DB_FILE) as conn:
+    with sqlite3.connect(DB_FILE, timeout=30) as conn:
+        conn.execute("PRAGMA journal_mode=WAL")  # Enable WAL mode for concurrency
+        conn.execute("PRAGMA synchronous=NORMAL") # Optimized for performance
         conn.execute("PRAGMA foreign_keys = ON")  # Enable foreign keys globally
         cur = conn.cursor()
         # Incidents table with an extra 'active' column
@@ -100,11 +120,23 @@ def init_db():
                 likes INTEGER DEFAULT 0,
                 comments TEXT DEFAULT '[]',
                 active INTEGER DEFAULT 1,
+                source TEXT DEFAULT 'CHP',
                 PRIMARY KEY (incident_no, date)
             )
         """)
+        
+        # Migration: Add source column if it doesn't exist
+        try:
+            cur.execute("ALTER TABLE incidents ADD COLUMN source TEXT DEFAULT 'CHP'")
+        except sqlite3.OperationalError:
+            pass  # Column likely exists
+        
+        # Migration: Add geocode_precision column
+        try:
+            cur.execute("ALTER TABLE incidents ADD COLUMN geocode_precision TEXT DEFAULT 'unknown'")
+        except sqlite3.OperationalError:
+            pass  # Column likely exists
         # Likes table
-        cur.execute("DROP TABLE IF EXISTS likes")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS likes (
                 device_uuid TEXT,
@@ -114,7 +146,6 @@ def init_db():
             )
         """)
         # Comments table
-        cur.execute("DROP TABLE IF EXISTS comments")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS comments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -171,74 +202,82 @@ def init_db():
         
         conn.commit()
 
-def read_incidents(limit=20, offset=0, incident_types=None, locations=None, active_only=False, cursor=None, date_filter=None):
+def read_incidents(limit=20, offset=0, incident_types=None, locations=None, sources=None, active_only=False, cursor=None, date_filter=None):
     """Read a limited set of incidents from the database along with their comments."""
     with db_lock:
-        with sqlite3.connect(DB_FILE) as conn:
+        with sqlite3.connect(DB_FILE, timeout=30) as conn:
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
-        query = "SELECT * FROM incidents"
-        params = []
-        conditions = []
+            query = "SELECT * FROM incidents"
+            params = []
+            conditions = []
 
-        if incident_types:
-            placeholders = ",".join("?" for _ in incident_types)
-            conditions.append(f"type IN ({placeholders})")
-            params.extend(incident_types)
+            if sources:
+                placeholders = ",".join("?" for _ in sources)
+                conditions.append(f"source IN ({placeholders})")
+                params.extend(sources)
 
-        if locations:
-            placeholders = ",".join("?" for _ in locations)
-            # Use LIKE or exact match? Top locations are usually distinct strings.
-            # Using IN for exact match is safer and faster if exact strings are passed.
-            conditions.append(f"location IN ({placeholders})")
-            params.extend(locations)
+            if incident_types:
+                placeholders = ",".join("?" for _ in incident_types)
+                conditions.append(f"type IN ({placeholders})")
+                params.extend(incident_types)
 
-        if active_only:
-            conditions.append("active = 1")
-            conditions.append("map_filename IS NOT NULL") # Only show active incidents that have a map
+            if locations:
+                placeholders = ",".join("?" for _ in locations)
+                conditions.append(f"location IN ({placeholders})")
+                params.extend(locations)
 
-        if date_filter == 'daily':
-            today = datetime.now().strftime("%Y-%m-%d")
-            conditions.append("date = ?")
-            params.append(today)
+            if active_only:
+                conditions.append("active = 1")
 
-        if cursor:
-            # Cursor-based pagination: get incidents after the cursor timestamp
-            conditions.append("timestamp < ?")
-            params.append(cursor)
+            if date_filter in ['day', 'daily']:
+                today = datetime.now().strftime("%Y-%m-%d")
+                conditions.append("date = ?")
+                params.append(today)
 
-        if conditions:
-            query += " WHERE " + " AND ".join(conditions)
+            if cursor:
+                # cursor is expected to be "timestamp|incident_no"
+                if "|" in cursor:
+                    ts_part, id_part = cursor.split("|", 1)
+                    conditions.append("(timestamp, incident_no) < (?, ?)")
+                    params.extend([ts_part, id_part])
+                else:
+                    # Fallback for old simple cursors
+                    conditions.append("timestamp < ?")
+                    params.append(cursor)
 
-        query += " ORDER BY timestamp DESC LIMIT ?"
-        params.append(limit)
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
 
-        cur.execute(query, tuple(params))
-        incidents = [dict(row) for row in cur.fetchall()]
-        for inc in incidents:
-            incident_no = inc["incident_no"]
-            cur.execute(
-                "SELECT username, comment, timestamp FROM comments WHERE incident_no = ? ORDER BY timestamp ASC",
-                (incident_no,)
-            )
-            inc["comments"] = [
-                {"username": row[0] or "Anonymous", "comment": row[1], "timestamp": row[2]}
-                for row in cur.fetchall()
-            ]
-            try:
-                inc["Details"] = json.loads(inc["details"]) if inc["details"] else []
-            except Exception:
-                inc["Details"] = []
-        return incidents
+            query += " ORDER BY timestamp DESC, incident_no DESC LIMIT ?"
+            params.append(limit)
+
+            cur.execute(query, tuple(params))
+            incidents = [dict(row) for row in cur.fetchall()]
+            for inc in incidents:
+                incident_no = inc["incident_no"]
+                cur.execute(
+                    "SELECT username, comment, timestamp FROM comments WHERE incident_no = ? ORDER BY timestamp ASC",
+                    (incident_no,)
+                )
+                inc["comments"] = [
+                    {"username": row[0] or "Anonymous", "comment": row[1], "timestamp": row[2]}
+                    for row in cur.fetchall()
+                ]
+                try:
+                    inc["Details"] = json.loads(inc["details"]) if inc["details"] else []
+                except Exception:
+                    inc["Details"] = []
+            return incidents
 
 
 def incident_exists(incident_no, date):
     """Check if an incident exists in the database."""
     with db_lock:
-        with sqlite3.connect(DB_FILE) as conn:
+        with sqlite3.connect(DB_FILE, timeout=30) as conn:
             cur = conn.cursor()
-        cur.execute("SELECT 1 FROM incidents WHERE incident_no = ? AND date = ?", (str(incident_no), date))
-        return cur.fetchone() is not None
+            cur.execute("SELECT 1 FROM incidents WHERE incident_no = ? AND date = ?", (str(incident_no), date))
+            return cur.fetchone() is not None
 
 
 # -----------------------------------
@@ -253,7 +292,7 @@ call_count = 0
 def generate_description(data):
     global call_count
     call_count += 1
-    print("GPT API Calls:" + str(call_count))
+    safe_print("GPT API Calls:" + str(call_count))
 
     try:
         # Generate a tweet-friendly description using ChatGPT's GPT-4o-mini model
@@ -285,7 +324,7 @@ def generate_description(data):
             return response.choices[0].message.content.strip()
 
     except Exception as e:
-        print(f"Error generating description: {e}")
+        safe_print(f"Error generating description: {e}")
         return "Traffic incident reported."
 
 # -----------------------------------
@@ -297,7 +336,7 @@ def save_or_update_incident(data):
 
     incident_no = data.get("No.") or data.get("Incident No.")
     if not incident_no:
-        print("No incident number found in data.")
+        safe_print("No incident number found in data.")
         return False
 
     date = data.get("Date", datetime.now().strftime("%Y-%m-%d"))
@@ -320,42 +359,69 @@ def save_or_update_incident(data):
     latitude = data.get("Latitude")
     longitude = data.get("Longitude")
     new_map_filename = data.get("MapFilename", "")
+    source = data.get("Source", "CHP")
+    geocode_precision = data.get("precision", "unknown")
 
     with db_lock:
-        with sqlite3.connect(DB_FILE) as conn:
+        with sqlite3.connect(DB_FILE, timeout=30) as conn:
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
-        cur.execute("SELECT * FROM incidents WHERE incident_no = ? AND date = ?", (str(incident_no), date))
-        existing = cur.fetchone()
-        if existing:
-            existing_data = dict(existing)
-            if details_json != existing_data.get("details", ""):
-                # Only generate a new description if details have changed
+            cur.execute("SELECT * FROM incidents WHERE incident_no = ? AND date = ?", (str(incident_no), date))
+            existing = cur.fetchone()
+            if existing:
+                existing_data = dict(existing)
+                updates = []
+                params = []
+                
+                # Update details and description if changed
+                if details_json != existing_data.get("details", ""):
+                    new_description = generate_description(data)
+                    updates.append("details = ?, description = ?")
+                    params.extend([details_json, new_description])
+                
+                # Update coordinates if missing or changed
+                if latitude and latitude != existing_data.get("latitude"):
+                    updates.append("latitude = ?")
+                    params.append(latitude)
+                if longitude and longitude != existing_data.get("longitude"):
+                    updates.append("longitude = ?")
+                    params.append(longitude)
+                    
+                # Update geocode_precision if we have a new value
+                if geocode_precision != "unknown" and geocode_precision != existing_data.get("geocode_precision"):
+                    updates.append("geocode_precision = ?")
+                    params.append(geocode_precision)
+                    
+                # Update map filename if missing or changed
+                if new_map_filename and new_map_filename != existing_data.get("map_filename"):
+                    updates.append("map_filename = ?")
+                    params.append(new_map_filename)
+
+                if updates:
+                    updates.append("active = 1")
+                    query = f"UPDATE incidents SET {', '.join(updates)} WHERE incident_no = ? AND date = ?"
+                    params.extend([str(incident_no), date])
+                    cur.execute(query, tuple(params))
+                    conn.commit()
+                    safe_print(f"Incident {incident_no} updated.")
+                    return True
+                else:
+                    safe_print(f"No changes for incident {incident_no}.")
+                    return False
+            else:
+                # For new incidents, generate the description before inserting
                 new_description = generate_description(data)
                 cur.execute("""
-                    UPDATE incidents 
-                    SET details = ?, description = ?, active = 1
-                    WHERE incident_no = ? AND date = ?
-                """, (details_json, new_description, str(incident_no), date))
+                    INSERT INTO incidents 
+                    (incident_no, date, timestamp, city, neighborhood, location, location_desc, type, details, 
+                     description, latitude, longitude, map_filename, likes, comments, active, source, geocode_precision)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                """, (str(incident_no), date, new_timestamp, city, neighborhood, location, location_desc, type_field,
+                      details_json, new_description, latitude, longitude, new_map_filename, 0, '[]', source, geocode_precision))
                 conn.commit()
-                print(f"Incident {incident_no} updated (details only).")
+                safe_print(f"Incident {incident_no} inserted.")
                 return True
-            else:
-                print(f"No changes in details for incident {incident_no}.")
-                return False
-        else:
-            # For new incidents, generate the description before inserting
-            new_description = generate_description(data)
-            cur.execute("""
-                INSERT INTO incidents 
-                (incident_no, date, timestamp, city, neighborhood, location, location_desc, type, details, 
-                 description, latitude, longitude, map_filename, likes, comments, active)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-            """, (str(incident_no), date, new_timestamp, city, neighborhood, location, location_desc, type_field,
-                  details_json, new_description, latitude, longitude, new_map_filename, 0, '[]'))
-            conn.commit()
-            print(f"Incident {incident_no} inserted.")
-            return True
+
 
 # -----------------------------------
 # UUID Management
@@ -364,9 +430,9 @@ def get_or_create_uuid(req):
     device_uuid = req.cookies.get(COOKIE_NAME)
     if not device_uuid:
         device_uuid = str(uuid.uuid4())
-        print(f"New UUID generated: {device_uuid}")
+        safe_print(f"New UUID generated: {device_uuid}")
     else:
-        print(f"Reusing existing UUID: {device_uuid}")
+        safe_print(f"Reusing existing UUID: {device_uuid}")
     return device_uuid
 
 # -----------------------------------
@@ -407,14 +473,19 @@ def extract_traffic_info(response_text):
         return last_valid_coords
     return {}
 
+def geocode_location(location_query):
+    """
+    Geocode a location string into coordinates.
+    Uses the new geocoding module with caching and bounding box validation.
+    
+    Returns: dict with Latitude, Longitude, precision keys, or None if not found.
+    """
+    return geo_geocode_location(location_query, cache=geo_cache, debug_print=safe_print)
+
 def get_location(lat, lon):
-    try:
-        geolocator = Nominatim(user_agent="traffic_scraper")
-        location = geolocator.reverse((lat, lon), exactly_one=True)
-        return location.raw.get("address") if location else None
-    except Exception as e:
-        print(f"Geocoding error: {e}")
-        return None
+    """Reverse geocode coordinates to get address info."""
+    return reverse_geocode(lat, lon, cache=geo_cache, debug_print=safe_print)
+
 
 def get_incident_details(row_index, viewstate):
     try:
@@ -427,8 +498,9 @@ def get_incident_details(row_index, viewstate):
             "ddlComCenter": "BCCC",
             "ddlSearches": "Choose One",
             "ddlResources": "Choose One",
+            "ddlResources": "Choose One",
         }
-        post_response = requests.post(SCRAPE_URL, params=PARAMS, headers=HEADERS, data=data)
+        post_response = requests.post(CHP_SCRAPE_URL, params=PARAMS, headers=HEADERS, data=data)
         post_response.raise_for_status()
         details_data = extract_traffic_info(post_response.text)
         if details_data:
@@ -439,52 +511,233 @@ def get_incident_details(row_index, viewstate):
             return details_data
         return {}
     except requests.exceptions.RequestException as e:
-        print(f"Network or HTTP error getting incident details for index {row_index}: {e}")
+        safe_print(f"Network or HTTP error getting incident details for index {row_index}: {e}")
         return {}
     except Exception as e:
-        print(f"An unexpected error occurred getting incident details for index {row_index}: {e}")
+        safe_print(f"An unexpected error occurred getting incident details for index {row_index}: {e}")
         return {}
 
-def scrape_all_incidents():
+def scrape_chp_incidents():
     try:
-        response = requests.get(SCRAPE_URL, headers=HEADERS)
+        response = requests.get(CHP_SCRAPE_URL, headers=HEADERS)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
         table = soup.find("table", id="gvIncidents")
         if not table:
-            print("No incident table found.")
+            safe_print("No incident table found.")
             return []
         headers = [th.get_text(strip=True) for th in table.find_all("th")]
         rows = table.find_all("tr")[1:]  # Skip header row
         incidents_list = []
         viewstate = get_viewstate(response.text)
         if not viewstate:
-            print("No __VIEWSTATE found.")
+            safe_print("No __VIEWSTATE found.")
             return []
-        for idx, row in enumerate(rows):
+
+        def process_chp_row(idx, row):
             row_data = [cell.get_text(strip=True) for cell in row.find_all("td")]
             if "Location" in headers and row_data[headers.index("Location")] == "Media Log":
-                print(f"Skipping 'Media Log' entry at index {idx}")
-                continue
+                return None
+            
             table_data = dict(zip(headers, row_data))
             additional_details = get_incident_details(idx, viewstate)
             if not additional_details:
-                print(f"WARNING: Failed to retrieve additional details for incident at index {idx}. Skipping.")
-                continue # Skip this incident if details could not be retrieved
+                safe_print(f"WARNING: Failed to retrieve additional details for incident at index {idx}. Skipping.")
+                return None
 
             merged_data = {**table_data, **additional_details}
-            # Remove the generate_description() call here to avoid duplicate API calls.
-            merged_data["Date"] = datetime.now().strftime("%Y-%m-%d")
-            merged_data["Timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            incidents_list.append(merged_data)
+            chp_time = table_data.get("Time", "")
+            if chp_time:
+                try:
+                    now = datetime.now()
+                    today_str = now.strftime("%Y-%m-%d")
+                    try:
+                        dt_obj = datetime.strptime(f"{today_str} {chp_time}", "%Y-%m-%d %I:%M %p")
+                    except ValueError:
+                        dt_obj = datetime.strptime(f"{today_str} {chp_time}", "%Y-%m-%d %H:%M")
+                    
+                    # If the parsed time is significantly in the future, it must be from yesterday
+                    if dt_obj > now + timedelta(minutes=5):
+                        dt_obj -= timedelta(days=1)
+
+                    merged_data["Timestamp"] = dt_obj.strftime("%Y-%m-%d %H:%M:%S")
+                    merged_data["Date"] = dt_obj.strftime("%Y-%m-%d")
+                except Exception as e:
+                    safe_print(f"Error parsing CHP time '{chp_time}': {e}")
+                    now = datetime.now()
+                    merged_data["Timestamp"] = now.strftime("%Y-%m-%d %H:%M:%S")
+                    merged_data["Date"] = now.strftime("%Y-%m-%d")
+            else:
+                now = datetime.now()
+                merged_data["Timestamp"] = now.strftime("%Y-%m-%d %H:%M:%S")
+                merged_data["Date"] = now.strftime("%Y-%m-%d")
+
+            merged_data["Source"] = "CHP"
+            return merged_data
+
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = [executor.submit(process_chp_row, idx, row) for idx, row in enumerate(rows)]
+            for future in as_completed(futures):
+                result = future.result()
+                if result:
+                    incidents_list.append(result)
+
         return incidents_list
     except Exception as e:
-        print("Error scraping incidents:", e)
+        safe_print("Error scraping CHP incidents:", e)
         return []
 
+def scrape_sdpd_incidents():
+    safe_print("Scraping SDPD incidents...")
+    try:
+        # Fetch the SDPD page
+        response = requests.get(SDPD_SCRAPE_URL, headers=HEADERS)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+        
+        table = soup.find("table", id="myDataTable")
+        if not table:
+            safe_print("No SDPD table found.")
+            return []
+            
+        rows = table.find("tbody").find_all("tr")
+        incidents = []
+        
+        headers = ["Call DateTime", "Call Type", "Division", "Neighborhood", "Block Address"]
+        
+        for row in rows:
+            cols = [ele.text.strip() for ele in row.find_all("td")]
+            if not cols:
+                continue
+                
+            # Create a dictionary from the row
+            # Columns: Call DateTime, Call Type, Division, Neighborhood, Block Address
+            if len(cols) < 5:
+                continue
+                
+            dt_str = cols[0]
+            call_type = cols[1]
+            division = cols[2]
+            neighborhood = cols[3]
+            address = cols[4]
+            
+            # Create a consistent ID using hash of date + address + type
+            unique_str = f"{dt_str}_{address}_{call_type}"
+            incident_id = "SDPD-" + hashlib.md5(unique_str.encode()).hexdigest()[:8]
+            
+            # Parse date
+            try:
+                dt_obj = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+                date_val = dt_obj.strftime("%Y-%m-%d")
+                time_val = dt_obj.strftime("%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                date_val = datetime.now().strftime("%Y-%m-%d")
+                time_val = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            incident = {
+                "No.": incident_id,
+                "Date": date_val,
+                "Timestamp": time_val,
+                "City": "San Diego",
+                "Neighborhood": neighborhood,
+                "Location": address,
+                "Location Desc.": division,
+                "Type": call_type,
+                "Details": [f"Division: {division}", f"Neighborhood: {neighborhood}"],
+                "Source": "SDPD"
+            }
+            incidents.append(incident)
+            
+        safe_print(f"Found {len(incidents)} SDPD incidents.")
+        return incidents
+        
+    except Exception as e:
+        safe_print(f"Error scraping SDPD: {e}")
+        return []
+
+def scrape_sdfd_incidents():
+    safe_print("Scraping SDFD incidents...")
+    try:
+        response = requests.get(SDFD_API_URL, headers=HEADERS)
+        response.raise_for_status()
+        data = response.json()
+        
+        incidents = []
+        
+        for item in data:
+            # Fields: ResponseDateString, CallType, Address, CrossStreet, Units (list of objects)
+            dt_str = item.get("ResponseDateString", "")
+            call_type = item.get("CallType", "")
+            address = item.get("Address", "")
+            cross_street = item.get("CrossStreet", "")
+            # Fields: ResponseDateString, CallType, Address, CrossStreet, Units (list of objects)
+            dt_str = item.get("ResponseDate", "") or item.get("ResponseDateString", "")
+            call_type = item.get("CallType", "")
+            address = item.get("Address", "")
+            cross_street = item.get("CrossStreet", "")
+            units = item.get("Units", [])
+            unit_codes = [u.get("Code") for u in units] if units else []
+            
+            # Create ID
+            unique_str = f"{dt_str}_{address}_{call_type}"
+            incident_id = "SDFD-" + hashlib.md5(unique_str.encode()).hexdigest()[:8]
+            
+             # Parse date
+            try:
+                # Prefer ISO format from ResponseDate: "2026-01-25T14:10:43-08:00"
+                if "T" in dt_str:
+                    # simplistic ISO parse: take YYYY-MM-DDTHH:MM:SS
+                    dt_val = dt_str[:19]
+                    dt_obj = datetime.strptime(dt_val, "%Y-%m-%dT%H:%M:%S")
+                else:
+                    # Fallback for "2026-01-25  14:10" (double space)
+                    cleaned_str = " ".join(dt_str.split()) # Remove extra spaces
+                    dt_obj = datetime.strptime(cleaned_str, "%Y-%m-%d %H:%M")
+                    
+                date_val = dt_obj.strftime("%Y-%m-%d")
+                time_val = dt_obj.strftime("%Y-%m-%d %H:%M:%S")
+            except Exception as e:
+                safe_print(f"Date parse error for {dt_str}: {e}")
+                date_val = datetime.now().strftime("%Y-%m-%d")
+                time_val = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                # Attempt flexible parsing or fallback
+                date_val = datetime.now().strftime("%Y-%m-%d")
+                time_val = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            details = []
+            if cross_street:
+                details.append(f"Cross Street: {cross_street}")
+            if unit_codes:
+                details.append(f"Units: {', '.join(unit_codes)}")
+
+            incident = {
+                "No.": incident_id,
+                "Date": date_val,
+                "Timestamp": time_val,
+                "City": "San Diego",
+                "Neighborhood": "",
+                "Location": address,
+                "Location Desc.": cross_street,
+                "Type": call_type,
+                "Details": details,
+                "Source": "SDFD"
+            }
+            incidents.append(incident)
+            
+        safe_print(f"Found {len(incidents)} SDFD incidents.")
+        return incidents
+        
+    except Exception as e:
+        safe_print(f"Error scraping SDFD: {e}")
+        return []
+
+
 def run_map_generator(merged_data):
+    if TESTMODE:
+        safe_print(f"TESTMODE: Skipping map generation for {merged_data.get('No.') or merged_data.get('Incident No.', 'unknown')}")
+        return
     if not os.path.exists(MAP_GENERATOR):
-        print(f"Map generator script not found at '{MAP_GENERATOR}'.")
+        safe_print(f"Map generator script not found at '{MAP_GENERATOR}'.")
         return
     try:
         lon = merged_data.get("Longitude")
@@ -497,40 +750,122 @@ def run_map_generator(merged_data):
         filename = os.path.join(TARGET_DIR, f"map_{incident_no}_{filename_date_str}.png")
         cmd = [sys.executable, MAP_GENERATOR, str(lon), str(lat), filename]
         subprocess.run(cmd, check=True)
-        print("Map generated successfully.")
-        merged_data["Timestamp"] = timestamp_str
+        safe_print(f"Map generated successfully for {incident_no}.")
         merged_data["MapFilename"] = os.path.basename(filename)
     except subprocess.CalledProcessError as e:
-        print(f"Error running map generator: {e}")
+        safe_print(f"Error running map generator for {incident_no}: {e}")
+    except Exception as e:
+        safe_print(f"Unexpected error in run_map_generator for {incident_no}: {e}")
+
+def process_and_save_incident(incident):
+    try:
+        incident_no = incident.get("No.") or incident.get("Incident No.")
+        if not incident_no:
+            safe_print("WARNING: No incident number found. Skipping this entry.")
+            return None
+        
+        inc_exists = incident_exists(incident_no, incident.get("Date", datetime.now().strftime("%Y-%m-%d")))
+        
+        # We geocode if:
+        # 1. It's a new incident
+        # 2. OR it's an existing incident but missing Latitude/Longitude/Map (one-time catch up)
+        needs_geocoding = False
+        if not inc_exists:
+            needs_geocoding = True
+        else:
+            # Check if existing record is missing coordinates
+            with db_lock:
+                with sqlite3.connect(DB_FILE, timeout=30) as conn:
+                    cur = conn.cursor()
+                    cur.execute("SELECT latitude, map_filename FROM incidents WHERE incident_no = ?", (str(incident_no),))
+                    row = cur.fetchone()
+                    if row and (row[0] is None or not row[1]):
+                        safe_print(f"DEBUG: Incident {incident_no} exists but missing coords/map. Needs geocoding.")
+                        needs_geocoding = True
+
+        if needs_geocoding:
+            safe_print(f"DEBUG: Processing geocoding for {incident_no} ({incident.get('Source')})")
+            # Attempt to geocode if coordinates are missing (for SDPD/SDFD)
+            if "Longitude" not in incident or "Latitude" not in incident:
+                source = incident.get("Source")
+                location_str = incident.get("Location", "")
+                if source == "SDPD":
+                    query = f"{location_str}, San Diego, CA"
+                    coords = geocode_location(query)
+                    if coords:
+                        incident.update(coords)
+                elif source == "SDFD":
+                    # SDFD has explicit Address and CrossStreet in API
+                    address = incident.get("Location", "")
+                    cross = incident.get("Location Desc.", "")
+                    
+                    # If address already contains the cross street (via '&' or 'and'), don't add it again
+                    if cross and cross != "N/A" and cross.lower() not in address.lower():
+                        query = f"{address} and {cross}, San Diego, CA"
+                    else:
+                        query = f"{address}, San Diego, CA"
+                    
+                    coords = geocode_location(query)
+                    if coords:
+                        incident.update(coords)
+
+            if "Longitude" in incident and "Latitude" in incident:
+                run_map_generator(incident)
+        
+        save_or_update_incident(incident)
+        return str(incident_no)
+    except Exception as inc_e:
+        safe_print(f"Error processing incident {incident.get('No.')}: {inc_e}")
+        return None
 
 def monitor_traffic_data(interval=60):
-    print("Starting continuous traffic monitoring...")
-    print(f"Data saved to: {DB_FILE}")
-    print(f"Map generator: {MAP_GENERATOR}")
-    print("Press Ctrl+C to stop.")
+    safe_print("Starting continuous traffic monitoring...")
+    safe_print(f"Data saved to: {DB_FILE}")
+    safe_print(f"Map generator: {MAP_GENERATOR}")
+    safe_print("Press Ctrl+C to stop.")
     try:
         while True:
             try:
-                print(f"Checking updates... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-                incidents = scrape_all_incidents()
+                safe_print(f"Checking updates... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                
+                all_incidents = []
+                
+                # Parallelize scraping of all sources
+                with ThreadPoolExecutor(max_workers=3) as executor:
+                    futures = {
+                        executor.submit(scrape_chp_incidents): "CHP",
+                        executor.submit(scrape_sdpd_incidents): "SDPD",
+                        executor.submit(scrape_sdfd_incidents): "SDFD",
+                    }
+                    for future in as_completed(futures):
+                        source = futures[future]
+                        try:
+                            incidents = future.result()
+                            all_incidents.extend(incidents)
+                            safe_print(f"{source}: {len(incidents)} incidents fetched")
+                        except Exception as e:
+                            safe_print(f"Error scraping {source}: {e}")
+                
+                # Process incidents in parallel
                 active_incident_ids = set()
-                if incidents:
-                    for incident in incidents:
-                        incident_no = incident.get("No.") or incident.get("Incident No.")
-                        if not incident_no:
-                            print("WARNING: No incident number found. Skipping this entry.")
-                            continue
-                        active_incident_ids.add(str(incident_no))
-                        if not incident_exists(incident_no, incident.get("Date", datetime.now().strftime("%Y-%m-%d"))):
-                            if "Longitude" in incident and "Latitude" in incident:
-                                run_map_generator(incident)
-                        save_or_update_incident(incident)
+                if all_incidents:
+                    # Sort to process CHP first (already has coords)
+                    all_incidents.sort(key=lambda x: 0 if x.get("Source") == "CHP" else 1)
+                    
+                    # Use a ThreadPoolExecutor for incident processing (geocoding, maps, descriptions)
+                    # We use 10 workers to allow parallel map generation and OpenAI calls.
+                    with ThreadPoolExecutor(max_workers=10) as executor:
+                        process_futures = [executor.submit(process_and_save_incident, inc) for inc in all_incidents]
+                        for f in as_completed(process_futures):
+                            inc_id = f.result()
+                            if inc_id:
+                                active_incident_ids.add(inc_id)
                 else:
-                    print("No valid data retrieved.")
+                    safe_print("No valid data retrieved from any source.")
 
                 # Mark incidents as inactive if they are not in the current scrape.
                 with db_lock:
-                    with sqlite3.connect(DB_FILE) as conn:
+                    with sqlite3.connect(DB_FILE, timeout=30) as conn:
                         cur = conn.cursor()
                         if active_incident_ids:
                             placeholders = ",".join("?" for _ in active_incident_ids)
@@ -543,24 +878,24 @@ def monitor_traffic_data(interval=60):
                 # Ping healthcheck for success
                 try:
                     requests.get(HEALTHCHECK_URL, timeout=10)
-                    print("Healthcheck ping: success")
+                    safe_print("Healthcheck ping: success")
                 except Exception as ping_e:
-                    print(f"Failed to ping healthcheck success: {ping_e}")
+                    safe_print(f"Failed to ping healthcheck success: {ping_e}")
 
             except Exception as e:
-                print(f"Error in monitoring loop: {e}")
+                safe_print(f"Error in monitoring loop: {e}")
                 # Ping healthcheck for failure
                 try:
                     requests.get(HEALTHCHECK_URL + "/fail", timeout=10)
-                    print("Healthcheck ping: failure")
+                    safe_print("Healthcheck ping: failure")
                 except Exception as ping_e:
-                    print(f"Failed to ping healthcheck failure: {ping_e}")
+                    safe_print(f"Failed to ping healthcheck failure: {ping_e}")
 
             time.sleep(interval)
     except KeyboardInterrupt:
-        print("Monitoring stopped by user.")
+        safe_print("Monitoring stopped by user.")
     except Exception as e:
-        print(f"Error: {e}")
+        safe_print(f"Error: {e}")
         raise
 
 @app.route("/api/incidents")
@@ -570,14 +905,15 @@ def get_incidents():
     cursor = request.args.get("cursor")  # New cursor parameter for cursor-based pagination
     incident_types = request.args.getlist("type") # Added to support filtering by type (list)
     locations = request.args.getlist("location") # Added to support filtering by location (list)
+    sources = request.args.getlist("source") # Added to support filtering by source (SDPD, SDFD, CHP)
     active_only = request.args.get("active_only", "false").lower() == "true"
     date_filter = request.args.get("date_filter")
 
     # Use cursor-based pagination if cursor is provided, otherwise fall back to offset
     if cursor:
-        incidents = read_incidents(limit=limit, cursor=cursor, incident_types=incident_types, locations=locations, active_only=active_only, date_filter=date_filter)
+        incidents = read_incidents(limit=limit, cursor=cursor, incident_types=incident_types, locations=locations, sources=sources, active_only=active_only, date_filter=date_filter)
     else:
-        incidents = read_incidents(limit=limit, offset=offset, incident_types=incident_types, locations=locations, active_only=active_only, date_filter=date_filter)
+        incidents = read_incidents(limit=limit, offset=offset, incident_types=incident_types, locations=locations, sources=sources, active_only=active_only, date_filter=date_filter)
 
     response = jsonify(incidents)
     if COOKIE_NAME not in request.cookies:
@@ -595,163 +931,185 @@ def get_incidents():
 @app.route("/api/incident_stats")
 def get_incident_stats():
     date_filter = request.args.get("date_filter")
+    sources = request.args.getlist("source") # Added source filtering to stats
 
-    with sqlite3.connect(DB_FILE) as conn:
+    with sqlite3.connect(DB_FILE, timeout=30) as conn:
         cur = conn.cursor()
 
         # Determine date condition if filtering
-        date_condition = ""
-        date_params = []
+        # Base query parts
+        where_clauses = []
+        query_params = []
+
+        if sources:
+            placeholders = ",".join("?" for _ in sources)
+            where_clauses.append(f"source IN ({placeholders})")
+            query_params.extend(sources)
+
         if date_filter == 'day':
             today = datetime.now().strftime("%Y-%m-%d")
-            date_condition = "date = ?"
-            date_params = [today]
+            where_clauses.append("date = ?")
+            query_params.append(today)
         elif date_filter == 'week':
-            # Last 7 days
             week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
-            date_condition = "timestamp >= ?"
-            date_params = [week_ago]
+            where_clauses.append("timestamp >= ?")
+            query_params.append(week_ago)
         elif date_filter == 'month':
-            # Last 30 days
             month_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
-            date_condition = "timestamp >= ?"
-            date_params = [month_ago]
+            where_clauses.append("timestamp >= ?")
+            query_params.append(month_ago)
         elif date_filter == 'year':
-            # Last 12 months
             year_ago = (datetime.now() - relativedelta(months=12)).strftime("%Y-%m-%d %H:%M:%S")
-            date_condition = "timestamp >= ?"
-            date_params = [year_ago]
+            where_clauses.append("timestamp >= ?")
+            query_params.append(year_ago)
 
-        # Events Today (always calculate regardless of filter, as it's a fixed metric)
+        base_where = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+        
+        # Helper to construct queries with specific additional conditions
+        def make_query(select_part, extra_condition=None):
+            clauses = where_clauses[:]
+            params = query_params[:]
+            if extra_condition:
+                clauses.append(extra_condition)
+            where = " WHERE " + " AND ".join(clauses) if clauses else ""
+            return f"{select_part}{where}", params
+
+        # Events Today
         today = datetime.now().strftime("%Y-%m-%d")
-        cur.execute("SELECT COUNT(*) FROM incidents WHERE date = ?", (today,))
+        # For 'today' stat, we specifically check date = today, regardless of date_filter in chart
+        # But we must respect source filter
+        today_clauses = [f"source IN ({','.join('?' for _ in sources)})"] if sources else []
+        today_params = list(sources) if sources else []
+        today_clauses.append("date = ?")
+        today_params.append(today)
+        today_where = " WHERE " + " AND ".join(today_clauses)
+        cur.execute(f"SELECT COUNT(*) FROM incidents{today_where}", today_params)
         events_today = cur.fetchone()[0]
 
         # Events Last Hour
         one_hour_ago = datetime.now() - timedelta(hours=1)
         one_hour_ago_str = one_hour_ago.strftime("%Y-%m-%d %H:%M:%S")
-        cur.execute("SELECT COUNT(*) FROM incidents WHERE timestamp >= ?", (one_hour_ago_str,))
+        
+        last_hour_clauses = [f"source IN ({','.join('?' for _ in sources)})"] if sources else []
+        last_hour_params = list(sources) if sources else []
+        last_hour_clauses.append("timestamp >= ?")
+        last_hour_params.append(one_hour_ago_str)
+        last_hour_where = " WHERE " + " AND ".join(last_hour_clauses)
+        
+        cur.execute(f"SELECT COUNT(*) FROM incidents{last_hour_where}", last_hour_params)
         events_last_hour = cur.fetchone()[0]
 
-        # Active Events (only count incidents with a map_filename, as these are displayed)
-        if date_condition:
-            cur.execute(f"SELECT COUNT(*) FROM incidents WHERE active = 1 AND map_filename IS NOT NULL AND {date_condition}", date_params)
-        else:
-            cur.execute("SELECT COUNT(*) FROM incidents WHERE active = 1 AND map_filename IS NOT NULL")
+        # Active Events
+        q, p = make_query("SELECT COUNT(*) FROM incidents", "active = 1") # Removed map_filename check to include all sources
+        cur.execute(q, p)
         events_active = cur.fetchone()[0]
 
         # Total Incidents
-        if date_condition:
-            cur.execute(f"SELECT COUNT(*) FROM incidents WHERE {date_condition}", date_params)
-        else:
-            cur.execute("SELECT COUNT(*) FROM incidents")
+        q, p = make_query("SELECT COUNT(*) FROM incidents")
+        cur.execute(q, p)
         total_incidents = cur.fetchone()[0]
 
         # Incidents by Type
-        if date_condition:
-            cur.execute(f"SELECT type, COUNT(*) as count FROM incidents WHERE {date_condition} GROUP BY type ORDER BY count DESC", date_params)
-        else:
-            cur.execute("SELECT type, COUNT(*) as count FROM incidents GROUP BY type ORDER BY count DESC")
+        q, p = make_query("SELECT type, COUNT(*) as count FROM incidents")
+        q += " GROUP BY type ORDER BY count DESC"
+        cur.execute(q, p)
         incidents_by_type = {row[0]: row[1] for row in cur.fetchall()}
 
         # Top Locations (top 10)
-        if date_condition:
-            cur.execute(f"SELECT location, COUNT(*) as count FROM incidents WHERE {date_condition} AND location IS NOT NULL AND location != '' GROUP BY location ORDER BY count DESC LIMIT 10", date_params)
-        else:
-            cur.execute("SELECT location, COUNT(*) as count FROM incidents WHERE location IS NOT NULL AND location != '' GROUP BY location ORDER BY count DESC LIMIT 10")
+        q, p = make_query("SELECT location, COUNT(*) as count FROM incidents", "location IS NOT NULL AND location != ''")
+        q += " GROUP BY location ORDER BY count DESC LIMIT 10"
+        cur.execute(q, p)
         top_locations = {row[0]: row[1] for row in cur.fetchall()}
 
-        # Calculate chart data based on date_filter
+        # Calculate chart data based on date_filter (reusing base where clauses for source)
         if date_filter == 'year':
-            # Monthly data for the last 12 months
             monthly_data = []
             now = datetime.now()
-
-            # Start from 11 months ago
             for i in range(12):
-                # Calculate month start: go back (11-i) months from now
                 months_back = 11 - i
                 month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0) - relativedelta(months=months_back)
                 month_end = month_start + relativedelta(months=1)
-
                 month_start_str = month_start.strftime('%Y-%m-%d %H:%M:%S')
                 month_end_str = month_end.strftime('%Y-%m-%d %H:%M:%S')
 
-                cur.execute("""
-                    SELECT COUNT(*) FROM incidents
-                    WHERE timestamp >= ? AND timestamp < ?
-                """, (month_start_str, month_end_str))
-
-                count = cur.fetchone()[0]
-                monthly_data.append(count)
+                # Need to construct specific query for this time range + source
+                range_clauses = [f"source IN ({','.join('?' for _ in sources)})"] if sources else []
+                range_params = list(sources) if sources else []
+                range_clauses.append("timestamp >= ?")
+                range_params.append(month_start_str)
+                range_clauses.append("timestamp < ?")
+                range_params.append(month_end_str)
+                
+                range_where = " WHERE " + " AND ".join(range_clauses)
+                cur.execute(f"SELECT COUNT(*) FROM incidents{range_where}", range_params)
+                monthly_data.append(cur.fetchone()[0])
             chart_data = monthly_data
 
         elif date_filter == 'month':
-            # Daily data for the last 30 days
             daily_data = []
             now = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-
             for i in range(30):
-                # Start from 29 days ago
                 day_start = now - timedelta(days=29-i)
                 day_end = day_start + timedelta(days=1)
-
                 day_start_str = day_start.strftime('%Y-%m-%d %H:%M:%S')
                 day_end_str = day_end.strftime('%Y-%m-%d %H:%M:%S')
 
-                cur.execute("""
-                    SELECT COUNT(*) FROM incidents
-                    WHERE timestamp >= ? AND timestamp < ?
-                """, (day_start_str, day_end_str))
-
-                count = cur.fetchone()[0]
-                daily_data.append(count)
+                range_clauses = [f"source IN ({','.join('?' for _ in sources)})"] if sources else []
+                range_params = list(sources) if sources else []
+                range_clauses.append("timestamp >= ?")
+                range_params.append(day_start_str)
+                range_clauses.append("timestamp < ?")
+                range_params.append(day_end_str)
+                
+                range_where = " WHERE " + " AND ".join(range_clauses)
+                cur.execute(f"SELECT COUNT(*) FROM incidents{range_where}", range_params)
+                daily_data.append(cur.fetchone()[0])
             chart_data = daily_data
 
         elif date_filter == 'week':
-            # Daily data for the last 7 days
             daily_data = []
             now = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-
             for i in range(7):
-                # Start from 6 days ago
                 day_start = now - timedelta(days=6-i)
                 day_end = day_start + timedelta(days=1)
-
                 day_start_str = day_start.strftime('%Y-%m-%d %H:%M:%S')
                 day_end_str = day_end.strftime('%Y-%m-%d %H:%M:%S')
-
-                cur.execute("""
-                    SELECT COUNT(*) FROM incidents
-                    WHERE timestamp >= ? AND timestamp < ?
-                """, (day_start_str, day_end_str))
-
-                count = cur.fetchone()[0]
-                daily_data.append(count)
+                
+                range_clauses = [f"source IN ({','.join('?' for _ in sources)})"] if sources else []
+                range_params = list(sources) if sources else []
+                range_clauses.append("timestamp >= ?")
+                range_params.append(day_start_str)
+                range_clauses.append("timestamp < ?")
+                range_params.append(day_end_str)
+                
+                range_where = " WHERE " + " AND ".join(range_clauses)
+                cur.execute(f"SELECT COUNT(*) FROM incidents{range_where}", range_params)
+                daily_data.append(cur.fetchone()[0])
             chart_data = daily_data
 
         else:
-            # Default to day: hourly data for last 24 hours
+            # Default to day
             now = datetime.now()
             hourly_data = []
             start24h = now - timedelta(hours=24)
-
             for i in range(24):
                 interval_start = start24h + timedelta(hours=i)
                 interval_end = interval_start + timedelta(hours=1)
                 if interval_end > now:
                     interval_end = now
-
                 interval_start_str = interval_start.strftime('%Y-%m-%d %H:%M:%S')
                 interval_end_str = interval_end.strftime('%Y-%m-%d %H:%M:%S')
-
-                cur.execute("""
-                    SELECT COUNT(*) FROM incidents
-                    WHERE timestamp >= ? AND timestamp < ?
-                """, (interval_start_str, interval_end_str))
-
-                count = cur.fetchone()[0]
-                hourly_data.append(count)
+                
+                range_clauses = [f"source IN ({','.join('?' for _ in sources)})"] if sources else []
+                range_params = list(sources) if sources else []
+                range_clauses.append("timestamp >= ?")
+                range_params.append(interval_start_str)
+                range_clauses.append("timestamp < ?")
+                range_params.append(interval_end_str)
+                
+                range_where = " WHERE " + " AND ".join(range_clauses)
+                cur.execute(f"SELECT COUNT(*) FROM incidents{range_where}", range_params)
+                hourly_data.append(cur.fetchone()[0])
             chart_data = hourly_data
 
         return jsonify({
@@ -773,14 +1131,15 @@ def like_incident(incident_id):
     device_uuid = get_or_create_uuid(request)
 
     with db_lock:
-        with sqlite3.connect(DB_FILE) as conn:
+        with sqlite3.connect(DB_FILE, timeout=30) as conn:
             cur = conn.cursor()
 
             if request.method == "DELETE":
                 # Handle unlike
                 cur.execute("DELETE FROM likes WHERE incident_no = ? AND device_uuid = ?",
                            (incident_id, device_uuid))
-                cur.execute("UPDATE incidents SET likes = GREATEST(likes - 1, 0) WHERE incident_no = ?",
+                # Using SQLite's standard way to handle non-negative likes
+                cur.execute("UPDATE incidents SET likes = MAX(likes - 1, 0) WHERE incident_no = ?",
                            (incident_id,))
                 conn.commit()
             else:
@@ -798,7 +1157,7 @@ def like_incident(incident_id):
                 conn.commit()
 
     with db_lock:
-        with sqlite3.connect(DB_FILE) as conn:
+        with sqlite3.connect(DB_FILE, timeout=30) as conn:
             cur = conn.cursor()
             cur.execute("SELECT likes FROM incidents WHERE incident_no = ?", (incident_id,))
             result = cur.fetchone()
@@ -825,7 +1184,7 @@ def comment_incident(incident_id):
     if not new_comment:
         return jsonify({"error": "Empty comment"}), 400
     
-    with sqlite3.connect(DB_FILE) as conn:
+    with sqlite3.connect(DB_FILE, timeout=30) as conn:
         conn.execute("PRAGMA foreign_keys = ON")
         cur = conn.cursor()
         try:
@@ -881,12 +1240,12 @@ def run_scraper_and_server():
     init_db()
     scraper_thread = threading.Thread(target=monitor_traffic_data, daemon=True)
     scraper_thread.start()
-    print("Starting Flask server...")
+    safe_print("Starting Flask server...")
     app.run(debug=False, host="0.0.0.0", port=5000, threaded=True)
 
 if __name__ == "__main__":
-    print("Traffic Alert System Starting...")
-    print(f"Base directory: {BASE_DIR}")
+    safe_print("Traffic Alert System Starting...")
+    safe_print(f"Base directory: {BASE_DIR}")
     print(f"Map directory: {TARGET_DIR}")
     print(f"SQLite DB file: {DB_FILE}")
     if not os.path.exists(MAP_GENERATOR):

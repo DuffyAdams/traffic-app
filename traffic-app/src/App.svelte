@@ -9,11 +9,13 @@
     LinearScale,
     PointElement,
     LineElement,
+    BarElement,
     Title,
     Tooltip,
     Legend,
     Filler,
     LineController,
+    BarController,
   } from "chart.js";
   import "chartjs-adapter-date-fns";
 
@@ -134,6 +136,48 @@
               return date.toLocaleDateString("en-US", { month: "short" });
             });
 
+  // Generate dynamic solid bar colors based on value intensity
+  function getBarColor(value, maxValue, isDark) {
+    const intensity = maxValue > 0 ? value / maxValue : 0;
+
+    if (isDark) {
+      // Dark mode: blue -> cyan transition based on intensity
+      const r = Math.round(50 + intensity * 50); // 50 -> 100
+      const g = Math.round(130 + intensity * 90); // 130 -> 220
+      const b = Math.round(190 + intensity * 45); // 190 -> 235
+      const alpha = 0.75 + intensity * 0.2; // 0.75 -> 0.95
+
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    } else {
+      // Light mode: subtle blue transition
+      const r = Math.round(45 + intensity * 25); // 45 -> 70
+      const g = Math.round(120 + intensity * 60); // 120 -> 180
+      const b = Math.round(190 + intensity * 40); // 190 -> 230
+      const alpha = 0.65 + intensity * 0.25; // 0.65 -> 0.9
+
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+  }
+
+  // Create solid colors for bars
+  function createBarColors(data, maxValue, isDark) {
+    return data.map((value) => getBarColor(value, maxValue, isDark));
+  }
+
+  // Data Source Management
+  let activeSource = "all"; // 'all', 'CHP', 'SDPD', 'SDFD'
+
+  function setSourceFilter(source) {
+    if (activeSource === source) return;
+    activeSource = source;
+    currentPage = 1;
+    // Reset other filters as they might not apply
+    // selectedTypes = new Set();
+    // selectedLocations = new Set();
+    fetchIncidents();
+    fetchIncidentStats();
+  }
+
   // Initialize Chart.js chart
   async function initializeChart() {
     if (!chartCanvas || !hourlyData || hourlyData.length === 0) return;
@@ -145,11 +189,13 @@
       LinearScale,
       PointElement,
       LineElement,
+      BarElement,
       Title,
       Tooltip,
       Legend,
       Filler,
       LineController,
+      BarController,
     );
 
     // Destroy existing chart if it exists
@@ -166,35 +212,22 @@
     const tickColor = darkMode
       ? "rgba(255, 255, 255, 0.5)"
       : "rgba(0, 0, 0, 0.6)";
-    const lineColor = darkMode ? "#63b3ed" : "#3182ce";
 
-    // Create gradient fill
-    const gradient = ctx.createLinearGradient(0, 0, 0, 180);
-    if (darkMode) {
-      gradient.addColorStop(0, "rgba(99, 179, 237, 0.4)");
-      gradient.addColorStop(1, "rgba(99, 179, 237, 0.02)");
-    } else {
-      gradient.addColorStop(0, "rgba(49, 130, 206, 0.4)");
-      gradient.addColorStop(1, "rgba(49, 130, 206, 0.02)");
-    }
+    // Single uniform color for all bars
+    const barColor = darkMode
+      ? "rgba(99, 179, 237, 0.85)" // Light blue for dark mode
+      : "rgba(49, 130, 206, 0.8)"; // Blue for light mode
 
     chartInstance = new ChartJS(ctx, {
-      type: "line",
+      type: "bar",
       data: {
         labels: chartLabels,
         datasets: [
           {
             data: hourlyData,
-            fill: true,
-            backgroundColor: gradient,
-            borderColor: lineColor,
-            borderWidth: 2.5,
-            tension: 0.4,
-            pointRadius: 0,
-            pointHoverRadius: 4,
-            pointHoverBackgroundColor: lineColor,
-            pointHoverBorderColor: "#ffffff",
-            pointHoverBorderWidth: 1.5,
+            backgroundColor: barColor,
+            borderWidth: 0,
+            borderRadius: 6,
           },
         ],
       },
@@ -319,8 +352,15 @@
 
     if (!hourlyData || hourlyData.length === 0) return;
 
+    // Single uniform color for all bars
+    const barColor = darkMode
+      ? "rgba(99, 179, 237, 0.85)" // Light blue for dark mode
+      : "rgba(49, 130, 206, 0.8)"; // Blue for light mode
+
     chartInstance.data.labels = chartLabels;
     chartInstance.data.datasets[0].data = hourlyData;
+    chartInstance.data.datasets[0].backgroundColor = barColor;
+
     chartInstance.options.scales.y.ticks.stepSize =
       Math.ceil(Math.max(...hourlyData) / 5) || 1;
     chartInstance.options.scales.x.ticks.maxTicksLimit =
@@ -527,6 +567,9 @@
       if (showActiveOnly) {
         url += `&active_only=true`;
       }
+      if (activeSource && activeSource !== "all") {
+        url += `&source=${encodeURIComponent(activeSource)}`;
+      }
 
       const cacheKey = url;
       if (apiCache.has(cacheKey)) {
@@ -609,8 +652,9 @@
         if (!incident || typeof incident !== "object") return false;
         if (
           !incident.incident_no ||
-          !incident.timestamp ||
-          !incident.map_filename
+          !incident.timestamp
+          // Removed map_filename requirement to support sources without maps
+          // || !incident.map_filename
         ) {
           return false;
         }
@@ -656,10 +700,19 @@
     const filteredPosts = showActiveOnly
       ? newProcessedPosts.filter((p) => p.active)
       : newProcessedPosts;
-    posts = [...posts, ...filteredPosts];
+
+    // Sort by timestamp (newest first) after merging to ensure correct order
+    posts = [...posts, ...filteredPosts].sort((a, b) => {
+      const timeA = new Date(a.timestamp).getTime();
+      const timeB = new Date(b.timestamp).getTime();
+      if (timeB !== timeA) return timeB - timeA;
+      // Tie-breaker: use ID if timestamps are identical
+      return b.id.localeCompare(a.id);
+    });
 
     if (incidents.length > 0) {
-      lastCursor = incidents[incidents.length - 1].timestamp;
+      const lastIncident = incidents[incidents.length - 1];
+      lastCursor = `${lastIncident.timestamp}|${lastIncident.incident_no}`;
     }
 
     allPostsLoaded = incidents.length < postsPerPage;
@@ -698,6 +751,9 @@
 
     try {
       let url = "/api/incident_stats?date_filter=" + timeFilter;
+      if (activeSource && activeSource !== "all") {
+        url += `&source=${encodeURIComponent(activeSource)}`;
+      }
 
       const cacheKey = url;
       if (
@@ -1125,6 +1181,9 @@
       if (showActiveOnly) {
         url += `&active_only=true`;
       }
+      if (activeSource && activeSource !== "all") {
+        url += `&source=${encodeURIComponent(activeSource)}`;
+      }
 
       const res = await fetch(url);
       if (!res.ok) return;
@@ -1137,8 +1196,9 @@
           if (!incident || typeof incident !== "object") return false;
           if (
             !incident.incident_no ||
-            !incident.timestamp ||
-            !incident.map_filename
+            !incident.timestamp
+            // Removed map_filename requirement to support sources without maps
+            // || !incident.map_filename
           ) {
             return false;
           }
@@ -1202,6 +1262,29 @@
     on:toggleDarkMode={toggleDarkMode}
     on:toggleEventCounters={toggleEventCounters}
   />
+
+  <div class="source-tabs">
+    <button
+      class="source-tab"
+      class:active={activeSource === "all"}
+      on:click={() => setSourceFilter("all")}>All</button
+    >
+    <button
+      class="source-tab"
+      class:active={activeSource === "CHP"}
+      on:click={() => setSourceFilter("CHP")}>Traffic</button
+    >
+    <button
+      class="source-tab"
+      class:active={activeSource === "SDPD"}
+      on:click={() => setSourceFilter("SDPD")}>Police</button
+    >
+    <button
+      class="source-tab"
+      class:active={activeSource === "SDFD"}
+      on:click={() => setSourceFilter("SDFD")}>Fire</button
+    >
+  </div>
 
   <!-- Stats Panel (inline due to complexity) -->
   {#if showEventCounters}
@@ -1523,6 +1606,57 @@
     justify-content: center;
     width: 100%;
     box-sizing: border-box;
+  }
+
+  .source-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 0.4rem;
+    margin-bottom: 0.8rem;
+    overflow-x: auto;
+    padding: 5px 0 0.4rem 0;
+  }
+
+  .source-tab {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    padding: 0.35rem 1.1rem;
+    border-radius: 16px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    white-space: nowrap;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  }
+
+  :global(body.dark-mode) .source-tab {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .source-tab:hover {
+    background: var(--hover-bg);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .source-tab:active {
+    transform: translateY(0);
+  }
+
+  .source-tab.active {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+    box-shadow: 0 4px 12px rgba(49, 130, 206, 0.3);
+  }
+
+  :global(body.dark-mode) .source-tab.active {
+    background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
   }
 
   .feed {

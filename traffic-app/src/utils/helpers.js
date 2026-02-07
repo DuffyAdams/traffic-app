@@ -126,7 +126,22 @@ export function getIconForIncidentType(type) {
         "Traffic Break": "hand",
         "Traffic Collision": "car",
         "Traffic Hazard": "triangle-alert",
-        "Wrong Way Driver": "arrow-left-right"
+        "Wrong Way Driver": "arrow-left-right",
+        // Police Types
+        "AUTO THEFT": "car",
+        "MISD HIT/RUN": "car-off",
+        "VANDALISM": "alert-circle",
+        "ROBBERY": "wallet",
+        "SUICIDE-THREATS": "alert-triangle",
+        "DISTURBING PEACE": "volume-2",
+        "REPORT OF DEATH": "skull",
+        "PRISONER IN CUSTODY": "lock",
+        "MENTAL CASE": "brain",
+        // Fire Types
+        "MEDICAL": "activity",
+        "STRUCTURE FIRE": "flame",
+        "VEGETATION FIRE": "trees",
+        "TRAFFIC ACCIDENT": "car"
     };
     return types[type] || "siren";
 }
