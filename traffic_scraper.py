@@ -89,7 +89,7 @@ CORS(app, resources={r"/api/*": {"origins": "*"}, r"/maps/*": {"origins": "*"}})
 
 # Test mode flag
 
-TESTMODE = True
+TESTMODE = False
 
 # -----------------------------------
 # Database Functions
@@ -362,20 +362,43 @@ def save_or_update_incident(data):
     source = data.get("Source", "CHP")
     geocode_precision = data.get("precision", "unknown")
 
+    # Move generate_description OUTSIDE of the db_lock block.
+    # LLM calls are slow and would block the entire API if done inside a lock.
+    
+    # 1. Determine if we need a new description
+    with db_lock:
+        with sqlite3.connect(DB_FILE, timeout=30) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            cur.execute("SELECT details, description FROM incidents WHERE incident_no = ? AND date = ?", (str(incident_no), date))
+            existing = cur.fetchone()
+    
+    new_description = None
+    if not existing:
+        # New incident: generate description
+        new_description = generate_description(data)
+    elif details_json != (existing['details'] or ""):
+        # Details changed: generate new description
+        new_description = generate_description(data)
+    else:
+        # Use existing description
+        new_description = existing['description']
+
+    # 2. Perform the actual DB update/insert
     with db_lock:
         with sqlite3.connect(DB_FILE, timeout=30) as conn:
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
             cur.execute("SELECT * FROM incidents WHERE incident_no = ? AND date = ?", (str(incident_no), date))
-            existing = cur.fetchone()
-            if existing:
-                existing_data = dict(existing)
+            existing_record = cur.fetchone()
+            
+            if existing_record:
+                existing_data = dict(existing_record)
                 updates = []
                 params = []
                 
                 # Update details and description if changed
                 if details_json != existing_data.get("details", ""):
-                    new_description = generate_description(data)
                     updates.append("details = ?, description = ?")
                     params.extend([details_json, new_description])
                 
@@ -409,8 +432,6 @@ def save_or_update_incident(data):
                     safe_print(f"No changes for incident {incident_no}.")
                     return False
             else:
-                # For new incidents, generate the description before inserting
-                new_description = generate_description(data)
                 cur.execute("""
                     INSERT INTO incidents 
                     (incident_no, date, timestamp, city, neighborhood, location, location_desc, type, details, 

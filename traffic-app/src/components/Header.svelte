@@ -30,8 +30,8 @@
     </button>
 
     <button class="header-content" on:click={handleToggleEventCounters}>
-        <h1>San Diego Traffic Watch</h1>
-        <p>Real-time incidents from CHP scanner data</p>
+        <h1>San Diego Watch</h1>
+        <p>Real-time emergency and traffic incidents across San Diego</p>
         <div class="stats-toggle">
             Incident Stats
             {#if showEventCounters}
@@ -47,7 +47,7 @@
     .header {
         text-align: center;
         margin-bottom: 1.5rem;
-        padding: 1.5rem;
+        padding: 2rem 1.5rem;
         background: linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%);
         color: #1a365d; /* Deep navy blue for better aesthetics */
         border-radius: 20px;
@@ -162,7 +162,7 @@
 
     .header h1 {
         margin: 0 0 0.5rem 0;
-        font-size: 2rem;
+        font-size: 2.4rem;
         font-weight: 800;
         letter-spacing: -0.025em;
         text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
@@ -170,7 +170,7 @@
 
     .header p {
         margin: 0 0 0.5rem 0;
-        font-size: 1.1rem;
+        font-size: 0.95rem;
         opacity: 0.9;
         font-weight: 500;
     }
