@@ -849,39 +849,48 @@ def monitor_traffic_data(interval=60):
             try:
                 safe_print(f"Checking updates... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                 
-                all_incidents = []
-                
-                # Parallelize scraping of all sources
-                with ThreadPoolExecutor(max_workers=3) as executor:
-                    futures = {
-                        executor.submit(scrape_chp_incidents): "CHP",
-                        executor.submit(scrape_sdpd_incidents): "SDPD",
-                        executor.submit(scrape_sdfd_incidents): "SDFD",
-                    }
-                    for future in as_completed(futures):
-                        source = futures[future]
-                        try:
-                            incidents = future.result()
-                            all_incidents.extend(incidents)
-                            safe_print(f"{source}: {len(incidents)} incidents fetched")
-                        except Exception as e:
-                            safe_print(f"Error scraping {source}: {e}")
-                
-                # Process incidents in parallel
                 active_incident_ids = set()
-                if all_incidents:
-                    # Sort to process CHP first (already has coords)
-                    all_incidents.sort(key=lambda x: 0 if x.get("Source") == "CHP" else 1)
-                    
-                    # Use a ThreadPoolExecutor for incident processing (geocoding, maps, descriptions)
-                    # We use 10 workers to allow parallel map generation and OpenAI calls.
-                    with ThreadPoolExecutor(max_workers=10) as executor:
-                        process_futures = [executor.submit(process_and_save_incident, inc) for inc in all_incidents]
-                        for f in as_completed(process_futures):
-                            inc_id = f.result()
-                            if inc_id:
-                                active_incident_ids.add(inc_id)
-                else:
+                process_futures = []
+                any_incidents = False
+
+                # Process executor stays open while scraping happens in parallel.
+                # Each source's incidents are submitted for processing immediately
+                # (sorted newest-first) so cards appear in the DB without waiting
+                # for slower sources like SDPD.
+                with ThreadPoolExecutor(max_workers=10) as process_executor:
+                    with ThreadPoolExecutor(max_workers=3) as scrape_executor:
+                        futures = {
+                            scrape_executor.submit(scrape_chp_incidents): "CHP",
+                            scrape_executor.submit(scrape_sdpd_incidents): "SDPD",
+                            scrape_executor.submit(scrape_sdfd_incidents): "SDFD",
+                        }
+                        for future in as_completed(futures):
+                            source = futures[future]
+                            try:
+                                incidents = future.result()
+                                safe_print(f"{source}: {len(incidents)} incidents fetched")
+                                if incidents:
+                                    any_incidents = True
+                                    # Sort newest first so most recent hit the DB first
+                                    incidents.sort(
+                                        key=lambda x: x.get("Timestamp", ""),
+                                        reverse=True,
+                                    )
+                                    # Submit for processing immediately
+                                    for inc in incidents:
+                                        process_futures.append(
+                                            process_executor.submit(process_and_save_incident, inc)
+                                        )
+                            except Exception as e:
+                                safe_print(f"Error scraping {source}: {e}")
+
+                    # Collect results from all processing futures
+                    for f in as_completed(process_futures):
+                        inc_id = f.result()
+                        if inc_id:
+                            active_incident_ids.add(inc_id)
+
+                if not any_incidents:
                     safe_print("No valid data retrieved from any source.")
 
                 # Mark incidents as inactive if they are not in the current scrape.

@@ -171,6 +171,7 @@
     if (activeSource === source) return;
     activeSource = source;
     currentPage = 1;
+    statsCache = {}; // Invalidate stats cache for new source
     // Reset other filters as they might not apply
     // selectedTypes = new Set();
     // selectedLocations = new Set();
