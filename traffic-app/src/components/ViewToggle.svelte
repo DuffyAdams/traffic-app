@@ -1,6 +1,11 @@
 <script>
     import { fade } from "svelte/transition";
-    import { ChevronLeft, ChevronRight, LayoutGrid, LayoutList } from "lucide-svelte";
+    import {
+        ChevronLeft,
+        ChevronRight,
+        LayoutGrid,
+        LayoutList,
+    } from "lucide-svelte";
 
     export let condensedView = false;
     export let swipeIndicator = false;
@@ -42,8 +47,6 @@
     </div>
 {/if}
 
-
-
 <!-- Side toggle button -->
 <button
     class="side-toggle"
@@ -62,10 +65,11 @@
         position: fixed;
         top: 50%;
         transform: translateY(-50%);
-        background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
-        color: white;
+        background: var(--bg-surface-elevated);
+        border: 1px solid var(--border-color);
+        color: var(--text-main);
         padding: 0;
-        border-radius: 16px;
+        border-radius: 2px;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -73,7 +77,7 @@
         z-index: 100;
         pointer-events: none;
         backdrop-filter: blur(12px);
-        box-shadow: 
+        box-shadow:
             0 8px 32px rgba(0, 0, 0, 0.3),
             0 0 0 1px rgba(255, 255, 255, 0.1);
         width: 120px;
@@ -111,10 +115,11 @@
 
     .swipe-label {
         font-size: 0.85rem;
-        font-weight: 600;
+        font-family: var(--font-mono);
+        font-weight: normal;
         letter-spacing: 0.5px;
         text-transform: uppercase;
-        color: rgba(255, 255, 255, 0.9);
+        color: var(--accent-primary);
     }
 
     .swipe-icon-secondary {
@@ -126,7 +131,8 @@
     }
 
     @keyframes bounce {
-        0%, 100% {
+        0%,
+        100% {
             transform: translateX(0);
         }
         50% {
@@ -139,7 +145,8 @@
     }
 
     @keyframes bounceRight {
-        0%, 100% {
+        0%,
+        100% {
             transform: translateX(0);
         }
         50% {
@@ -154,7 +161,7 @@
         background-color: #1e3a5f;
         color: white;
         padding: 0.75rem 1.5rem;
-        border-radius: 0 0 12px 12px;
+        border-radius: 0 0 2px 2px;
         font-weight: 600;
         font-size: 0.9rem;
         z-index: 100;
@@ -168,14 +175,15 @@
 
     .side-toggle {
         position: fixed;
-        right: -10px;
+        right: 0;
         top: 50%;
         transform: translateY(-50%);
-        background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
-        color: white;
-        border: none;
-        border-radius: 8px 0 0 8px;
-        padding: 0.8rem 0.5rem;
+        background: var(--bg-surface-elevated);
+        border: 1px solid var(--border-color);
+        border-right: none;
+        color: var(--accent-primary);
+        border-radius: 2px 0 0 2px;
+        padding: 0.8rem 0.4rem;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -183,12 +191,11 @@
         gap: 0.5rem;
         cursor: pointer;
         z-index: 100;
-        box-shadow: -2px 0 15px rgba(0, 0, 0, 0.2);
-        transition: all 0.3s ease;
+        transition: all 0.15s ease;
     }
 
     .side-toggle:hover {
-        background: linear-gradient(135deg, #2a4a6f 0%, #1a3050 100%);
+        background: rgba(0, 229, 255, 0.15);
         transform: translateY(-50%) translateX(-5px);
     }
 

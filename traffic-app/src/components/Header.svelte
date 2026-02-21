@@ -1,258 +1,233 @@
 <script>
-    import { createEventDispatcher } from "svelte";
-    import { Sun, Moon, ChevronDown, ChevronUp } from "lucide-svelte";
+    import { createEventDispatcher, onMount, onDestroy } from "svelte";
+    import { Radio, Shield, Fingerprint } from "lucide-svelte";
 
-    export let darkMode = false;
     export let showEventCounters = false;
 
     const dispatch = createEventDispatcher();
 
-    function handleToggleDarkMode() {
-        dispatch("toggleDarkMode");
-    }
-
     function handleToggleEventCounters() {
         dispatch("toggleEventCounters");
     }
+
+    let currentTime = "";
+    let timeInterval;
+
+    function updateTime() {
+        const now = new Date();
+        currentTime = now.toLocaleTimeString("en-US", {
+            hour12: false,
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            timeZoneName: "short",
+        });
+    }
+
+    onMount(() => {
+        updateTime();
+        timeInterval = setInterval(updateTime, 1000);
+    });
+
+    onDestroy(() => {
+        if (timeInterval) clearInterval(timeInterval);
+    });
 </script>
 
 <header class="header">
-    <button
-        class="dark-mode-toggle"
-        class:is-dark={darkMode}
-        on:click={handleToggleDarkMode}
-        aria-label="Toggle dark mode"
-    >
-        <Sun size={18} class="sun-icon" />
-        <Moon size={18} class="moon-icon" />
-    </button>
+    <div class="header-top">
+        <div class="header-brand">
+            <div class="brand-icon">
+                <Shield size={40} color="var(--accent-warning)" />
+            </div>
+            <div class="brand-titles">
+                <h1>SAN DIEGO WATCH</h1>
+                <p>TACTICAL DISPATCH OVERVIEW</p>
+            </div>
+        </div>
+        <div class="header-metrics">
+            <div class="metric-row">
+                <Radio
+                    size={12}
+                    color="var(--accent-primary)"
+                    class="pulse-fast"
+                />
+                <span class="metric-label">DISPATCH FEED • {currentTime}</span>
+            </div>
+            <div class="metric-row subtext">MONITORING INCIDENTS</div>
+        </div>
+    </div>
 
-    <button class="header-content" on:click={handleToggleEventCounters}>
-        <h1>San Diego Watch</h1>
-        <p>Real-time emergency and traffic incidents across San Diego</p>
-        <div class="stats-toggle">
-            Incident Stats
-            {#if showEventCounters}
-                <ChevronUp size={16} />
-            {:else}
-                <ChevronDown size={16} />
-            {/if}
+    <button class="header-action-banner" on:click={handleToggleEventCounters}>
+        <div class="banner-icon"><Fingerprint size={18} /></div>
+        <div class="banner-text">
+            SYSTEM DIAGNOSTICS
+            <span class="banner-subtext"
+                >DOUBLE TAKE - INCREASED INTELLIGENCE WATCH</span
+            >
+        </div>
+        <div class="banner-status" class:active={showEventCounters}>
+            {showEventCounters ? "[-]" : "[+]"}
         </div>
     </button>
 </header>
 
 <style>
     .header {
-        text-align: center;
-        margin-bottom: 1.5rem;
-        padding: 2rem 1.5rem;
-        background: linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%);
-        color: #1a365d; /* Deep navy blue for better aesthetics */
-        border-radius: 20px;
-        box-shadow:
-            0 10px 30px rgba(0, 0, 0, 0.04),
-            inset 0 1px 0 rgba(255, 255, 255, 0.6);
-        position: relative;
-        overflow: hidden;
-        transition: all 0.3s ease;
-        border: 1px solid #e2e8f0;
+        margin-bottom: 2rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        font-family: var(--font-mono);
     }
 
-    :global(body.dark-mode) .header {
-        background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
-        color: white;
-        box-shadow:
-            0 10px 40px rgba(0, 0, 0, 0.3),
-            inset 0 1px 0 rgba(255, 255, 255, 0.1);
-        border: none;
+    .header-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        padding: 0 0.5rem;
     }
 
-    .header::before {
-        content: "";
-        position: absolute;
-        top: -50%;
-        left: -50%;
-        width: 200%;
-        height: 200%;
-        background: radial-gradient(
-            circle,
-            rgba(66, 153, 225, 0.08) 0%,
-            rgba(255, 255, 255, 0) 60%
-        );
-        opacity: 1;
-        transform: rotate(30deg);
-        pointer-events: none;
-        transition: opacity 0.3s ease;
+    .header-brand {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
     }
 
-    :global(body.dark-mode) .header::before {
-        background: radial-gradient(
-            circle,
-            rgba(255, 255, 255, 0.1) 0%,
-            rgba(255, 255, 255, 0) 60%
-        );
-        opacity: 0.6;
+    .brand-icon {
+        image-rendering: pixelated;
     }
 
-    .dark-mode-toggle {
-        position: absolute;
-        top: 1rem;
-        right: 1.5rem;
-        background: rgba(255, 255, 255, 0.9);
-        border: 1px solid #e2e8f0;
-        border-radius: 50%;
-        width: 36px;
-        height: 36px;
+    .brand-titles h1 {
+        margin: 0;
+        font-size: 3rem;
+        font-family: var(--font-pixel);
+        color: var(--text-inverse);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        line-height: 0.9;
+        text-shadow: 2px 2px 0px rgba(51, 102, 255, 0.4);
+    }
+
+    .brand-titles p {
+        margin: 0.5rem 0 0 0;
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+    }
+
+    .header-metrics {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        font-size: 0.8rem;
+        gap: 0.3rem;
+        padding-bottom: 0.2rem;
+    }
+
+    .metric-row {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        color: var(--accent-primary);
+        font-weight: bold;
+        letter-spacing: 0.05em;
+    }
+
+    .metric-row.subtext {
+        color: var(--accent-primary);
+        font-size: 0.7rem;
+        opacity: 0.8;
+    }
+
+    .header-action-banner {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        width: 100%;
+        background: #0d1424;
+        border: 1px solid var(--accent-primary);
+        border-radius: 2px;
+        padding: 1.25rem 1.75rem;
+        color: var(--text-inverse);
         cursor: pointer;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        z-index: 10;
+        text-align: left;
+        transition: all 0.15s ease;
+        box-shadow: inset 0 0 0 1px rgba(51, 102, 255, 0.2);
+    }
+
+    .header-action-banner:hover {
+        background: #111a30;
+        border-color: #4d7dff;
+    }
+
+    .header-action-banner:active {
+        transform: translateY(1px);
+    }
+
+    .banner-icon {
+        color: var(--accent-primary);
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 0;
-        box-shadow:
-            0 4px 6px -1px rgba(0, 0, 0, 0.1),
-            0 2px 4px -1px rgba(0, 0, 0, 0.06);
-        color: #4a5568;
     }
 
-    .dark-mode-toggle.is-dark {
-        background: rgba(30, 41, 59, 0.8);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        color: #f7fafc;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+    .banner-text {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        font-size: 1.5rem;
+        font-weight: normal;
+        letter-spacing: 0.08em;
+        font-family: var(--font-pixel);
+        color: var(--accent-primary);
     }
 
-    .dark-mode-toggle:hover {
-        transform: scale(1.1);
-        background: #ffffff;
-        color: #2b6cb0;
-        border-color: #cbd5e0;
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    .banner-subtext {
+        font-size: 0.75rem;
+        font-family: var(--font-mono);
+        color: var(--text-muted);
+        letter-spacing: 0.05em;
+        margin-top: 0.4rem;
+        text-transform: uppercase;
     }
 
-    .dark-mode-toggle.is-dark:hover {
-        background: #1e293b;
-        color: #63b3ed;
-        border-color: rgba(255, 255, 255, 0.2);
+    .banner-status {
+        color: var(--text-muted);
+        font-family: var(--font-mono);
+        font-size: 1.25rem;
+        font-weight: bold;
     }
 
-    :global(.sun-icon),
-    :global(.moon-icon) {
-        position: absolute;
-        transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    .banner-status.active {
+        color: var(--accent-primary);
     }
 
-    /* Icons in Light Mode (Default) */
-    :global(.sun-icon) {
-        transform: scale(1) rotate(0deg);
-        opacity: 1;
-    }
-    :global(.moon-icon) {
-        transform: scale(0) rotate(90deg);
-        opacity: 0;
+    :global(.pulse-fast) {
+        animation: pulseHeart 1s infinite alternate step-end;
     }
 
-    /* Icons in Dark Mode */
-    .is-dark :global(.sun-icon) {
-        transform: scale(0) rotate(-90deg);
-        opacity: 0;
-    }
-    .is-dark :global(.moon-icon) {
-        transform: scale(1) rotate(0deg);
-        opacity: 1;
-    }
-
-    .header-content {
-        text-align: center;
-        cursor: pointer;
-        user-select: none;
-        transition: transform 0.2s;
-        padding: 0.5rem;
-        position: relative;
-        z-index: 1;
-        background: none;
-        border: none;
-        color: inherit;
-        width: 100%;
-    }
-
-    .header-content:active {
-        transform: scale(0.98);
-    }
-
-    .header h1 {
-        margin: 0 0 0.5rem 0;
-        font-size: 2.4rem;
-        font-weight: 800;
-        letter-spacing: -0.025em;
-        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-    }
-
-    .header p {
-        margin: 0 0 0.5rem 0;
-        font-size: 0.95rem;
-        opacity: 0.9;
-        font-weight: 500;
-    }
-
-    .stats-toggle {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.4rem 1rem;
-        background: rgba(0, 0, 0, 0.05);
-        border-radius: 20px;
-        font-size: 0.9rem;
-        font-weight: 600;
-        transition: background 0.2s;
-        border: 1px solid rgba(0, 0, 0, 0.05);
-    }
-
-    :global(body.dark-mode) .stats-toggle {
-        background: rgba(255, 255, 255, 0.15);
-        border: none;
-    }
-
-    .header-content:hover .stats-toggle {
-        background: rgba(0, 0, 0, 0.1);
-    }
-
-    :global(body.dark-mode) .header-content:hover .stats-toggle {
-        background: rgba(255, 255, 255, 0.25);
+    @keyframes pulseHeart {
+        from {
+            opacity: 0.2;
+        }
+        to {
+            opacity: 1;
+        }
     }
 
     @media (max-width: 768px) {
-        .header {
-            padding: 1.25rem 3rem;
-            margin-bottom: 0.8rem;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-            overflow: hidden; /* Ensure 200% width pseudo-element doesn't cause page overflow */
+        .header-top {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 1.5rem;
         }
-        .header h1 {
-            font-size: 1.4rem;
-            margin-bottom: 0.3rem;
+        .header-metrics {
+            align-items: flex-start;
         }
-        .header p {
-            font-size: 0.9rem;
-        }
-        .dark-mode-toggle {
-            top: 0.8rem;
-            right: 0.8rem;
-            width: 32px;
-            height: 32px;
-        }
-    }
-
-    @media (max-width: 480px) {
-        .header {
-            padding: 0.8rem 3rem 0.8rem 3rem;
-            margin-bottom: 0.7rem;
-            border-radius: 10px;
-        }
-        .header h1 {
-            font-size: 1.25rem;
+        .brand-titles h1 {
+            font-size: 2.2rem;
         }
     }
 </style>

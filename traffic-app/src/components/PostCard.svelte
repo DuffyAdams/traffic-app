@@ -194,19 +194,23 @@
             </div>
             <div class="post-description">
                 {#if post.description}
-                    {post.showFullDescription
-                        ? post.description
-                        : truncateDescription(post.description)}
+                    <span class="description-text">
+                        {post.showFullDescription
+                            ? post.description
+                            : truncateDescription(post.description)}
+                    </span>
                     {#if post.description.length > 200}
                         <button
                             class="more-button"
                             on:click={handleToggleDescription}
                         >
-                            {post.showFullDescription ? "less" : "more"}
+                            {post.showFullDescription
+                                ? "[-] COLLAPSE"
+                                : "[+] EXPAND"}
                         </button>
                     {/if}
                 {:else}
-                    No description available.
+                    <span class="no-data">NO DATA AVAILABLE.</span>
                 {/if}
             </div>
             <div class="post-actions">
@@ -267,12 +271,10 @@
         min-width: 300px;
         max-width: 400px;
         box-sizing: border-box;
-        background: var(--card-bg);
-        border-radius: 18px;
-        box-shadow:
-            0 4px 20px var(--shadow-color),
-            0 0 0 1px rgba(0, 0, 0, 0.03);
-        transition: all 0.25s ease-out;
+        background: var(--bg-surface);
+        border-radius: 2px;
+        border: 1px solid var(--border-color);
+        transition: all 0.15s ease-out;
         position: relative;
         display: flex;
         flex-direction: column;
@@ -283,34 +285,40 @@
     }
 
     .post:hover {
-        box-shadow:
-            0 12px 28px var(--shadow-color),
-            0 0 0 1px rgba(0, 0, 0, 0.03);
-        transform: translateY(-3px);
+        border-color: var(--accent-primary);
+        box-shadow: inset 0 0 0 1px rgba(51, 102, 255, 0.2);
     }
 
     .post.active {
         position: relative;
-        box-shadow: 0 6px 15px var(--shadow-color);
     }
 
     .post.sig-alert {
-        box-shadow:
-            0 4px 20px var(--shadow-color),
-            0 0 0 1px rgba(220, 38, 38, 0.15),
-            0 0 12px color-mix(in srgb, #dc2626 30%, transparent),
-            0 0 24px color-mix(in srgb, #dc2626 20%, transparent),
-            0 0 36px color-mix(in srgb, #dc2626 10%, transparent);
+        border-color: var(--accent-secondary);
+        background: var(--bg-surface-elevated);
+        animation: retroPulse 1.5s infinite alternate;
     }
 
     .post.sig-alert:hover {
+        border-color: #ff4d4d;
         box-shadow:
-            0 12px 28px var(--shadow-color),
-            0 0 0 1px rgba(220, 38, 38, 0.2),
-            0 0 18px color-mix(in srgb, #dc2626 35%, transparent),
-            0 0 36px color-mix(in srgb, #dc2626 25%, transparent),
-            0 0 54px color-mix(in srgb, #dc2626 15%, transparent);
-        transform: translateY(-3px);
+            0 0 15px rgba(255, 51, 51, 0.5),
+            inset 0 0 5px rgba(255, 51, 51, 0.3);
+    }
+
+    @keyframes retroPulse {
+        0% {
+            box-shadow:
+                0 0 4px rgba(255, 51, 51, 0.2),
+                inset 0 0 2px rgba(255, 51, 51, 0.1);
+            border-color: rgba(255, 51, 51, 0.4);
+        }
+        100% {
+            box-shadow:
+                0 0 12px rgba(255, 51, 51, 0.6),
+                inset 0 0 4px rgba(255, 51, 51, 0.3);
+            border-color: var(--accent-secondary);
+        }
     }
 
     .post-content {
@@ -326,9 +334,9 @@
         width: 100%;
         height: 190px;
         overflow: hidden;
-        overflow: hidden;
-        border-radius: 18px 18px 0 0;
-        background-color: var(--secondary-bg);
+        border-bottom: 1px solid var(--border-color);
+        background-color: #000;
+        border-radius: 0;
     }
 
     .placeholder-container {
@@ -356,33 +364,25 @@
         position: absolute;
         top: 0.8rem;
         left: 0.8rem;
-        background-color: rgba(0, 0, 0, 0.65);
-        color: white;
-        padding: 0.4rem 0.7rem;
-        border-radius: 20px;
+        background-color: var(--bg-surface-elevated);
+        color: var(--badge-color);
+        padding: 0.3rem 0.6rem;
+        border-radius: 2px;
+        border: 1px solid var(--badge-color);
+        font-family: var(--font-mono);
+        text-transform: uppercase;
         font-size: 0.75rem;
-        font-weight: 600;
+        font-weight: bold;
         display: flex;
         align-items: center;
         gap: 0.4rem;
         z-index: 1;
-        backdrop-filter: blur(8px);
-        box-shadow:
-            0 2px 8px rgba(0, 0, 0, 0.2),
-            0 0 4px color-mix(in srgb, var(--badge-color) 40%, transparent),
-            0 0 8px color-mix(in srgb, var(--badge-color) 25%, transparent),
-            0 0 12px color-mix(in srgb, var(--badge-color) 12%, transparent);
-        border: none;
-        transition: all 0.3s ease;
+        transition: all 0.15s ease;
     }
 
     .post-badge:hover {
-        box-shadow:
-            0 4px 12px rgba(0, 0, 0, 0.3),
-            0 0 6px color-mix(in srgb, var(--badge-color) 50%, transparent),
-            0 0 12px color-mix(in srgb, var(--badge-color) 30%, transparent),
-            0 0 18px color-mix(in srgb, var(--badge-color) 18%, transparent),
-            0 0 24px color-mix(in srgb, var(--badge-color) 8%, transparent);
+        background-color: var(--badge-color);
+        color: #000;
     }
 
     .post-badge.sig-alert-badge {
@@ -408,20 +408,20 @@
         position: absolute;
         top: 0.8rem;
         right: 0.8rem;
-        background-color: #c13117d9;
+        background-color: var(--accent-secondary);
         color: #fff;
         padding: 0.25rem 0.5rem;
-        border-radius: 16px;
-        font-size: 0.65rem;
-        font-weight: 600;
+        border-radius: 2px;
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        font-size: 0.7rem;
+        font-weight: bold;
         display: flex;
         align-items: center;
         gap: 0.25rem;
         z-index: 1;
-        backdrop-filter: blur(8px);
-        box-shadow: 0 2px 6px #0003;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        animation: badgePulse 2s linear infinite;
+        border: 1px solid #ff4d4d;
+        box-shadow: 0 0 10px rgba(255, 51, 51, 0.3);
     }
 
     .raw-details-button {
@@ -431,7 +431,7 @@
         background-color: rgba(0, 0, 0, 0.65);
         color: white;
         border: none;
-        border-radius: 13px;
+        border-radius: 2px;
         height: 26px;
         padding: 0 7px;
         display: flex;
@@ -485,7 +485,7 @@
         display: flex;
         flex-direction: column;
         z-index: 10;
-        border-radius: 18px 18px 0 0;
+        border-radius: 2px 2px 0 0;
         overflow: hidden;
     }
 
@@ -514,7 +514,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 6px;
+        border-radius: 2px;
         transition: all 0.2s;
     }
 
@@ -555,7 +555,7 @@
         width: 100%;
         height: 100%;
         object-fit: cover;
-        border-radius: 8px;
+        border-radius: 2px;
         transition: transform 0.3s ease;
     }
 
@@ -568,7 +568,7 @@
         width: 100%;
         height: 100%;
         object-fit: cover;
-        border-radius: 8px;
+        border-radius: 2px;
         transition: transform 0.3s ease;
     }
 
@@ -603,104 +603,128 @@
     /* Pseudo-elements removed as icons are now inline SVGs */
 
     .post-description {
-        font-size: 1rem;
-        line-height: 1.5;
-        margin-bottom: 1rem;
-        color: var(--text-darker);
+        font-size: 0.85rem;
+        line-height: 1.6;
+        margin-bottom: 1.25rem;
+        color: var(--text-muted);
         position: relative;
-        text-align: center;
+        text-align: left;
+        font-family: var(--font-mono);
+        background: rgba(13, 20, 36, 0.4);
+        padding: 0.85rem;
+        border-left: 2px solid var(--accent-primary);
+        border-radius: 0 2px 2px 0;
+    }
+
+    .description-text {
+        white-space: pre-wrap;
+    }
+
+    .no-data {
+        color: var(--text-muted);
+        opacity: 0.6;
+        font-style: italic;
     }
 
     .more-button {
-        background: none;
-        border: none;
-        color: var(--primary-color);
-        padding: 0;
-        margin-left: 0.25rem;
-        font-size: 0.85rem;
-        font-weight: 600;
+        background: rgba(51, 102, 255, 0.05);
+        border: 1px solid var(--accent-primary);
+        color: var(--accent-primary);
+        padding: 0.2rem 0.5rem;
+        margin-left: 0.5rem;
+        margin-top: 0.25rem;
+        font-size: 0.7rem;
+        font-weight: bold;
+        font-family: var(--font-mono);
         cursor: pointer;
         display: inline-flex;
         align-items: center;
-        transition: color 0.2s ease;
+        transition: all 0.15s ease;
+        text-transform: uppercase;
+        border-radius: 2px;
+        vertical-align: middle;
     }
 
     .more-button:hover {
-        color: var(--primary-dark);
-        text-decoration: underline;
+        background: var(--accent-primary);
+        color: #000;
+        box-shadow: 0 0 8px rgba(51, 102, 255, 0.4);
     }
 
     .post-actions {
         display: flex;
         justify-content: space-between;
-        border-top: 1px solid var(--border-color);
-        padding: 1rem 1.4rem 1rem 1.4rem;
-        gap: 0.3rem;
+        border-top: 1px dashed var(--border-color);
+        padding: 0.75rem 1rem;
+        gap: 0.5rem;
         position: absolute;
         bottom: 0;
         left: 0;
         right: 0;
-        background: var(--card-bg);
+        background: var(--bg-surface);
     }
 
     .action-button {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 0.25rem;
-        background: none;
-        border: none;
-        color: var(--text-muted);
-        font-size: 0.9rem;
-        font-weight: 600;
-        padding: 0.45rem 0;
-        border-radius: 8px;
+        gap: 0.3rem;
+        background: rgba(51, 102, 255, 0.05);
+        border: 1px solid rgba(51, 102, 255, 0.2);
+        color: var(--accent-primary);
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        font-size: 0.8rem;
+        font-weight: bold;
+        padding: 0.4rem 0;
+        border-radius: 2px;
         cursor: pointer;
-        transition: all 0.2s;
-        outline: none;
+        transition: all 0.15s;
         flex: 1;
-        text-align: center;
         max-width: calc(100% / 3);
-        position: relative;
-        overflow: hidden;
-    }
-
-    .action-button::after {
-        content: "";
-        position: absolute;
-        bottom: 0;
-        left: 50%;
-        width: 0;
-        height: 2px;
-        background-color: var(--primary-color);
-        transition: all 0.25s ease;
-        transform: translateX(-50%);
-    }
-
-    .action-button:hover::after {
-        width: 70%;
     }
 
     .action-button:hover {
-        background-color: var(--hover-bg);
-        color: var(--primary-color);
+        background: rgba(51, 102, 255, 0.15);
+        border-color: var(--accent-primary);
+        color: #fff;
+    }
+
+    @keyframes sharpFlash {
+        0% {
+            background-color: var(--accent-secondary);
+            color: #fff;
+            border-color: var(--accent-secondary);
+        }
+        50% {
+            background-color: rgba(255, 51, 51, 0.05);
+            color: var(--accent-secondary);
+            border-color: rgba(255, 51, 51, 0.3);
+        }
+        100% {
+            background-color: rgba(255, 51, 51, 0.15);
+            color: var(--accent-secondary);
+            border-color: var(--accent-secondary);
+        }
+    }
+
+    .like-button.liked {
+        color: var(--accent-secondary);
+        border-color: var(--accent-secondary);
+        animation: sharpFlash 0.3s steps(2);
+        background-color: rgba(255, 51, 51, 0.15);
+    }
+
+    .like-button.liked:hover {
+        background-color: rgba(255, 51, 51, 0.25);
     }
 
     .button-icon {
         font-size: 1.1rem;
     }
 
-    .like-button.liked {
-        color: #e53e3e;
-    }
-
-    .like-button.liked .button-icon {
-        transform: scale(1.1);
-        animation: heartbeat 0.6s;
-    }
-
     .like-button.like-error {
-        color: var(--error-color);
+        color: var(--accent-secondary);
         animation: errorShake 0.4s;
         background-color: rgba(229, 62, 62, 0.1);
     }
@@ -753,10 +777,10 @@
             flex: 0 0 100%;
             max-width: 100%;
             margin: 0 0 0.8rem 0;
-            border-radius: 14px;
+            border-radius: 2px;
         }
         .post-image-container {
-            border-radius: 14px 14px 0 0;
+            border-radius: 2px 2px 0 0;
         }
         .post-info {
             padding: 1rem 1rem 4rem;
@@ -771,10 +795,10 @@
     @media (max-width: 480px) {
         .post {
             margin: 0 0 0.5rem 0;
-            border-radius: 12px;
+            border-radius: 2px;
         }
         .post-image-container {
-            border-radius: 12px 12px 0 0;
+            border-radius: 2px 2px 0 0;
         }
         .post-info {
             padding: 0.7rem 0.7rem 4rem;
@@ -805,12 +829,12 @@
     @media (max-width: 320px) {
         .post {
             margin: 0 0 0.3rem 0;
-            border-radius: 8px;
+            border-radius: 2px;
             min-width: unset;
             max-width: 100%;
         }
         .post-image-container {
-            border-radius: 8px 8px 0 0;
+            border-radius: 2px 2px 0 0;
         }
         .post-info {
             padding: 0.5rem 0.5rem 4rem;

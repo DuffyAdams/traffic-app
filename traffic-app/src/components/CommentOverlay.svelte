@@ -25,14 +25,14 @@
     }
 </script>
 
- <div
-     class="comments-overlay"
-     in:fly={{ y: 400, duration: 400, opacity: false }}
-     out:fly={{ y: 400, duration: 300, opacity: false }}
- >
-    <button class="close-comments" on:click={handleClose}
-        ><X size={20} /></button
-    >
+<div
+    class="comments-overlay"
+    in:fly={{ y: 400, duration: 400, opacity: 1 }}
+    out:fly={{ y: 400, duration: 300, opacity: 1 }}
+>
+    <button class="close-comments" on:click={handleClose}>
+        <X size={20} />
+    </button>
     <h3 class="comments-title">
         <MessageSquare size={18} />
         Comments ({comments.length})
@@ -93,14 +93,15 @@
         left: 0;
         width: 100%;
         height: calc(100% - 50px);
-        background-color: var(--card-bg);
+        background-color: var(--bg-surface);
+        border: 1px solid var(--border-color);
+        border-bottom: none;
         display: flex;
         flex-direction: column;
         padding: 1.2rem;
         z-index: 10;
-        border-radius: 18px 18px 0 0;
+        border-radius: 2px 2px 0 0;
         box-sizing: border-box;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
         will-change: opacity;
         backface-visibility: hidden;
     }
@@ -109,11 +110,10 @@
         position: absolute;
         top: 0.8rem;
         right: 0.8rem;
-        background: var(--text-muted);
-        border: none;
-        color: var(--card-bg);
+        background: rgba(255, 51, 51, 0.05);
+        color: var(--accent-secondary);
+        border: 1px solid var(--accent-secondary);
         font-size: 1rem;
-        font-weight: bold;
         line-height: 1;
         cursor: pointer;
         z-index: 11;
@@ -122,31 +122,27 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 50%;
+        border-radius: 2px;
         padding: 0;
-        transition: all 0.2s ease;
-        opacity: 0.7;
-        box-shadow: 0 1px 3px var(--shadow-color);
+        transition: all 0.15s ease;
         outline: none;
     }
 
     .close-comments:hover {
-        opacity: 1;
-        transform: scale(1.1);
-        background: var(--error-color);
+        background: var(--accent-secondary);
+        color: #000;
     }
 
     .comments-title {
         font-size: 1.1rem;
-        font-weight: 700;
+        font-family: var(--font-mono);
+        color: var(--accent-primary);
+        font-weight: normal;
         margin: 0 0 0.8rem 0;
-        color: var(--text-darker);
         display: flex;
         align-items: center;
         gap: 0.5rem;
     }
-
-    /* Pseudo-element removed */
 
     .comments-container {
         flex: 1;
@@ -162,22 +158,24 @@
 
     .comments-container::-webkit-scrollbar-track {
         background: var(--border-color);
-        border-radius: 10px;
+        border-radius: 0;
     }
 
     .comments-container::-webkit-scrollbar-thumb {
-        background: var(--primary-color);
-        border-radius: 10px;
+        background: var(--accent-primary);
+        border-radius: 0;
     }
 
     .no-comments {
         color: var(--text-muted);
-        font-style: italic;
+        font-family: var(--font-mono);
+        text-transform: uppercase;
         text-align: center;
         padding: 1rem 0;
-        background-color: var(--comment-bg);
-        border-radius: 10px;
+        background-color: var(--bg-surface-elevated);
+        border-radius: 2px;
         opacity: 0.8;
+        border: 1px dashed var(--border-color);
     }
 
     .comment {
@@ -200,16 +198,15 @@
     .comment-avatar {
         width: 24px;
         height: 24px;
-        background: linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%);
-        color: #1a365d;
-        border-radius: 50%;
+        background: var(--bg-surface-elevated);
+        color: var(--accent-primary);
+        border-radius: 2px;
         display: flex;
         align-items: center;
         justify-content: center;
         flex-shrink: 0;
         font-size: 0.75rem;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        border: 1px solid #e2e8f0;
+        border: 1px solid var(--border-color);
     }
 
     .comment-user-info {
@@ -219,16 +216,16 @@
     }
 
     .comment-username {
-        font-weight: 600;
-        color: #1a365d;
+        font-family: var(--font-mono);
+        color: var(--text-main);
         font-size: 0.8rem;
         white-space: nowrap;
     }
 
     .comment-timestamp {
         font-size: 0.7rem;
+        font-family: var(--font-mono);
         color: var(--text-muted);
-        font-weight: 500;
         position: relative;
         padding-left: 0.5rem;
     }
@@ -242,30 +239,16 @@
     }
 
     .comment-content {
-        background-color: var(--comment-bg);
+        background-color: rgba(51, 102, 255, 0.05);
         padding: 0.6rem 0.8rem;
-        border-radius: 12px;
-        box-shadow: 0 1px 2px var(--shadow-color);
+        border-radius: 2px;
+        border: 1px solid var(--border-color);
         font-size: 0.9rem;
         line-height: 1.4;
-        color: var(--text-darker);
+        color: var(--text-main);
         margin-left: 2rem;
         word-break: break-word;
-        border-top-left-radius: 2px;
         position: relative;
-    }
-
-    .comment-content::before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: -6px;
-        width: 12px;
-        height: 12px;
-        background-color: var(--comment-bg);
-        transform: rotate(45deg);
-        border-radius: 2px;
-        z-index: -1;
     }
 
     .add-comment {
@@ -278,17 +261,18 @@
         flex: 1;
         padding: 0.7rem 1rem;
         border: 1px solid var(--border-color);
-        border-radius: 24px;
+        border-radius: 2px;
         font-size: 0.9rem;
-        background-color: var(--comment-bg);
-        color: var(--text-darker);
-        transition: all 0.2s;
+        font-family: var(--font-mono);
+        background-color: var(--bg-surface-elevated);
+        color: var(--text-main);
+        transition: all 0.15s;
     }
 
     .add-comment input:focus {
         outline: none;
-        border-color: var(--primary-color);
-        box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.15);
+        border-color: var(--accent-primary);
+        box-shadow: inset 0 0 0 1px var(--accent-primary);
     }
 
     .add-comment input::placeholder {
@@ -296,53 +280,32 @@
     }
 
     .add-comment button {
-        background: linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%);
-        color: #1a365d;
-        border: 1px solid #e2e8f0;
-        border-radius: 24px;
+        background: rgba(51, 102, 255, 0.1);
+        color: var(--accent-primary);
+        border: 1px solid var(--accent-primary);
+        border-radius: 2px;
+        font-family: var(--font-mono);
+        text-transform: uppercase;
         padding: 0.7rem 1.2rem;
-        font-weight: 600;
         font-size: 0.9rem;
         cursor: pointer;
-        transition: all 0.2s;
+        transition: all 0.15s;
         outline: none;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
     }
 
     .add-comment button:hover {
-        background: linear-gradient(135deg, #f0f7ff 0%, #e0f0ff 100%);
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
-        transform: translateY(-1px);
-    }
-
-    :global(body.dark-mode) .add-comment button {
-        background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
-        color: white;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-    }
-
-    :global(body.dark-mode) .add-comment button:hover {
-        background: linear-gradient(135deg, #2a4a7a 0%, #1a2f4a 100%);
+        background: var(--accent-primary);
+        color: #fff;
     }
 
     .error-message {
-        color: var(--error-color);
-        background-color: var(--error-bg);
-        border-left: 4px solid var(--error-color);
+        color: var(--accent-secondary);
+        background-color: rgba(255, 51, 51, 0.1);
+        border-left: 2px solid var(--accent-secondary);
         padding: 0.6rem 1rem;
         margin-top: 0.6rem;
         font-size: 0.85rem;
-        border-radius: 6px;
-    }
-
-    :global(body.dark-mode) .comment-avatar {
-        background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
-        color: white;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-    }
-
-    :global(body.dark-mode) .comment-username {
-        color: white;
+        border-radius: 2px;
     }
 
     @keyframes fadeIn {

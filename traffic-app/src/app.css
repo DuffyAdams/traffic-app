@@ -1,50 +1,75 @@
-/**
- * Global CSS - Minimal base styles only
- * All component-specific styles are in App.svelte
- */
+/* --------------------------------------------------------------------------
+   Pentagon Pizza Index / OSINT Tracker Theme System
+   Provides a completely flat, sharp, military dashboard interface.
+-------------------------------------------------------------------------- */
 
-/* Base app container from Vite template */
+:root {
+  /* Core Backgrounds */
+  --bg-base: #000000;
+  --bg-surface: #0a0f18;
+  --bg-surface-elevated: #111824;
+
+  /* Accent Colors matching the screenshot */
+  --accent-primary: #3366ff;
+  /* Intel Blue */
+  --accent-secondary: #ff3333;
+  /* Alert Red */
+  --accent-success: #00cc66;
+  /* Success Green */
+  --accent-warning: #ffcc00;
+  /* Warning Yellow */
+
+  /* Borders & Dividers */
+  --border-color: #1e293b;
+  --border-focus: #3366ff;
+  --border-alert: #ff3333;
+
+  /* Text Colors */
+  --text-main: #f8fafc;
+  --text-muted: #64748b;
+  --text-inverse: #ffffff;
+
+  /* Overlays */
+  --overlay-bg: rgba(0, 0, 0, 0.85);
+
+  /* Fonts */
+  --font-pixel: "VT323", "Press Start 2P", monospace;
+  --font-mono: "Share Tech Mono", "JetBrains Mono", monospace;
+  --font-body: "Inter", sans-serif;
+}
+
+/* Global Reset & Base Typography */
+body {
+  margin: 0;
+  background-color: var(--bg-base);
+  color: var(--text-main);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Hacker Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-base);
+  border-left: 1px solid var(--border-color);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-primary);
+}
+
 #app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 0.5rem;
-  text-align: center;
-}
-
-/* Base button reset */
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-
-/* Light mode preference overrides */
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-
-  a:hover {
-    color: #747bff;
-  }
-
-  button {
-    background-color: #f9f9f9;
-  }
-}
-
-/* Global tap highlight removal */
-:global(button) {
-  outline: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-:global(*) {
-  -webkit-tap-highlight-color: transparent;
+  width: 100%;
+  min-height: 100vh;
 }

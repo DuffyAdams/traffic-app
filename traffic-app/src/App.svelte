@@ -45,7 +45,7 @@
   // State variables
   let posts = [];
   let loading = true;
-  let darkMode = false;
+  let darkMode = true;
   let currentUsername = "";
   let lastToggleTime = 0;
   let postsPerPage = 15;
@@ -206,17 +206,11 @@
     const ctx = chartCanvas.getContext("2d");
 
     // Colors based on dark mode
-    const gridColor = darkMode
-      ? "rgba(255, 255, 255, 0.06)"
-      : "rgba(0, 0, 0, 0.06)";
-    const tickColor = darkMode
-      ? "rgba(255, 255, 255, 0.5)"
-      : "rgba(0, 0, 0, 0.6)";
+    const gridColor = "rgba(51, 102, 255, 0.15)";
+    const tickColor = "rgba(140, 155, 186, 0.8)";
 
     // Single uniform color for all bars
-    const barColor = darkMode
-      ? "rgba(99, 179, 237, 0.85)" // Light blue for dark mode
-      : "rgba(49, 130, 206, 0.8)"; // Blue for light mode
+    const barColor = "rgba(51, 102, 255, 0.85)"; // OSINT dark blue
 
     chartInstance = new ChartJS(ctx, {
       type: "bar",
@@ -227,7 +221,7 @@
             data: hourlyData,
             backgroundColor: barColor,
             borderWidth: 0,
-            borderRadius: 6,
+            borderRadius: 0,
           },
         ],
       },
@@ -249,17 +243,15 @@
         plugins: {
           legend: { display: false },
           tooltip: {
-            backgroundColor: darkMode
-              ? "rgba(30, 58, 95, 0.95)"
-              : "rgba(255, 255, 255, 0.95)",
-            titleColor: darkMode ? "#ffffff" : "#1a202c",
-            bodyColor: darkMode ? "#ffffff" : "#2d3748",
-            borderColor: darkMode ? "transparent" : "#e2e8f0",
-            borderWidth: darkMode ? 0 : 1,
+            backgroundColor: "rgba(10, 17, 34, 0.95)",
+            titleColor: "#3366ff",
+            bodyColor: "#f8fafc",
+            borderColor: "rgba(51, 102, 255, 0.3)",
+            borderWidth: 1,
             titleFont: { size: 12, weight: "bold" },
             bodyFont: { size: 14, weight: "bold" },
             padding: 12,
-            cornerRadius: 8,
+            cornerRadius: 0,
             displayColors: false,
             callbacks: {
               title: (items) => items[0].label,
@@ -299,13 +291,14 @@
               font: { size: 10, weight: "normal" },
               padding: 8,
               callback: function (value) {
+                const numericValue = Number(value);
                 if (timeFilter === "year") {
-                  return value.toLocaleString();
+                  return numericValue.toLocaleString();
                 }
                 if (timeFilter === "month") {
-                  return Math.round(value / 10) * 10;
+                  return Math.round(numericValue / 10) * 10;
                 }
-                return Math.round(value);
+                return Math.round(numericValue);
               },
               stepSize:
                 timeFilter === "year"
@@ -353,9 +346,7 @@
     if (!hourlyData || hourlyData.length === 0) return;
 
     // Single uniform color for all bars
-    const barColor = darkMode
-      ? "rgba(99, 179, 237, 0.85)" // Light blue for dark mode
-      : "rgba(49, 130, 206, 0.8)"; // Blue for light mode
+    const barColor = "rgba(51, 102, 255, 0.85)"; // OSINT dark blue
 
     chartInstance.data.labels = chartLabels;
     chartInstance.data.datasets[0].data = hourlyData;
@@ -391,9 +382,7 @@
       return Math.round(value);
     };
     // Use default update mode to keep animation
-    const gridColor = darkMode
-      ? "rgba(255, 255, 255, 0.06)"
-      : "rgba(0, 0, 0, 0.06)";
+    const gridColor = "rgba(51, 102, 255, 0.15)";
     chartInstance.options.scales.y.grid.color = gridColor;
     chartInstance.update();
   }
@@ -1256,12 +1245,7 @@
 </script>
 
 <div class="container" bind:this={scrollContainer}>
-  <Header
-    {darkMode}
-    {showEventCounters}
-    on:toggleDarkMode={toggleDarkMode}
-    on:toggleEventCounters={toggleEventCounters}
-  />
+  <Header {showEventCounters} on:toggleEventCounters={toggleEventCounters} />
 
   <div class="source-tabs">
     <button
@@ -1618,45 +1602,41 @@
   }
 
   .source-tab {
-    background: var(--card-bg);
+    background: var(--bg-surface-elevated);
     border: 1px solid var(--border-color);
-    color: var(--text-color);
-    padding: 0.35rem 1.1rem;
-    border-radius: 16px;
+    color: var(--text-muted);
+    padding: 0.4rem 1.2rem;
+    border-radius: 2px;
     font-size: 0.85rem;
-    font-weight: 600;
+    font-family: var(--font-mono);
+    text-transform: uppercase;
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.15s ease;
     white-space: nowrap;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   }
 
   :global(body.dark-mode) .source-tab {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--border-color);
   }
 
   .source-tab:hover {
-    background: var(--hover-bg);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-  }
-
-  .source-tab:active {
-    transform: translateY(0);
+    border-color: var(--accent-primary);
+    background: rgba(51, 102, 255, 0.1);
+    color: var(--text-main);
   }
 
   .source-tab.active {
-    background: var(--primary-color);
-    color: white;
-    border-color: var(--primary-color);
-    box-shadow: 0 4px 12px rgba(49, 130, 206, 0.3);
+    background: rgba(51, 102, 255, 0.15);
+    color: #fff;
+    border-color: var(--accent-primary);
+    box-shadow: inset 0 0 0 1px rgba(51, 102, 255, 0.3);
   }
 
   :global(body.dark-mode) .source-tab.active {
-    background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
-    border-color: rgba(255, 255, 255, 0.2);
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+    background: rgba(51, 102, 255, 0.15);
+    color: #fff;
+    border-color: var(--accent-primary);
   }
 
   .feed {
@@ -1680,27 +1660,18 @@
     opacity: 0.8;
   }
 
-  /* Stats Panel Styles - Professional Redesign */
+  /* Stats Panel Styles - OSINT Redesign */
   .event-counters {
     display: flex;
     flex-direction: column;
     gap: 1.25rem;
     margin-bottom: 1.5rem;
     padding: 1.5rem;
-    background: var(--card-bg);
-    border-radius: 20px;
-    color: var(--text-color);
-    box-shadow: var(--shadow-color);
+    background: var(--bg-surface-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: 2px;
+    color: var(--text-main);
     overflow: visible;
-    transition: all 0.3s ease;
-  }
-
-  :global(body.dark-mode) .event-counters {
-    background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
-    color: white;
-    box-shadow:
-      0 10px 40px rgba(0, 0, 0, 0.3),
-      inset 0 1px 0 rgba(255, 255, 255, 0.1);
   }
 
   .top-row {
@@ -1717,37 +1688,27 @@
   }
 
   .stat-card {
-    background: var(--bg-color);
+    background: var(--bg-surface);
     border: 1px solid var(--border-color);
-    border-radius: 16px;
+    border-radius: 2px;
     text-align: center;
-    padding: 0.75rem 0.75rem;
+    padding: 0.75rem;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
     min-height: 70px;
-    transition: all 0.3s ease;
+    transition: all 0.15s ease;
   }
 
   :global(body.dark-mode) .stat-card {
-    background: linear-gradient(
-      135deg,
-      rgba(255, 255, 255, 0.12) 0%,
-      rgba(255, 255, 255, 0.05) 100%
-    );
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--border-color);
   }
 
   .stat-card:hover {
-    background: linear-gradient(
-      135deg,
-      rgba(255, 255, 255, 0.18) 0%,
-      rgba(255, 255, 255, 0.08) 100%
-    );
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+    border-color: var(--accent-primary);
+    background: rgba(51, 102, 255, 0.05);
   }
 
   .stat-icon {
@@ -1757,24 +1718,15 @@
   }
 
   .stat-value {
-    font-size: 1.75rem;
-    font-weight: 800;
-    letter-spacing: -0.02em;
-    background: linear-gradient(
-      180deg,
-      var(--primary-dark) 0%,
-      var(--primary-light) 100%
-    );
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    font-size: 2rem;
+    font-family: var(--font-pixel);
+    font-weight: normal;
+    color: var(--accent-secondary);
+    text-shadow: 1px 1px 0 rgba(255, 51, 51, 0.3);
   }
 
   :global(body.dark-mode) .stat-value {
-    background: linear-gradient(180deg, #ffffff 0%, #b8d4f0 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: var(--accent-secondary);
   }
 
   .stat-label {
@@ -1792,21 +1744,16 @@
     align-items: center;
     justify-content: center;
     padding: 0.75rem 1rem;
-    background: var(--bg-color);
+    background: var(--bg-surface);
     border: 1px solid var(--border-color);
-    border-radius: 16px;
+    border-radius: 2px;
     min-width: 180px;
     gap: 0.5rem;
   }
 
   :global(body.dark-mode) .time-period-section {
-    background: linear-gradient(
-      135deg,
-      rgba(255, 255, 255, 0.12) 0%,
-      rgba(255, 255, 255, 0.05) 100%
-    );
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--border-color);
   }
 
   .section-label {
@@ -1820,27 +1767,28 @@
   .time-buttons {
     display: flex;
     gap: 0.4rem;
-    background: var(--secondary-bg);
+    background: var(--bg-surface-elevated);
     padding: 0.3rem;
-    border-radius: 24px;
+    border-radius: 2px;
     border: 1px solid var(--border-color);
   }
 
   :global(body.dark-mode) .time-buttons {
-    background: rgba(0, 0, 0, 0.2);
-    border: none;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--border-color);
   }
 
   .time-button {
-    padding: 0.5rem 1rem;
+    padding: 0.4rem 0.8rem;
     background: transparent;
-    border: none;
-    border-radius: 20px;
+    border: 1px solid transparent;
+    border-radius: 2px;
     color: var(--text-muted);
     font-size: 0.8rem;
-    font-weight: 600;
+    font-family: var(--font-mono);
+    text-transform: uppercase;
     cursor: pointer;
-    transition: all 0.25s ease;
+    transition: all 0.15s ease;
   }
 
   :global(body.dark-mode) .time-button {
@@ -1848,69 +1796,39 @@
   }
 
   .time-button:hover {
-    color: var(--text-color);
-    background: var(--hover-bg);
+    color: var(--text-main);
+    border-color: rgba(51, 102, 255, 0.3);
+    background: rgba(51, 102, 255, 0.05);
   }
 
   :global(body.dark-mode) .time-button:hover {
-    color: white;
-    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    border-color: rgba(51, 102, 255, 0.3);
+    background: rgba(51, 102, 255, 0.05);
   }
 
   .time-button.active {
-    background: var(--primary-color);
-    color: white;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    background: rgba(51, 102, 255, 0.15);
+    color: #fff;
+    border-color: var(--accent-primary);
   }
 
   :global(body.dark-mode) .time-button.active {
-    background: white;
-    color: #1e3a5f;
+    background: rgba(51, 102, 255, 0.15);
+    color: #fff;
+    border-color: var(--accent-primary);
   }
 
   .activity-chart-section {
     padding: 1rem 1.25rem;
-    background: var(--bg-color);
+    background: var(--bg-surface);
     border: 1px solid var(--border-color);
-    border-radius: 16px;
-  }
-
-  .chart-loading {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    gap: 0.5rem;
-    color: var(--text-secondary);
-  }
-
-  .loading-spinner {
-    width: 24px;
-    height: 24px;
-    border: 2px solid var(--border-color);
-    border-top: 2px solid var(--accent-color);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-  }
-
-  @keyframes spin {
-    0% {
-      transform: rotate(0deg);
-    }
-    100% {
-      transform: rotate(360deg);
-    }
+    border-radius: 2px;
   }
 
   :global(body.dark-mode) .activity-chart-section {
-    background: linear-gradient(
-      135deg,
-      rgba(255, 255, 255, 0.08) 0%,
-      rgba(255, 255, 255, 0.02) 100%
-    );
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--border-color);
   }
 
   .activity-header {
@@ -1918,12 +1836,15 @@
     justify-content: space-between;
     align-items: center;
     margin-bottom: 0.75rem;
+    border-bottom: 1px dashed var(--border-color);
+    padding-bottom: 0.5rem;
   }
 
   .section-title {
-    font-size: 1rem;
-    font-weight: 700;
-    letter-spacing: -0.01em;
+    font-size: 1.1rem;
+    font-weight: normal;
+    font-family: var(--font-pixel);
+    color: var(--accent-primary);
   }
 
   .chart-container {
@@ -1944,20 +1865,15 @@
   }
 
   .breakdown-card {
-    background: var(--bg-color);
+    background: var(--bg-surface);
     border: 1px solid var(--border-color);
-    border-radius: 16px;
+    border-radius: 2px;
     padding: 1rem;
   }
 
   :global(body.dark-mode) .breakdown-card {
-    background: linear-gradient(
-      135deg,
-      rgba(255, 255, 255, 0.1) 0%,
-      rgba(255, 255, 255, 0.03) 100%
-    );
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--border-color);
   }
 
   .breakdown-header {
@@ -2032,7 +1948,7 @@
     padding: 0.6rem 0.75rem;
     background: var(--hover-bg);
     border: none;
-    border-radius: 10px;
+    border-radius: 2px;
     cursor: pointer;
     transition: all 0.2s ease;
     min-height: 40px;
@@ -2071,14 +1987,14 @@
     left: 0;
     bottom: 0;
     height: 4px;
-    background: rgba(49, 130, 206, 0.6);
-    border-radius: 0 0 10px 10px;
+    background: var(--accent-primary);
+    border-radius: 0;
     z-index: 0;
     transition: width 0.5s ease;
   }
 
   :global(body.dark-mode) .breakdown-count-bar {
-    background: rgba(99, 179, 237, 0.6);
+    background: var(--accent-primary);
   }
 
   .breakdown-text {
@@ -2104,7 +2020,7 @@
     color: var(--text-muted);
     background: rgba(0, 0, 0, 0.05); /* subtle pill background */
     padding: 0.1rem 0.5rem;
-    border-radius: 12px;
+    border-radius: 2px;
     font-size: 0.8rem;
     z-index: 2;
   }
@@ -2209,12 +2125,13 @@
     }
     .event-counters {
       padding: 1rem;
-      border-radius: 16px;
+      border-radius: 2px;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
     }
     .time-period-section {
       padding: 0.75rem;
       align-items: center;
+      border-radius: 2px;
     }
     .time-buttons {
       display: flex;
@@ -2252,7 +2169,7 @@
     .event-counters {
       padding: 1rem;
       gap: 0.75rem;
-      border-radius: 16px;
+      border-radius: 2px;
       margin-bottom: 0.75rem;
     }
     .feed,
@@ -2269,7 +2186,7 @@
     .stat-card {
       padding: 0.6rem 0.4rem;
       min-height: 70px;
-      border-radius: 12px;
+      border-radius: 2px;
     }
     .stat-value {
       font-size: 1.4rem;
@@ -2283,7 +2200,7 @@
     }
     .time-period-section {
       padding: 0.6rem;
-      border-radius: 12px;
+      border-radius: 2px;
     }
     .section-label {
       font-size: 0.7rem;
@@ -2294,7 +2211,7 @@
     }
     .activity-chart-section {
       padding: 0.75rem;
-      border-radius: 12px;
+      border-radius: 2px;
     }
     .chart-container {
       height: 150px;
@@ -2304,7 +2221,7 @@
     }
     .breakdown-card {
       padding: 0.75rem;
-      border-radius: 12px;
+      border-radius: 2px;
       overflow: hidden;
     }
     .breakdown-list {
@@ -2326,7 +2243,7 @@
       .event-counters {
         padding: 0.75rem;
         gap: 0.5rem;
-        border-radius: 12px;
+        border-radius: 2px;
       }
       .stats-grid {
         gap: 0.3rem;

@@ -34,22 +34,22 @@
         "Traffic Collision": "#ef4444",
         "Car Fire": "#f97316",
         "Report of Fire": "#f97316",
-        "Fatality": "#991b1b",
+        Fatality: "#991b1b",
         "Hit and Run No Injuries": "#dc2626",
         "Road Closure": "#374151",
-        "Construction": "#f59e0b",
+        Construction: "#f59e0b",
         "Debris From Vehicle": "#9ca3af",
         "Live or Dead Animal": "#a78bfa",
         "Animal Hazard": "#a78bfa",
         "Defective Traffic Signals": "#eab308",
-        "JUMPER": "#8b5cf6",
-        "SPINOUT": "#06b6d4",
+        JUMPER: "#8b5cf6",
+        SPINOUT: "#06b6d4",
         "Wrong Way Driver": "#ec4899",
         "SIG Alert": "#dc2626",
         "Aircraft Emergency": "#3b82f6",
         "Provide Traffic Control": "#6366f1",
         "Assist CT with Maintenance": "#8b5cf6",
-        "Maintenance": "#6b7280",
+        Maintenance: "#6b7280",
         "Request CalTrans Notify": "#64748b",
         "Road Conditions": "#84cc16",
         "Traffic Break": "#0ea5e9",
@@ -113,7 +113,10 @@
             in:slide={{ delay: Math.min(i * 30, 300), duration: 150 }}
         >
             <div class="table-cell type-cell">
-                <span class="incident-icon-small" style="color: {incidentColors[post.type] || '#fbbf24'}">
+                <span
+                    class="incident-icon-small"
+                    style="color: {incidentColors[post.type] || '#fbbf24'}"
+                >
                     <IncidentIcon type={post.type} />
                 </span>
                 <span class="incident-type-small">{post.type}</span>
@@ -306,12 +309,10 @@
     .incidents-table {
         width: 100%;
         min-width: 100%;
-        background: var(--card-bg);
-        border-radius: 16px;
+        background: var(--bg-surface);
+        border-radius: 2px;
+        border: 1px solid var(--border-color);
         overflow: hidden;
-        box-shadow:
-            0 4px 20px var(--shadow-color),
-            0 0 0 1px rgba(0, 0, 0, 0.03);
         margin-bottom: 2rem;
         box-sizing: border-box;
         max-width: 100%;
@@ -319,10 +320,12 @@
 
     .table-header {
         display: flex;
-        background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
-        color: white;
-        font-weight: 600;
-        padding: 1rem;
+        background: var(--bg-surface-elevated);
+        color: var(--text-muted);
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        font-weight: normal;
+        padding: 0.75rem 1rem;
         border-bottom: 1px solid var(--border-color);
         width: 100%;
         box-sizing: border-box;
@@ -330,28 +333,30 @@
 
     .table-row {
         display: flex;
-        padding: 0.4rem 0.5rem;
+        padding: 0.5rem 0.5rem;
         border-bottom: 1px solid var(--border-color);
+        background-color: var(--bg-surface);
         cursor: pointer;
-        transition: all 0.2s;
+        transition: all 0.1s;
         position: relative;
         width: 100%;
         box-sizing: border-box;
+        font-family: var(--font-mono);
     }
 
     .table-row:hover {
-        background-color: var(--hover-bg);
-        transform: translateX(2px);
-        box-shadow: 0 2px 8px var(--shadow-color);
+        background-color: rgba(51, 102, 255, 0.05);
+        border-left: 2px solid var(--accent-primary);
         z-index: 1;
     }
 
     .table-row.active {
-        border-left: 4px solid #c13117;
+        border-left: 4px solid var(--accent-secondary);
+        background-color: rgba(255, 51, 102, 0.05);
     }
 
     .table-row.expanded {
-        background-color: var(--primary-lightest);
+        background-color: var(--bg-surface-elevated);
         border-bottom: none;
         box-shadow: 0 2px 8px var(--shadow-color);
     }
@@ -408,21 +413,23 @@
     .status-badge {
         display: inline-block;
         padding: 0.2rem 0.5rem;
-        border-radius: 20px;
+        border-radius: 2px;
         font-size: 0.75rem;
-        font-weight: 600;
-        background-color: var(--border-color);
-        color: var(--text-dark);
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        background-color: var(--bg-surface-elevated);
+        border: 1px solid var(--border-color);
+        color: var(--text-muted);
     }
 
     .status-badge.active {
-        background-color: #c13117;
-        color: white;
-        animation: badgePulse 2s linear infinite;
+        background-color: rgba(255, 51, 51, 0.1);
+        border-color: #ff4d4d;
+        color: #ff4d4d;
     }
 
     .expanded-details {
-        background-color: var(--primary-lightest);
+        background-color: var(--bg-surface-elevated);
         padding: 0 1rem 1rem 1rem;
         border-bottom: 1px solid var(--border-color);
         overflow: hidden;
@@ -440,7 +447,7 @@
     .expanded-image {
         flex: 0 0 30%;
         max-width: 300px;
-        border-radius: 12px;
+        border-radius: 2px;
         overflow: hidden;
     }
 
@@ -448,7 +455,7 @@
         width: 100%;
         height: 200px;
         object-fit: cover;
-        border-radius: 12px;
+        border-radius: 2px;
     }
 
     .expanded-info {
@@ -495,7 +502,7 @@
         font-size: 0.9rem;
         font-weight: 600;
         padding: 0.45rem 0.8rem;
-        border-radius: 8px;
+        border-radius: 2px;
         cursor: pointer;
         transition: all 0.2s;
     }
@@ -505,8 +512,29 @@
         color: var(--primary-color);
     }
 
+    @keyframes sharpFlash {
+        0% {
+            background-color: var(--accent-secondary);
+            color: #fff;
+            border-color: var(--accent-secondary);
+        }
+        50% {
+            background-color: rgba(255, 51, 51, 0.05);
+            color: var(--accent-secondary);
+            border-color: rgba(255, 51, 51, 0.3);
+        }
+        100% {
+            background-color: rgba(255, 51, 51, 0.15);
+            color: var(--accent-secondary);
+            border-color: var(--accent-secondary);
+        }
+    }
+
     .like-button.liked {
-        color: #e53e3e;
+        color: var(--accent-secondary);
+        border-color: var(--accent-secondary);
+        animation: sharpFlash 0.3s steps(2);
+        background-color: rgba(255, 51, 51, 0.15);
     }
 
     .button-icon {
@@ -527,25 +555,24 @@
         left: 0;
         width: 100%;
         height: calc(100% - 20px);
-        background-color: var(--card-bg);
+        background-color: var(--bg-surface);
+        border: 1px solid var(--border-color);
         display: flex;
         flex-direction: column;
         padding: 1.2rem;
         z-index: 20;
-        border-radius: 16px 16px 0 0;
+        border-radius: 2px 2px 0 0;
         box-sizing: border-box;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
     }
 
     .close-comments {
         position: absolute;
         top: 0.8rem;
         right: 0.8rem;
-        background: var(--text-muted);
-        border: none;
-        color: var(--card-bg);
+        background: rgba(255, 51, 51, 0.05);
+        border: 1px solid var(--accent-secondary);
+        color: var(--accent-secondary);
         font-size: 1rem;
-        font-weight: bold;
         line-height: 1;
         cursor: pointer;
         z-index: 11;
@@ -554,29 +581,27 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 50%;
+        border-radius: 2px;
         padding: 0;
-        transition: all 0.2s ease;
-        opacity: 0.7;
+        transition: all 0.15s ease;
+        outline: none;
     }
 
     .close-comments:hover {
-        opacity: 1;
-        transform: scale(1.1);
-        background: var(--error-color);
+        background: var(--accent-secondary);
+        color: #000;
     }
 
     .comments-title {
         font-size: 1.1rem;
-        font-weight: 700;
+        font-family: var(--font-mono);
+        color: var(--accent-primary);
+        font-weight: normal;
         margin: 0 0 0.8rem 0;
-        color: var(--text-darker);
         display: flex;
         align-items: center;
         gap: 0.5rem;
     }
-
-    /* Pseudo-element removed */
 
     .comments-container {
         flex: 1;
@@ -588,12 +613,14 @@
 
     .no-comments {
         color: var(--text-muted);
-        font-style: italic;
+        font-family: var(--font-mono);
+        text-transform: uppercase;
         text-align: center;
         padding: 1rem 0;
-        background-color: var(--comment-bg);
-        border-radius: 10px;
+        background-color: var(--bg-surface-elevated);
+        border-radius: 2px;
         opacity: 0.8;
+        border: 1px dashed var(--border-color);
     }
 
     .comment {
@@ -614,9 +641,10 @@
     .comment-avatar {
         width: 24px;
         height: 24px;
-        background-color: var(--primary-light);
-        color: white;
-        border-radius: 50%;
+        background: var(--bg-surface-elevated);
+        border: 1px solid var(--border-color);
+        color: var(--accent-primary);
+        border-radius: 2px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -630,13 +658,14 @@
     }
 
     .comment-username {
-        font-weight: 600;
-        color: var(--primary-color);
+        font-family: var(--font-mono);
+        color: var(--text-main);
         font-size: 0.8rem;
     }
 
     .comment-timestamp {
         font-size: 0.7rem;
+        font-family: var(--font-mono);
         color: var(--text-muted);
         padding-left: 0.5rem;
         position: relative;
@@ -651,12 +680,13 @@
     }
 
     .comment-content {
-        background-color: var(--comment-bg);
+        background-color: rgba(51, 102, 255, 0.05);
+        border: 1px solid var(--border-color);
         padding: 0.6rem 0.8rem;
-        border-radius: 12px;
+        border-radius: 2px;
         font-size: 0.9rem;
         line-height: 1.4;
-        color: var(--text-darker);
+        color: var(--text-main);
         margin-left: 2rem;
     }
 
@@ -670,55 +700,45 @@
         flex: 1;
         padding: 0.7rem 1rem;
         border: 1px solid var(--border-color);
-        border-radius: 24px;
+        border-radius: 2px;
+        font-family: var(--font-mono);
         font-size: 0.9rem;
-        background-color: var(--comment-bg);
-        color: var(--text-darker);
+        background-color: var(--bg-surface-elevated);
+        color: var(--text-main);
     }
 
     .add-comment input:focus {
         outline: none;
-        border-color: var(--primary-color);
-        box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.15);
+        border-color: var(--accent-primary);
+        box-shadow: inset 0 0 0 1px var(--accent-primary);
     }
 
     .add-comment button {
-        background: linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%);
-        color: #1a365d;
-        border: 1px solid #e2e8f0;
-        border-radius: 24px;
+        background: rgba(51, 102, 255, 0.1);
+        color: var(--accent-primary);
+        border: 1px solid var(--accent-primary);
+        border-radius: 2px;
         padding: 0.7rem 1.2rem;
-        font-weight: 600;
+        font-family: var(--font-mono);
+        text-transform: uppercase;
         font-size: 0.9rem;
         cursor: pointer;
-        transition: all 0.2s;
+        transition: all 0.15s;
         outline: none;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
     }
 
     .add-comment button:hover {
-        background: linear-gradient(135deg, #f0f7ff 0%, #e0f0ff 100%);
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
-        transform: translateY(-1px);
-    }
-
-    :global(body.dark-mode) .add-comment button {
-        background: linear-gradient(135deg, #1e3a5f 0%, #0d2137 100%);
-        color: white;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-    }
-
-    :global(body.dark-mode) .add-comment button:hover {
-        background: linear-gradient(135deg, #2a4a7a 0%, #1a2f4a 100%);
+        background: var(--accent-primary);
+        color: #fff;
     }
 
     .error-message {
-        color: var(--error-color);
-        background-color: var(--error-bg);
-        border-left: 4px solid var(--error-color);
+        color: var(--accent-secondary);
+        background-color: rgba(255, 51, 51, 0.1);
+        border-left: 2px solid var(--accent-secondary);
         padding: 0.6rem 1rem;
         font-size: 0.85rem;
-        border-radius: 6px;
+        border-radius: 2px;
     }
 
     @keyframes fadeIn {
