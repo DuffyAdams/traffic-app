@@ -1,10 +1,10 @@
 <script>
     import { createEventDispatcher, onMount, onDestroy } from "svelte";
     import Radio from "lucide-svelte/icons/radio";
-import Shield from "lucide-svelte/icons/shield";
-import Fingerprint from "lucide-svelte/icons/fingerprint";
-import Sun from "lucide-svelte/icons/sun";
-import Moon from "lucide-svelte/icons/moon";
+    import Shield from "lucide-svelte/icons/shield";
+    import Fingerprint from "lucide-svelte/icons/fingerprint";
+    import Sun from "lucide-svelte/icons/sun";
+    import Moon from "lucide-svelte/icons/moon";
 
     export let showEventCounters = false;
     export let darkMode = true;
@@ -55,19 +55,6 @@ import Moon from "lucide-svelte/icons/moon";
             </div>
         </div>
         <div class="header-controls">
-            <button
-                class="theme-toggle"
-                on:click={handleToggleDarkMode}
-                title={darkMode
-                    ? "Switch to Light Mode"
-                    : "Switch to Dark Mode"}
-            >
-                {#if darkMode}
-                    <Sun size={18} />
-                {:else}
-                    <Moon size={18} />
-                {/if}
-            </button>
             <div class="header-metrics">
                 <div class="metric-row">
                     <Radio
@@ -81,6 +68,19 @@ import Moon from "lucide-svelte/icons/moon";
                 </div>
                 <div class="metric-row subtext">MONITORING INCIDENTS</div>
             </div>
+            <button
+                class="theme-toggle"
+                on:click={handleToggleDarkMode}
+                title={darkMode
+                    ? "Switch to Light Mode"
+                    : "Switch to Dark Mode"}
+            >
+                {#if darkMode}
+                    <Sun size={18} />
+                {:else}
+                    <Moon size={18} />
+                {/if}
+            </button>
         </div>
     </div>
 
@@ -88,9 +88,7 @@ import Moon from "lucide-svelte/icons/moon";
         <div class="banner-icon"><Fingerprint size={18} /></div>
         <div class="banner-text">
             SYSTEM DIAGNOSTICS
-            <span class="banner-subtext"
-                >DOUBLE TAKE - INCREASED INTELLIGENCE WATCH</span
-            >
+            <span class="banner-subtext">STATISTICS</span>
         </div>
         <div class="banner-status" class:active={showEventCounters}>
             {showEventCounters ? "[-]" : "[+]"}
@@ -100,7 +98,7 @@ import Moon from "lucide-svelte/icons/moon";
 
 <style>
     .header {
-        margin-bottom: 2rem;
+        margin-bottom: 0.5rem;
         display: flex;
         flex-direction: column;
         gap: 1rem;
@@ -151,7 +149,7 @@ import Moon from "lucide-svelte/icons/moon";
     .header-metrics {
         display: flex;
         flex-direction: column;
-        align-items: flex-end;
+        align-items: flex-start;
         font-size: 0.8rem;
         gap: 0.3rem;
         padding-bottom: 0.2rem;
@@ -305,13 +303,14 @@ import Moon from "lucide-svelte/icons/moon";
     @media (max-width: 768px) {
         .header-top {
             flex-direction: column;
-            align-items: center;
+            align-items: flex-start;
             gap: 1.5rem;
-            text-align: center;
+            text-align: left;
         }
         .header-brand {
-            flex-direction: column;
-            gap: 0.5rem;
+            flex-direction: row;
+            align-items: center;
+            gap: 0.75rem;
         }
         .header-controls {
             width: 100%;
@@ -319,7 +318,7 @@ import Moon from "lucide-svelte/icons/moon";
             gap: 1rem;
         }
         .header-metrics {
-            align-items: flex-end;
+            align-items: flex-start;
         }
         .brand-titles h1 {
             font-size: 2.2rem;
@@ -327,6 +326,12 @@ import Moon from "lucide-svelte/icons/moon";
         .theme-toggle {
             width: 44px;
             height: 44px;
+        }
+        .header-action-banner {
+            padding: 0.75rem 1rem;
+        }
+        .banner-text {
+            font-size: 1.25rem;
         }
     }
 </style>
