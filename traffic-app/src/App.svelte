@@ -1488,13 +1488,17 @@
   <ToastContainer />
 
   <footer class="app-footer" in:fade={{ delay: 400, duration: 200 }}>
-    <p>
-      Created and Developed by <a
-        href="https://github.com/DuffyAdams"
-        target="_blank"
-        rel="noopener noreferrer">Duffy Adams</a
-      >
-    </p>
+    <div class="footer-content">
+      <span class="footer-decorator">[</span>
+      <p>
+        Created and Developed by <a
+          href="https://github.com/DuffyAdams"
+          target="_blank"
+          rel="noopener noreferrer">Duffy Adams</a
+        >
+      </p>
+      <span class="footer-decorator">]</span>
+    </div>
   </footer>
 </div>
 
@@ -2095,20 +2099,75 @@
   .app-footer {
     text-align: center;
     margin-top: 2rem;
-    padding: 1rem 0;
+    padding: 2rem 0 1rem 0;
     color: var(--text-muted);
-    font-size: 0.9rem;
-    border-top: 1px solid var(--border-color);
+    font-size: 0.8rem;
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-top: 1px dashed var(--border-color);
+    display: flex;
+    justify-content: center;
+  }
+
+  .footer-content {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--bg-surface-elevated);
+    border: 1px solid var(--border-color);
+    padding: 0.5rem 1.5rem;
+    border-radius: 2px;
+    box-shadow: inset 0 0 0 1px rgba(51, 102, 255, 0.05);
+  }
+
+  :global(body.dark-mode) .footer-content {
+    background: rgba(0, 0, 0, 0.5);
+    border-color: rgba(51, 102, 255, 0.3);
+  }
+
+  .footer-decorator {
+    color: var(--accent-primary, var(--primary-color));
+    font-weight: bold;
+    opacity: 0.7;
+  }
+
+  .app-footer p {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
   }
 
   .app-footer a {
-    color: var(--primary-color);
+    color: var(--accent-primary, var(--primary-color));
     text-decoration: none;
-    font-weight: 600;
+    font-weight: bold;
+    position: relative;
+    transition: all 0.2s ease;
+  }
+
+  .app-footer a::after {
+    content: "";
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 100%;
+    height: 1px;
+    background-color: var(--accent-primary, var(--primary-color));
+    transform: scaleX(0);
+    transform-origin: right;
+    transition: transform 0.3s ease;
   }
 
   .app-footer a:hover {
-    text-decoration: underline;
+    color: #fff;
+    text-shadow: 0 0 8px rgba(51, 102, 255, 0.6);
+  }
+
+  .app-footer a:hover::after {
+    transform: scaleX(1);
+    transform-origin: left;
   }
 
   /* Mobile responsive */
