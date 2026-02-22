@@ -7,16 +7,14 @@
         formatTimestamp,
         truncateDescription,
     } from "../utils/helpers.js";
-    import {
-        Zap,
-        Clock,
-        MapPin,
-        Heart,
-        MessageSquare,
-        Share2,
-        Info,
-        X,
-    } from "lucide-svelte";
+    import Zap from "lucide-svelte/icons/zap";
+    import Clock from "lucide-svelte/icons/clock";
+    import MapPin from "lucide-svelte/icons/map-pin";
+    import Heart from "lucide-svelte/icons/heart";
+    import MessageSquare from "lucide-svelte/icons/message-square";
+    import Share2 from "lucide-svelte/icons/share-2";
+    import Info from "lucide-svelte/icons/info";
+    import X from "lucide-svelte/icons/x";
     import IncidentIcon from "./IncidentIcon.svelte";
     import LazyImage from "./LazyImage.svelte";
 
@@ -610,7 +608,7 @@
         position: relative;
         text-align: left;
         font-family: var(--font-mono);
-        background: rgba(13, 20, 36, 0.4);
+        background: var(--bg-surface-elevated);
         padding: 0.85rem;
         border-left: 2px solid var(--accent-primary);
         border-radius: 0 2px 2px 0;

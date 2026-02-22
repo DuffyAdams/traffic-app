@@ -1142,16 +1142,14 @@
     };
   });
 
-  import {
-    Calendar,
-    Clock,
-    Zap,
-    BarChart3,
-    Search,
-    MapPin,
-    List,
-    X,
-  } from "lucide-svelte";
+  import Calendar from "lucide-svelte/icons/calendar";
+  import Clock from "lucide-svelte/icons/clock";
+  import Zap from "lucide-svelte/icons/zap";
+  import BarChart3 from "lucide-svelte/icons/bar-chart-3";
+  import Search from "lucide-svelte/icons/search";
+  import MapPin from "lucide-svelte/icons/map-pin";
+  import List from "lucide-svelte/icons/list";
+  import X from "lucide-svelte/icons/x";
   import IncidentIcon from "./components/IncidentIcon.svelte";
 
   async function checkForUpdates() {
@@ -1245,7 +1243,12 @@
 </script>
 
 <div class="container" bind:this={scrollContainer}>
-  <Header {showEventCounters} on:toggleEventCounters={toggleEventCounters} />
+  <Header
+    {showEventCounters}
+    {darkMode}
+    on:toggleEventCounters={toggleEventCounters}
+    on:toggleDarkMode={toggleDarkMode}
+  />
 
   <div class="source-tabs">
     <button
@@ -1420,9 +1423,6 @@
     {condensedView}
     {swipeIndicator}
     {swipeDirection}
-    {isPulling}
-    {pullDistance}
-    {refreshing}
     on:toggle={toggleView}
   />
 
@@ -1530,7 +1530,12 @@
     --accent-color: #f6ad55;
     --accent-dark: #dd6b20;
     --bg-color: #eaeff5;
+    --bg-base: #eaeff5;
+    --bg-surface: #ffffff;
+    --bg-surface-elevated: #f8fafc;
     --text-color: #1a202c;
+    --text-main: #1a202c;
+    --text-inverse: #ffffff;
     --card-bg: #ffffff;
     --shadow-color: rgba(0, 0, 0, 0.1);
     --border-color: #cbd5e0;
@@ -1556,7 +1561,12 @@
     --accent-color: #ed8936;
     --accent-dark: #c05621;
     --bg-color: #171923;
+    --bg-base: #000000;
+    --bg-surface: #0a0f18;
+    --bg-surface-elevated: #111824;
     --text-color: #edf2f7;
+    --text-main: #f8fafc;
+    --text-inverse: #000000;
     --card-bg: #2d3748;
     --shadow-color: rgba(0, 0, 0, 0.3);
     --border-color: #4a5568;
@@ -1883,7 +1893,7 @@
     gap: 0.6rem;
     margin-bottom: 0.75rem;
     padding-bottom: 0.6rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid var(--border-color);
   }
 
   .breakdown-title-section {
@@ -1893,9 +1903,9 @@
   }
 
   .reset-button {
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    color: rgba(255, 255, 255, 0.7);
+    background: var(--bg-surface-elevated);
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
     border-radius: 4px;
     padding: 4px;
     cursor: pointer;
@@ -1906,9 +1916,9 @@
   }
 
   .reset-button:hover {
-    background: rgba(255, 255, 255, 0.2);
-    color: rgba(255, 255, 255, 0.9);
-    border-color: rgba(255, 255, 255, 0.3);
+    background: var(--hover-bg);
+    color: var(--text-main);
+    border-color: var(--accent-primary);
   }
 
   .breakdown-icon {

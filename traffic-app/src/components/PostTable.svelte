@@ -10,16 +10,14 @@
     } from "../utils/helpers.js";
     import CommentOverlay from "./CommentOverlay.svelte";
     import { fly } from "svelte/transition";
-    import {
-        Zap,
-        Heart,
-        MessageSquare,
-        Share2,
-        User,
-        X,
-        ChevronDown,
-        Send,
-    } from "lucide-svelte";
+    import Zap from "lucide-svelte/icons/zap";
+    import Heart from "lucide-svelte/icons/heart";
+    import MessageSquare from "lucide-svelte/icons/message-square";
+    import Share2 from "lucide-svelte/icons/share-2";
+    import User from "lucide-svelte/icons/user";
+    import X from "lucide-svelte/icons/x";
+    import ChevronDown from "lucide-svelte/icons/chevron-down";
+    import Send from "lucide-svelte/icons/send";
     import IncidentIcon from "./IncidentIcon.svelte";
     import LazyImage from "./LazyImage.svelte";
 
@@ -153,9 +151,11 @@
                     <div class="expanded-info">
                         <div class="post-description">
                             {#if post.description}
-                                {post.showFullDescription
-                                    ? post.description
-                                    : truncateDescription(post.description)}
+                                <span class="description-text">
+                                    {post.showFullDescription
+                                        ? post.description
+                                        : truncateDescription(post.description)}
+                                </span>
                                 {#if post.description.length > 200}
                                     <button
                                         class="more-button"
@@ -163,12 +163,12 @@
                                             handleToggleDescription(e, post.id)}
                                     >
                                         {post.showFullDescription
-                                            ? "less"
-                                            : "more"}
+                                            ? "[-] COLLAPSE"
+                                            : "[+] EXPAND"}
                                     </button>
                                 {/if}
                             {:else}
-                                No description available.
+                                <span class="no-data">NO DATA AVAILABLE.</span>
                             {/if}
                         </div>
                         <div class="expanded-actions">
@@ -472,23 +472,52 @@
     }
 
     .post-description {
-        font-size: 1rem;
-        line-height: 1.5;
-        margin-bottom: 1.2rem;
-        color: var(--text-darker);
+        font-size: 0.85rem;
+        line-height: 1.6;
+        margin-bottom: 1.25rem;
+        color: var(--text-muted);
         position: relative;
-        text-align: center;
+        text-align: left;
+        font-family: var(--font-mono);
+        background: var(--bg-surface-elevated);
+        padding: 0.85rem;
+        border-left: 2px solid var(--accent-primary);
+        border-radius: 0 2px 2px 0;
+    }
+
+    .description-text {
+        white-space: pre-wrap;
+    }
+
+    .no-data {
+        color: var(--text-muted);
+        opacity: 0.6;
+        font-style: italic;
     }
 
     .more-button {
-        background: none;
-        border: none;
-        color: var(--primary-color);
-        padding: 0;
-        margin-left: 0.25rem;
-        font-size: 0.85rem;
-        font-weight: 600;
+        background: rgba(51, 102, 255, 0.05);
+        border: 1px solid var(--accent-primary);
+        color: var(--accent-primary);
+        padding: 0.2rem 0.5rem;
+        margin-left: 0.5rem;
+        margin-top: 0.25rem;
+        font-size: 0.7rem;
+        font-weight: bold;
+        font-family: var(--font-mono);
         cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        transition: all 0.15s ease;
+        text-transform: uppercase;
+        border-radius: 2px;
+        vertical-align: middle;
+    }
+
+    .more-button:hover {
+        background: var(--accent-primary);
+        color: #000;
+        box-shadow: 0 0 8px rgba(51, 102, 255, 0.4);
     }
 
     .action-button {

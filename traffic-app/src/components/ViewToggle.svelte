@@ -1,18 +1,13 @@
 <script>
     import { fade } from "svelte/transition";
-    import {
-        ChevronLeft,
-        ChevronRight,
-        LayoutGrid,
-        LayoutList,
-    } from "lucide-svelte";
+    import ChevronLeft from "lucide-svelte/icons/chevron-left";
+    import ChevronRight from "lucide-svelte/icons/chevron-right";
+    import LayoutGrid from "lucide-svelte/icons/layout-grid";
+    import LayoutList from "lucide-svelte/icons/layout-list";
 
     export let condensedView = false;
     export let swipeIndicator = false;
     export let swipeDirection = "";
-    export let isPulling = false;
-    export let pullDistance = 0;
-    export let refreshing = false;
 
     import { createEventDispatcher } from "svelte";
     const dispatch = createEventDispatcher();

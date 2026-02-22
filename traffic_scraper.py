@@ -204,80 +204,85 @@ def init_db():
 
 def read_incidents(limit=20, offset=0, incident_types=None, locations=None, sources=None, active_only=False, cursor=None, date_filter=None):
     """Read a limited set of incidents from the database along with their comments."""
-    with db_lock:
-        with sqlite3.connect(DB_FILE, timeout=30) as conn:
-            conn.row_factory = sqlite3.Row
-            cur = conn.cursor()
-            query = "SELECT * FROM incidents"
-            params = []
-            conditions = []
+    with sqlite3.connect(DB_FILE, timeout=30) as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        query = "SELECT * FROM incidents"
+        params = []
+        conditions = []
 
-            if sources:
-                placeholders = ",".join("?" for _ in sources)
-                conditions.append(f"source IN ({placeholders})")
-                params.extend(sources)
+        if sources:
+            placeholders = ",".join("?" for _ in sources)
+            conditions.append(f"source IN ({placeholders})")
+            params.extend(sources)
 
-            if incident_types:
-                placeholders = ",".join("?" for _ in incident_types)
-                conditions.append(f"type IN ({placeholders})")
-                params.extend(incident_types)
+        if incident_types:
+            placeholders = ",".join("?" for _ in incident_types)
+            conditions.append(f"type IN ({placeholders})")
+            params.extend(incident_types)
 
-            if locations:
-                placeholders = ",".join("?" for _ in locations)
-                conditions.append(f"location IN ({placeholders})")
-                params.extend(locations)
+        if locations:
+            placeholders = ",".join("?" for _ in locations)
+            conditions.append(f"location IN ({placeholders})")
+            params.extend(locations)
 
-            if active_only:
-                conditions.append("active = 1")
+        if active_only:
+            conditions.append("active = 1")
 
-            if date_filter in ['day', 'daily']:
-                today = datetime.now().strftime("%Y-%m-%d")
-                conditions.append("date = ?")
-                params.append(today)
+        if date_filter in ['day', 'daily']:
+            today = datetime.now().strftime("%Y-%m-%d")
+            conditions.append("date = ?")
+            params.append(today)
 
-            if cursor:
-                # cursor is expected to be "timestamp|incident_no"
-                if "|" in cursor:
-                    ts_part, id_part = cursor.split("|", 1)
-                    conditions.append("(timestamp, incident_no) < (?, ?)")
-                    params.extend([ts_part, id_part])
-                else:
-                    # Fallback for old simple cursors
-                    conditions.append("timestamp < ?")
-                    params.append(cursor)
+        if cursor:
+            # cursor is expected to be "timestamp|incident_no"
+            if "|" in cursor:
+                ts_part, id_part = cursor.split("|", 1)
+                conditions.append("(timestamp, incident_no) < (?, ?)")
+                params.extend([ts_part, id_part])
+            else:
+                # Fallback for old simple cursors
+                conditions.append("timestamp < ?")
+                params.append(cursor)
 
-            if conditions:
-                query += " WHERE " + " AND ".join(conditions)
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
 
-            query += " ORDER BY timestamp DESC, incident_no DESC LIMIT ?"
-            params.append(limit)
+        query += " ORDER BY timestamp DESC, incident_no DESC LIMIT ?"
+        params.append(limit)
 
-            cur.execute(query, tuple(params))
-            incidents = [dict(row) for row in cur.fetchall()]
+        cur.execute(query, tuple(params))
+        incidents = [dict(row) for row in cur.fetchall()]
+        
+        if incidents:
+            incident_nos = [inc["incident_no"] for inc in incidents]
+            placeholders = ",".join("?" for _ in incident_nos)
+            cur.execute(
+                f"SELECT incident_no, username, comment, timestamp FROM comments WHERE incident_no IN ({placeholders}) ORDER BY timestamp ASC",
+                tuple(incident_nos)
+            )
+            comments_by_incident = {}
+            for row in cur.fetchall():
+                inc_no = row[0]
+                if inc_no not in comments_by_incident:
+                    comments_by_incident[inc_no] = []
+                comments_by_incident[inc_no].append({"username": row[1] or "Anonymous", "comment": row[2], "timestamp": row[3]})
+                
             for inc in incidents:
-                incident_no = inc["incident_no"]
-                cur.execute(
-                    "SELECT username, comment, timestamp FROM comments WHERE incident_no = ? ORDER BY timestamp ASC",
-                    (incident_no,)
-                )
-                inc["comments"] = [
-                    {"username": row[0] or "Anonymous", "comment": row[1], "timestamp": row[2]}
-                    for row in cur.fetchall()
-                ]
+                inc["comments"] = comments_by_incident.get(inc["incident_no"], [])
                 try:
                     inc["Details"] = json.loads(inc["details"]) if inc["details"] else []
                 except Exception:
                     inc["Details"] = []
-            return incidents
+        return incidents
 
 
 def incident_exists(incident_no, date):
     """Check if an incident exists in the database."""
-    with db_lock:
-        with sqlite3.connect(DB_FILE, timeout=30) as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT 1 FROM incidents WHERE incident_no = ? AND date = ?", (str(incident_no), date))
-            return cur.fetchone() is not None
+    with sqlite3.connect(DB_FILE, timeout=30) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM incidents WHERE incident_no = ? AND date = ?", (str(incident_no), date))
+        return cur.fetchone() is not None
 
 
 # -----------------------------------
@@ -795,14 +800,13 @@ def process_and_save_incident(incident):
             needs_geocoding = True
         else:
             # Check if existing record is missing coordinates
-            with db_lock:
-                with sqlite3.connect(DB_FILE, timeout=30) as conn:
-                    cur = conn.cursor()
-                    cur.execute("SELECT latitude, map_filename FROM incidents WHERE incident_no = ?", (str(incident_no),))
-                    row = cur.fetchone()
-                    if row and (row[0] is None or not row[1]):
-                        safe_print(f"DEBUG: Incident {incident_no} exists but missing coords/map. Needs geocoding.")
-                        needs_geocoding = True
+            with sqlite3.connect(DB_FILE, timeout=30) as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT latitude, map_filename FROM incidents WHERE incident_no = ?", (str(incident_no),))
+                row = cur.fetchone()
+                if row and (row[0] is None or not row[1]):
+                    safe_print(f"DEBUG: Incident {incident_no} exists but missing coords/map. Needs geocoding.")
+                    needs_geocoding = True
 
         if needs_geocoding:
             safe_print(f"DEBUG: Processing geocoding for {incident_no} ({incident.get('Source')})")
@@ -1177,12 +1181,11 @@ def like_incident(incident_id):
                            (incident_id,))
                 conn.commit()
 
-    with db_lock:
-        with sqlite3.connect(DB_FILE, timeout=30) as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT likes FROM incidents WHERE incident_no = ?", (incident_id,))
-            result = cur.fetchone()
-            likes_count = result[0] if result else 0
+    with sqlite3.connect(DB_FILE, timeout=30) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT likes FROM incidents WHERE incident_no = ?", (incident_id,))
+        result = cur.fetchone()
+        likes_count = result[0] if result else 0
 
     response = jsonify({"likes": likes_count})
     # Set cookie with UUID

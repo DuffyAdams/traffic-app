@@ -2,7 +2,10 @@
     import { createEventDispatcher } from "svelte";
     import { fly } from "svelte/transition";
     import { formatCommentTimestamp } from "../utils/helpers.js";
-    import { X, User, MessageSquare, Send } from "lucide-svelte";
+    import X from "lucide-svelte/icons/x";
+import User from "lucide-svelte/icons/user";
+import MessageSquare from "lucide-svelte/icons/message-square";
+import Send from "lucide-svelte/icons/send";
 
     export let comments = [];
     export let newComment = "";

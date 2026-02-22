@@ -1,13 +1,22 @@
 <script>
     import { createEventDispatcher, onMount, onDestroy } from "svelte";
-    import { Radio, Shield, Fingerprint } from "lucide-svelte";
+    import Radio from "lucide-svelte/icons/radio";
+import Shield from "lucide-svelte/icons/shield";
+import Fingerprint from "lucide-svelte/icons/fingerprint";
+import Sun from "lucide-svelte/icons/sun";
+import Moon from "lucide-svelte/icons/moon";
 
     export let showEventCounters = false;
+    export let darkMode = true;
 
     const dispatch = createEventDispatcher();
 
     function handleToggleEventCounters() {
         dispatch("toggleEventCounters");
+    }
+
+    function handleToggleDarkMode() {
+        dispatch("toggleDarkMode");
     }
 
     let currentTime = "";
@@ -45,16 +54,33 @@
                 <p>TACTICAL DISPATCH OVERVIEW</p>
             </div>
         </div>
-        <div class="header-metrics">
-            <div class="metric-row">
-                <Radio
-                    size={12}
-                    color="var(--accent-primary)"
-                    class="pulse-fast"
-                />
-                <span class="metric-label">DISPATCH FEED • {currentTime}</span>
+        <div class="header-controls">
+            <button
+                class="theme-toggle"
+                on:click={handleToggleDarkMode}
+                title={darkMode
+                    ? "Switch to Light Mode"
+                    : "Switch to Dark Mode"}
+            >
+                {#if darkMode}
+                    <Sun size={18} />
+                {:else}
+                    <Moon size={18} />
+                {/if}
+            </button>
+            <div class="header-metrics">
+                <div class="metric-row">
+                    <Radio
+                        size={12}
+                        color="var(--accent-primary)"
+                        class="pulse-fast"
+                    />
+                    <span class="metric-label"
+                        >DISPATCH FEED • {currentTime}</span
+                    >
+                </div>
+                <div class="metric-row subtext">MONITORING INCIDENTS</div>
             </div>
-            <div class="metric-row subtext">MONITORING INCIDENTS</div>
         </div>
     </div>
 
@@ -102,10 +128,15 @@
         margin: 0;
         font-size: 3rem;
         font-family: var(--font-pixel);
-        color: var(--text-inverse);
+        color: var(--accent-primary);
         text-transform: uppercase;
         letter-spacing: 0.05em;
         line-height: 0.9;
+        text-shadow: 2px 2px 0px rgba(0, 0, 0, 0.2);
+    }
+
+    :global(.dark-mode) .brand-titles h1 {
+        color: #ffffff;
         text-shadow: 2px 2px 0px rgba(51, 102, 255, 0.4);
     }
 
@@ -124,6 +155,60 @@
         font-size: 0.8rem;
         gap: 0.3rem;
         padding-bottom: 0.2rem;
+    }
+
+    .header-controls {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+    }
+
+    .theme-toggle {
+        background: rgba(51, 102, 255, 0.1);
+        border: 1px solid var(--accent-primary);
+        color: var(--accent-primary);
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border-radius: 2px;
+        box-shadow: 0 0 10px rgba(51, 102, 255, 0.15);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .theme-toggle::after {
+        content: "";
+        position: absolute;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: radial-gradient(
+            circle,
+            rgba(51, 102, 255, 0.1) 0%,
+            transparent 70%
+        );
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+
+    .theme-toggle:hover::after {
+        opacity: 1;
+    }
+
+    .theme-toggle:hover {
+        background: rgba(51, 102, 255, 0.2);
+        color: #fff;
+        box-shadow: 0 0 20px rgba(51, 102, 255, 0.4);
+        border-color: #6688ff;
+    }
+
+    .theme-toggle:active {
+        transform: translateY(1px);
     }
 
     .metric-row {
@@ -146,11 +231,11 @@
         align-items: center;
         gap: 1rem;
         width: 100%;
-        background: #0d1424;
+        background: var(--bg-surface-elevated);
         border: 1px solid var(--accent-primary);
         border-radius: 2px;
         padding: 1.25rem 1.75rem;
-        color: var(--text-inverse);
+        color: var(--text-main);
         cursor: pointer;
         text-align: left;
         transition: all 0.15s ease;
@@ -158,7 +243,7 @@
     }
 
     .header-action-banner:hover {
-        background: #111a30;
+        background: var(--hover-bg, #111a30);
         border-color: #4d7dff;
     }
 
@@ -220,14 +305,28 @@
     @media (max-width: 768px) {
         .header-top {
             flex-direction: column;
-            align-items: flex-start;
+            align-items: center;
             gap: 1.5rem;
+            text-align: center;
+        }
+        .header-brand {
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .header-controls {
+            width: 100%;
+            justify-content: space-between;
+            gap: 1rem;
         }
         .header-metrics {
-            align-items: flex-start;
+            align-items: flex-end;
         }
         .brand-titles h1 {
             font-size: 2.2rem;
+        }
+        .theme-toggle {
+            width: 44px;
+            height: 44px;
         }
     }
 </style>
