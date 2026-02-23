@@ -22,10 +22,10 @@ traffic_data.db-wal
 traffic_data.db-shm
 
 # Large binary / map tile files
-*.pmtiles
+
 pmtiles.exe
 pmtiles.zip
-pmtiles/
+
 *.mvt
 *.geojson
 
