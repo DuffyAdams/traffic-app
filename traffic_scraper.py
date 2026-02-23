@@ -89,7 +89,7 @@ CORS(app, resources={r"/api/*": {"origins": "*"}, r"/maps/*": {"origins": "*"}})
 
 # Test mode flag
 
-TESTMODE = False
+TESTMODE = True
 
 # -----------------------------------
 # Database Functions
@@ -1137,6 +1137,43 @@ def get_incident_stats():
                 hourly_data.append(cur.fetchone()[0])
             chart_data = hourly_data
 
+        # Calculate historical average for the current hour & day of the week
+        historical_current_hour_average = 0
+        now = datetime.now()
+        current_hour_str = now.strftime('%H')
+        current_dow_str = now.strftime('%w') # 0 = Sunday, 1 = Monday, etc.
+        
+        # Build query for all incidents matching the same day of week and same hour
+        # strftime('%w', timestamp) gets day of week, strftime('%H', timestamp) gets hour
+        hist_clauses = [f"source IN ({','.join('?' for _ in sources)})"] if sources else []
+        hist_params = list(sources) if sources else []
+        
+        hist_clauses.append("strftime('%w', timestamp) = ?")
+        hist_params.append(current_dow_str)
+        hist_clauses.append("strftime('%H', timestamp) = ?")
+        hist_params.append(current_hour_str)
+        
+        hist_where = " WHERE " + " AND ".join(hist_clauses)
+        
+        # We need the total count of incidents in this timeslot
+        cur.execute(f"SELECT COUNT(*) FROM incidents{hist_where}", hist_params)
+        total_hist_incidents = cur.fetchone()[0] or 0
+        
+        # We also need the number of unique days that match this day of week in the DB to get the average
+        # E.g if we have 3 weeks of data, we divide by 3
+        unique_days_where = " WHERE " + (" AND ".join([f"source IN ({','.join('?' for _ in sources)})"]) if sources else "1=1")
+        if sources:
+             unique_days_where += f" AND strftime('%w', timestamp) = ?"
+             unique_days_params = list(sources) + [current_dow_str]
+        else:
+             unique_days_where += f" AND strftime('%w', timestamp) = ?"
+             unique_days_params = [current_dow_str]
+             
+        cur.execute(f"SELECT COUNT(DISTINCT date(timestamp)) FROM incidents{unique_days_where}", unique_days_params)
+        unique_days_count = cur.fetchone()[0] or 1 # avoid division by zero
+        
+        historical_current_hour_average = total_hist_incidents / unique_days_count
+
         return jsonify({
             "eventsToday": events_today,
             "eventsLastHour": events_last_hour,
@@ -1144,7 +1181,8 @@ def get_incident_stats():
             "totalIncidents": total_incidents,
             "incidentsByType": incidents_by_type,
             "topLocations": top_locations,
-            "hourlyData": chart_data
+            "hourlyData": chart_data,
+            "historicalCurrentHourAverage": historical_current_hour_average
         })
 
 @app.route("/maps/<filename>")

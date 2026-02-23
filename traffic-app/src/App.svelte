@@ -2,23 +2,6 @@
   import { onMount, onDestroy } from "svelte";
   import { fade, slide } from "svelte/transition";
 
-  import {
-    Chart as ChartJS,
-    CategoryScale,
-    TimeScale,
-    LinearScale,
-    PointElement,
-    LineElement,
-    BarElement,
-    Title,
-    Tooltip,
-    Legend,
-    Filler,
-    LineController,
-    BarController,
-  } from "chart.js";
-  import "chartjs-adapter-date-fns";
-
   // Import components
   import Header from "./components/Header.svelte";
   import SkeletonCard from "./components/SkeletonCard.svelte";
@@ -26,6 +9,8 @@
   import PostTable from "./components/PostTable.svelte";
   import ToastContainer from "./components/ToastContainer.svelte";
   import ViewToggle from "./components/ViewToggle.svelte";
+  import SourceTabs from "./components/SourceTabs.svelte";
+  import StatsPanel from "./components/StatsPanel.svelte";
 
   // Import utilities
   import {
@@ -39,8 +24,6 @@
 
   // Import stores
   import { addToast } from "./stores/appStore.js";
-
-  // Chart.js registration moved to initializeChart function
 
   // State variables
   let posts = [];
@@ -69,100 +52,7 @@
   let timeFilter = "day";
   let seenCompositeKeys = new Set();
   let hourlyData = [];
-  let chartCanvas;
-  let chartInstance;
-
-  const VW = 288,
-    VH = 120;
-  const PADX = 8,
-    PADY = 8;
-
-  $: xStep =
-    hourlyData.length > 1 ? (VW - PADX * 2) / (hourlyData.length - 1) : 0;
-  $: yMax = Math.max(1, ...hourlyData);
-  $: y = (v) => PADY + (VH - PADY * 2) - (v / yMax) * (VH - PADY * 2);
-  $: chartPath = hourlyData.length
-    ? `M ${PADX} ${VH - PADY} ${hourlyData.map((v, i) => `L ${PADX + i * xStep} ${y(v)}`).join(" ")} L ${VW - PADX} ${VH - PADY} Z`
-    : "";
-  $: linePath = hourlyData.length
-    ? hourlyData
-        .map((v, i) => `${i ? "L" : "M"} ${PADX + i * xStep} ${y(v)}`)
-        .join(" ")
-    : "";
-
-  $: currentTime = new Date();
-  $: sectionTitle =
-    timeFilter === "day"
-      ? "24-Hour Activity"
-      : timeFilter === "week"
-        ? "7-Day Activity"
-        : timeFilter === "month"
-          ? "30-Day Activity"
-          : "Yearly Activity";
-
-  $: chartLabels =
-    timeFilter === "day"
-      ? Array.from({ length: 24 }, (_, i) => {
-          const time = new Date(
-            currentTime.getTime() - (23 - i) * 60 * 60 * 1000,
-          );
-          return time.toLocaleTimeString("en-US", {
-            hour: "numeric",
-            hour12: true,
-          });
-        })
-      : timeFilter === "week"
-        ? Array.from({ length: 7 }, (_, i) => {
-            const date = new Date();
-            date.setDate(date.getDate() - (6 - i));
-            return date.toLocaleDateString("en-US", {
-              weekday: "short",
-              day: "numeric",
-            });
-          })
-        : timeFilter === "month"
-          ? Array.from({ length: 30 }, (_, i) => {
-              const date = new Date();
-              date.setDate(date.getDate() - (29 - i));
-              return date.toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-              });
-            })
-          : Array.from({ length: 12 }, (_, i) => {
-              const date = new Date();
-              date.setDate(1);
-              date.setMonth(currentTime.getMonth() - (11 - i));
-              return date.toLocaleDateString("en-US", { month: "short" });
-            });
-
-  // Generate dynamic solid bar colors based on value intensity
-  function getBarColor(value, maxValue, isDark) {
-    const intensity = maxValue > 0 ? value / maxValue : 0;
-
-    if (isDark) {
-      // Dark mode: blue -> cyan transition based on intensity
-      const r = Math.round(50 + intensity * 50); // 50 -> 100
-      const g = Math.round(130 + intensity * 90); // 130 -> 220
-      const b = Math.round(190 + intensity * 45); // 190 -> 235
-      const alpha = 0.75 + intensity * 0.2; // 0.75 -> 0.95
-
-      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    } else {
-      // Light mode: subtle blue transition
-      const r = Math.round(45 + intensity * 25); // 45 -> 70
-      const g = Math.round(120 + intensity * 60); // 120 -> 180
-      const b = Math.round(190 + intensity * 40); // 190 -> 230
-      const alpha = 0.65 + intensity * 0.25; // 0.65 -> 0.9
-
-      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    }
-  }
-
-  // Create solid colors for bars
-  function createBarColors(data, maxValue, isDark) {
-    return data.map((value) => getBarColor(value, maxValue, isDark));
-  }
+  let historicalCurrentHourAverage = 0;
 
   // Data Source Management
   let activeSource = "all"; // 'all', 'CHP', 'SDPD', 'SDFD'
@@ -176,245 +66,6 @@
     // selectedLocations = new Set();
     fetchIncidents();
     fetchIncidentStats();
-  }
-
-  // Initialize Chart.js chart
-  async function initializeChart() {
-    if (!chartCanvas || !hourlyData || hourlyData.length === 0) return;
-
-    // Register Chart.js components
-    ChartJS.register(
-      CategoryScale,
-      TimeScale,
-      LinearScale,
-      PointElement,
-      LineElement,
-      BarElement,
-      Title,
-      Tooltip,
-      Legend,
-      Filler,
-      LineController,
-      BarController,
-    );
-
-    // Destroy existing chart if it exists
-    if (chartInstance) {
-      chartInstance.destroy();
-    }
-
-    const ctx = chartCanvas.getContext("2d");
-
-    // Colors based on dark mode
-    const gridColor = "rgba(51, 102, 255, 0.15)";
-    const tickColor = "rgba(140, 155, 186, 0.8)";
-
-    // Single uniform color for all bars
-    const barColor = "rgba(51, 102, 255, 0.85)"; // OSINT dark blue
-
-    chartInstance = new ChartJS(ctx, {
-      type: "bar",
-      data: {
-        labels: chartLabels,
-        datasets: [
-          {
-            data: hourlyData,
-            backgroundColor: barColor,
-            borderWidth: 0,
-            borderRadius: 0,
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        layout: {
-          padding: {
-            top: 15,
-            bottom: 10,
-            left: 5,
-            right: 5,
-          },
-        },
-        interaction: {
-          intersect: false,
-          mode: "index",
-        },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            backgroundColor: "rgba(10, 17, 34, 0.95)",
-            titleColor: "#3366ff",
-            bodyColor: "#f8fafc",
-            borderColor: "rgba(51, 102, 255, 0.3)",
-            borderWidth: 1,
-            titleFont: { size: 12, weight: "bold" },
-            bodyFont: { size: 14, weight: "bold" },
-            padding: 12,
-            cornerRadius: 0,
-            displayColors: false,
-            callbacks: {
-              title: (items) => items[0].label,
-              label: (item) => `${item.raw} incidents`,
-            },
-          },
-        },
-        scales: {
-          x: {
-            display: true,
-            grid: { display: false },
-            border: { display: false },
-            ticks: {
-              color: tickColor,
-              font: { size: 10, weight: "normal" },
-              maxRotation: 0,
-              autoSkip: true,
-              maxTicksLimit:
-                timeFilter === "day"
-                  ? 8
-                  : timeFilter === "week"
-                    ? 7
-                    : timeFilter === "month"
-                      ? 10
-                      : 12,
-            },
-          },
-          y: {
-            display: true,
-            position: "right",
-            grid: {
-              color: gridColor,
-            },
-            border: { display: false },
-            ticks: {
-              color: tickColor,
-              font: { size: 10, weight: "normal" },
-              padding: 8,
-              callback: function (value) {
-                const numericValue = Number(value);
-                if (timeFilter === "year") {
-                  return numericValue.toLocaleString();
-                }
-                if (timeFilter === "month") {
-                  return Math.round(numericValue / 10) * 10;
-                }
-                return Math.round(numericValue);
-              },
-              stepSize:
-                timeFilter === "year"
-                  ? Math.max(
-                      2000,
-                      Math.ceil(Math.max(...hourlyData) / 5 / 2000) * 2000,
-                    )
-                  : timeFilter === "month"
-                    ? Math.max(
-                        10,
-                        Math.ceil(Math.max(...hourlyData) / 5 / 10) * 10,
-                      )
-                    : Math.max(1, Math.ceil(Math.max(...hourlyData) / 5)),
-            },
-            beginAtZero: true,
-            suggestedMax: Math.max(...hourlyData) * 1.15 || 10,
-          },
-        },
-        animation: {
-          duration: 300,
-          easing: "easeOutCubic",
-        },
-        transitions: {
-          active: {
-            animation: {
-              duration: 200,
-            },
-          },
-        },
-      },
-    });
-  }
-
-  // Update chart data
-  async function updateChart() {
-    if (!chartInstance) {
-      try {
-        await initializeChart();
-      } catch (error) {
-        console.error("Failed to initialize chart:", error);
-        return;
-      }
-    }
-
-    if (!hourlyData || hourlyData.length === 0) return;
-
-    // Single uniform color for all bars
-    const barColor = "rgba(51, 102, 255, 0.85)"; // OSINT dark blue
-
-    chartInstance.data.labels = chartLabels;
-    chartInstance.data.datasets[0].data = hourlyData;
-    chartInstance.data.datasets[0].backgroundColor = barColor;
-
-    chartInstance.options.scales.y.ticks.stepSize =
-      Math.ceil(Math.max(...hourlyData) / 5) || 1;
-    chartInstance.options.scales.x.ticks.maxTicksLimit =
-      timeFilter === "day"
-        ? 8
-        : timeFilter === "week"
-          ? 7
-          : timeFilter === "month"
-            ? 10
-            : 12;
-    chartInstance.options.scales.y.suggestedMax =
-      Math.max(...hourlyData) * 1.15 || 10;
-    // Update stepSize based on time filter (round by 10 for month/year)
-    chartInstance.options.scales.y.ticks.stepSize =
-      timeFilter === "year"
-        ? Math.max(2000, Math.ceil(Math.max(...hourlyData) / 5 / 2000) * 2000)
-        : timeFilter === "month"
-          ? Math.max(10, Math.ceil(Math.max(...hourlyData) / 5 / 10) * 10)
-          : Math.max(1, Math.ceil(Math.max(...hourlyData) / 5));
-    // Update tick callback dynamically
-    chartInstance.options.scales.y.ticks.callback = function (value) {
-      if (timeFilter === "year") {
-        return value.toLocaleString();
-      }
-      if (timeFilter === "month") {
-        return Math.round(value / 10) * 10;
-      }
-      return Math.round(value);
-    };
-    // Use default update mode to keep animation
-    const gridColor = "rgba(51, 102, 255, 0.15)";
-    chartInstance.options.scales.y.grid.color = gridColor;
-    chartInstance.update();
-  }
-
-  // Reactive statement to update chart when data changes
-  $: if (
-    hourlyData &&
-    hourlyData.length > 0 &&
-    chartCanvas &&
-    showEventCounters
-  ) {
-    // Use setTimeout to ensure canvas is mounted
-    setTimeout(() => updateChart(), 50);
-  }
-
-  // Reload chart when dark mode changes to update colors
-  let chartNeedsUpdate = false;
-
-  $: if (darkMode !== undefined && chartInstance) {
-    // Mark chart for update
-    chartNeedsUpdate = true;
-  }
-
-  $: if (chartNeedsUpdate) {
-    chartNeedsUpdate = false;
-    initializeChart().catch(console.error);
-  }
-
-  // Cleanup chart when stats panel is closed
-  $: if (!showEventCounters && chartInstance) {
-    chartInstance.destroy();
-    chartInstance = null;
   }
 
   // Network status
@@ -789,6 +440,7 @@
       eventsActive = stats.eventsActive;
       totalIncidents = stats.totalIncidents;
       hourlyData = (stats.hourlyData || []).map(Number);
+      historicalCurrentHourAverage = stats.historicalCurrentHourAverage || 0;
 
       incidentsByType = Object.fromEntries(
         Object.entries(stats.incidentsByType).sort(([, a], [, b]) => b - a),
@@ -1136,21 +788,8 @@
         scrollContainer.removeEventListener("touchmove", handleTouchMove);
         scrollContainer.removeEventListener("touchend", handleTouchEnd);
       }
-      if (chartInstance) {
-        chartInstance.destroy();
-      }
     };
   });
-
-  import Calendar from "lucide-svelte/icons/calendar";
-  import Clock from "lucide-svelte/icons/clock";
-  import Zap from "lucide-svelte/icons/zap";
-  import BarChart3 from "lucide-svelte/icons/bar-chart-3";
-  import Search from "lucide-svelte/icons/search";
-  import MapPin from "lucide-svelte/icons/map-pin";
-  import List from "lucide-svelte/icons/list";
-  import X from "lucide-svelte/icons/x";
-  import IncidentIcon from "./components/IncidentIcon.svelte";
 
   async function checkForUpdates() {
     try {
@@ -1250,173 +889,32 @@
     on:toggleDarkMode={toggleDarkMode}
   />
 
-  <div class="source-tabs">
-    <button
-      class="source-tab"
-      class:active={activeSource === "all"}
-      on:click={() => setSourceFilter("all")}>All</button
-    >
-    <button
-      class="source-tab"
-      class:active={activeSource === "CHP"}
-      on:click={() => setSourceFilter("CHP")}>Traffic</button
-    >
-    <button
-      class="source-tab"
-      class:active={activeSource === "SDPD"}
-      on:click={() => setSourceFilter("SDPD")}>Police</button
-    >
-    <button
-      class="source-tab"
-      class:active={activeSource === "SDFD"}
-      on:click={() => setSourceFilter("SDFD")}>Fire</button
-    >
-  </div>
+  <SourceTabs
+    {activeSource}
+    on:changeSource={(e) => setSourceFilter(e.detail)}
+  />
 
-  <!-- Stats Panel (inline due to complexity) -->
   {#if showEventCounters}
-    <div class="event-counters" transition:slide>
-      <div class="top-row">
-        <div class="stats-grid">
-          <div class="stat-card">
-            <div class="stat-icon"><Calendar size={24} /></div>
-            <div class="stat-value">{eventsToday}</div>
-            <div class="stat-label">Today</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-icon"><Clock size={24} /></div>
-            <div class="stat-value">{eventsLastHour}</div>
-            <div class="stat-label">Last Hour</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-icon"><Zap size={24} /></div>
-            <div class="stat-value">{eventsActive}</div>
-            <div class="stat-label">Active</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-icon"><BarChart3 size={24} /></div>
-            <div class="stat-value">{totalIncidents}</div>
-            <div class="stat-label">Total</div>
-          </div>
-        </div>
-        <div class="time-period-section">
-          <span class="section-label">Time Period</span>
-          <div class="time-buttons">
-            <button
-              class="time-button"
-              class:active={timeFilter === "day"}
-              on:click={() => setTimeFilter("day")}>1 Day</button
-            >
-            <button
-              class="time-button"
-              class:active={timeFilter === "week"}
-              on:click={() => setTimeFilter("week")}>Week</button
-            >
-            <button
-              class="time-button"
-              class:active={timeFilter === "month"}
-              on:click={() => setTimeFilter("month")}>Month</button
-            >
-            <button
-              class="time-button"
-              class:active={timeFilter === "year"}
-              on:click={() => setTimeFilter("year")}>Year</button
-            >
-          </div>
-        </div>
-      </div>
-
-      <!-- Activity Chart -->
-      <div class="activity-chart-section">
-        <div class="activity-header">
-          <span class="section-title">{sectionTitle}</span>
-        </div>
-        <div class="chart-container">
-          <canvas bind:this={chartCanvas}></canvas>
-        </div>
-      </div>
-
-      <!-- Breakdowns -->
-      <div class="incident-breakdown-grid">
-        <div class="breakdown-card">
-          <div class="breakdown-header">
-            <div class="breakdown-title-section">
-              <span class="breakdown-icon"><BarChart3 size={18} /></span>
-              <span class="breakdown-title">By Type</span>
-            </div>
-            {#if selectedTypes.size > 0}
-              <button
-                class="reset-button"
-                on:click={resetTypeFilters}
-                title="Reset type filters"
-              >
-                <X size={14} />
-              </button>
-            {/if}
-          </div>
-          <div class="breakdown-list">
-            {#each Object.entries(incidentsByType) as [type, count]}
-              <button
-                class="breakdown-item"
-                class:selected={selectedTypes.has(type)}
-                on:click={() => filterByType(type)}
-              >
-                <span class="breakdown-icon">
-                  <IncidentIcon {type} />
-                </span>
-                <span
-                  class="breakdown-count-bar"
-                  style="width: {(count /
-                    Math.max(...Object.values(incidentsByType), 1)) *
-                    100}%"
-                ></span>
-                <div class="breakdown-text">
-                  <span class="breakdown-name">{type}</span>
-                  <span class="breakdown-count">{count}</span>
-                </div>
-              </button>
-            {/each}
-          </div>
-        </div>
-        <div class="breakdown-card">
-          <div class="breakdown-header">
-            <div class="breakdown-title-section">
-              <span class="breakdown-icon"><MapPin size={18} /></span>
-              <span class="breakdown-title">Top Locations</span>
-            </div>
-            {#if selectedLocations.size > 0}
-              <button
-                class="reset-button"
-                on:click={resetLocationFilters}
-                title="Reset location filters"
-              >
-                <X size={14} />
-              </button>
-            {/if}
-          </div>
-          <div class="breakdown-list">
-            {#each Object.entries(topLocations) as [location, count]}
-              <button
-                class="breakdown-item"
-                class:selected={selectedLocations.has(location)}
-                on:click={() => filterByLocation(location)}
-              >
-                <div
-                  class="breakdown-count-bar"
-                  style="width: {(count /
-                    Math.max(...Object.values(topLocations), 1)) *
-                    100}%"
-                ></div>
-                <div class="breakdown-text">
-                  <span class="breakdown-name">{location}</span>
-                  <span class="breakdown-count">{count}</span>
-                </div>
-              </button>
-            {/each}
-          </div>
-        </div>
-      </div>
-    </div>
+    <StatsPanel
+      {showEventCounters}
+      {eventsToday}
+      {eventsLastHour}
+      {eventsActive}
+      {totalIncidents}
+      {timeFilter}
+      {hourlyData}
+      {historicalCurrentHourAverage}
+      {incidentsByType}
+      {topLocations}
+      {selectedTypes}
+      {selectedLocations}
+      {darkMode}
+      on:filterTime={(e) => setTimeFilter(e.detail)}
+      on:filterType={(e) => filterByType(e.detail)}
+      on:filterLocation={(e) => filterByLocation(e.detail)}
+      on:resetTypeFilters={resetTypeFilters}
+      on:resetLocationFilters={resetLocationFilters}
+    />
   {/if}
 
   <ViewToggle
@@ -1606,53 +1104,6 @@
     box-sizing: border-box;
   }
 
-  .source-tabs {
-    display: flex;
-    justify-content: center;
-    gap: 0.4rem;
-    margin-bottom: 0.8rem;
-    overflow-x: auto;
-    padding: 5px 0 0.4rem 0;
-  }
-
-  .source-tab {
-    background: var(--bg-surface-elevated);
-    border: 1px solid var(--border-color);
-    color: var(--text-muted);
-    padding: 0.4rem 1.2rem;
-    border-radius: 2px;
-    font-size: 0.85rem;
-    font-family: var(--font-mono);
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    white-space: nowrap;
-  }
-
-  :global(body.dark-mode) .source-tab {
-    background: rgba(0, 0, 0, 0.5);
-    border: 1px solid var(--border-color);
-  }
-
-  .source-tab:hover {
-    border-color: var(--accent-primary);
-    background: rgba(51, 102, 255, 0.1);
-    color: var(--text-main);
-  }
-
-  .source-tab.active {
-    background: rgba(51, 102, 255, 0.15);
-    color: #fff;
-    border-color: var(--accent-primary);
-    box-shadow: inset 0 0 0 1px rgba(51, 102, 255, 0.3);
-  }
-
-  :global(body.dark-mode) .source-tab.active {
-    background: rgba(51, 102, 255, 0.15);
-    color: #fff;
-    border-color: var(--accent-primary);
-  }
-
   .feed {
     display: flex;
     flex-wrap: wrap;
@@ -1672,375 +1123,6 @@
     font-size: 3.5rem;
     margin-bottom: 1.5rem;
     opacity: 0.8;
-  }
-
-  /* Stats Panel Styles - OSINT Redesign */
-  .event-counters {
-    display: flex;
-    flex-direction: column;
-    gap: 1.25rem;
-    margin-bottom: 1.5rem;
-    padding: 1.5rem;
-    background: var(--bg-surface-elevated);
-    border: 1px solid var(--border-color);
-    border-radius: 2px;
-    color: var(--text-main);
-    overflow: visible;
-  }
-
-  .top-row {
-    display: flex;
-    gap: 1.25rem;
-    align-items: stretch;
-  }
-
-  .stats-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 0.75rem;
-    flex: 1;
-  }
-
-  .stat-card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-color);
-    border-radius: 2px;
-    text-align: center;
-    padding: 0.75rem;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    min-height: 70px;
-    transition: all 0.15s ease;
-  }
-
-  :global(body.dark-mode) .stat-card {
-    background: rgba(0, 0, 0, 0.5);
-    border: 1px solid var(--border-color);
-  }
-
-  .stat-card:hover {
-    border-color: var(--accent-primary);
-    background: rgba(51, 102, 255, 0.05);
-  }
-
-  .stat-icon {
-    font-size: 1.5rem;
-    margin-bottom: 0.5rem;
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
-  }
-
-  .stat-value {
-    font-size: 2rem;
-    font-family: var(--font-pixel);
-    font-weight: normal;
-    color: var(--accent-secondary);
-    text-shadow: 1px 1px 0 rgba(255, 51, 51, 0.3);
-  }
-
-  :global(body.dark-mode) .stat-value {
-    color: var(--accent-secondary);
-  }
-
-  .stat-label {
-    font-size: 0.75rem;
-    font-weight: 500;
-    opacity: 0.7;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-top: 0.25rem;
-  }
-
-  .time-period-section {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 0.75rem 1rem;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-color);
-    border-radius: 2px;
-    min-width: 180px;
-    gap: 0.5rem;
-  }
-
-  :global(body.dark-mode) .time-period-section {
-    background: rgba(0, 0, 0, 0.5);
-    border: 1px solid var(--border-color);
-  }
-
-  .section-label {
-    font-size: 0.8rem;
-    font-weight: 600;
-    opacity: 0.8;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-
-  .time-buttons {
-    display: flex;
-    gap: 0.4rem;
-    background: var(--bg-surface-elevated);
-    padding: 0.3rem;
-    border-radius: 2px;
-    border: 1px solid var(--border-color);
-  }
-
-  :global(body.dark-mode) .time-buttons {
-    background: rgba(0, 0, 0, 0.5);
-    border: 1px solid var(--border-color);
-  }
-
-  .time-button {
-    padding: 0.4rem 0.8rem;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 2px;
-    color: var(--text-muted);
-    font-size: 0.8rem;
-    font-family: var(--font-mono);
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  :global(body.dark-mode) .time-button {
-    color: rgba(255, 255, 255, 0.7);
-  }
-
-  .time-button:hover {
-    color: var(--text-main);
-    border-color: rgba(51, 102, 255, 0.3);
-    background: rgba(51, 102, 255, 0.05);
-  }
-
-  :global(body.dark-mode) .time-button:hover {
-    color: #fff;
-    border-color: rgba(51, 102, 255, 0.3);
-    background: rgba(51, 102, 255, 0.05);
-  }
-
-  .time-button.active {
-    background: rgba(51, 102, 255, 0.15);
-    color: #fff;
-    border-color: var(--accent-primary);
-  }
-
-  :global(body.dark-mode) .time-button.active {
-    background: rgba(51, 102, 255, 0.15);
-    color: #fff;
-    border-color: var(--accent-primary);
-  }
-
-  .activity-chart-section {
-    padding: 1rem 1.25rem;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-color);
-    border-radius: 2px;
-  }
-
-  :global(body.dark-mode) .activity-chart-section {
-    background: rgba(0, 0, 0, 0.5);
-    border: 1px solid var(--border-color);
-  }
-
-  .activity-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.75rem;
-    border-bottom: 1px dashed var(--border-color);
-    padding-bottom: 0.5rem;
-  }
-
-  .section-title {
-    font-size: 1.1rem;
-    font-weight: normal;
-    font-family: var(--font-pixel);
-    color: var(--accent-primary);
-  }
-
-  .chart-container {
-    position: relative;
-    width: 100%;
-    height: 180px;
-  }
-
-  .chart-container canvas {
-    width: 100% !important;
-    height: 100% !important;
-  }
-
-  .incident-breakdown-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 1rem;
-  }
-
-  .breakdown-card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-color);
-    border-radius: 2px;
-    padding: 1rem;
-  }
-
-  :global(body.dark-mode) .breakdown-card {
-    background: rgba(0, 0, 0, 0.5);
-    border: 1px solid var(--border-color);
-  }
-
-  .breakdown-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.6rem;
-    margin-bottom: 0.75rem;
-    padding-bottom: 0.6rem;
-    border-bottom: 1px solid var(--border-color);
-  }
-
-  .breakdown-title-section {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-  }
-
-  .reset-button {
-    background: var(--bg-surface-elevated);
-    border: 1px solid var(--border-color);
-    color: var(--text-muted);
-    border-radius: 4px;
-    padding: 4px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-  }
-
-  .reset-button:hover {
-    background: var(--hover-bg);
-    color: var(--text-main);
-    border-color: var(--accent-primary);
-  }
-
-  .breakdown-icon {
-    font-size: 1.2rem;
-    z-index: 2;
-    width: 24px;
-    height: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .breakdown-title {
-    font-size: 0.9rem;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-  }
-
-  .breakdown-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    max-height: 300px;
-    overflow-y: auto;
-    padding-right: 0.25rem;
-    scrollbar-width: none; /* Firefox */
-  }
-
-  .breakdown-list::-webkit-scrollbar {
-    display: none; /* Chrome, Safari, Opera */
-  }
-
-  .breakdown-item {
-    display: flex;
-    align-items: center;
-    position: relative;
-    padding: 0.6rem 0.75rem;
-    background: var(--hover-bg);
-    border: none;
-    border-radius: 2px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    min-height: 40px;
-    overflow: hidden;
-    color: var(--text-color);
-    text-align: left;
-    gap: 0.75rem;
-  }
-
-  :global(body.dark-mode) .breakdown-item {
-    background: rgba(255, 255, 255, 0.04);
-    color: white;
-  }
-
-  .breakdown-item:hover {
-    background: var(--hover-bg);
-    transform: translateX(2px);
-  }
-
-  .breakdown-item.selected {
-    background: var(--primary-lightest);
-    box-shadow: inset 0 0 0 2px var(--primary-color);
-  }
-
-  :global(body.dark-mode) .breakdown-item.selected {
-    background: rgba(66, 153, 225, 0.2);
-    box-shadow: inset 0 0 0 2px var(--primary-light);
-  }
-
-  :global(body.dark-mode) .breakdown-item:hover {
-    background: rgba(255, 255, 255, 0.1);
-  }
-
-  .breakdown-count-bar {
-    position: absolute;
-    left: 0;
-    bottom: 0;
-    height: 4px;
-    background: var(--accent-primary);
-    border-radius: 0;
-    z-index: 0;
-    transition: width 0.5s ease;
-  }
-
-  :global(body.dark-mode) .breakdown-count-bar {
-    background: var(--accent-primary);
-  }
-
-  .breakdown-text {
-    display: flex;
-    flex: 1;
-    align-items: center;
-    justify-content: space-between;
-    z-index: 2;
-    min-width: 0; /* Enable truncation in flex child */
-  }
-
-  .breakdown-name {
-    font-weight: 500;
-    color: var(--text-darker);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    margin-right: 0.5rem;
-  }
-
-  .breakdown-count {
-    font-weight: 600;
-    color: var(--text-muted);
-    background: rgba(0, 0, 0, 0.05); /* subtle pill background */
-    padding: 0.1rem 0.5rem;
-    border-radius: 2px;
-    font-size: 0.8rem;
-    z-index: 2;
-  }
-
-  :global(body.dark-mode) .breakdown-count {
-    background: rgba(255, 255, 255, 0.15);
   }
 
   /* Scroll indicator */
@@ -2180,175 +1262,25 @@
       gap: 1rem;
       padding: 0;
     }
-    .top-row {
-      flex-direction: column;
-      gap: 0.75rem;
-    }
-    .stats-grid {
-      grid-template-columns: repeat(2, 1fr);
-      gap: 0.5rem;
-    }
-    .stat-card {
-      padding: 0.75rem 0.5rem;
-      min-height: 75px;
-    }
-    .event-counters {
-      padding: 1rem;
-      border-radius: 2px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-    }
-    .time-period-section {
-      padding: 0.75rem;
-      align-items: center;
-      border-radius: 2px;
-    }
-    .time-buttons {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      width: auto;
-      gap: 0.25rem;
-    }
-    .time-button {
-      padding: 0.45rem 0.7rem;
-      font-size: 0.75rem;
-    }
-    .incident-breakdown-grid {
-      grid-template-columns: 1fr;
-    }
-    .breakdown-list {
-      max-height: 280px;
-    }
-    .breakdown-item {
-      min-height: 40px;
-      padding: 0.6rem 0.75rem;
-    }
-    .event-counters {
-      overflow: hidden;
-    }
-    .breakdown-card {
-      overflow: hidden;
-    }
   }
 
   @media (max-width: 480px) {
     .container {
       padding: 0.25rem;
     }
-    .event-counters {
-      padding: 1rem;
-      gap: 0.75rem;
-      border-radius: 2px;
-      margin-bottom: 0.75rem;
-    }
+
     .feed,
     .loading-container {
       gap: 0.5rem;
     }
-    .stats-grid {
-      grid-template-columns: repeat(2, 1fr);
-      gap: 0.4rem;
-    }
+
     .container {
       padding: 0.75rem;
-    }
-    .stat-card {
-      padding: 0.6rem 0.4rem;
-      min-height: 70px;
-      border-radius: 2px;
-    }
-    .stat-value {
-      font-size: 1.4rem;
-    }
-    .stat-icon {
-      font-size: 1.2rem;
-      margin-bottom: 0.25rem;
-    }
-    .stat-label {
-      font-size: 0.65rem;
-    }
-    .time-period-section {
-      padding: 0.6rem;
-      border-radius: 2px;
-    }
-    .section-label {
-      font-size: 0.7rem;
-    }
-    .time-button {
-      padding: 0.4rem 0.75rem;
-      font-size: 0.75rem;
-    }
-    .activity-chart-section {
-      padding: 0.75rem;
-      border-radius: 2px;
-    }
-    .chart-container {
-      height: 150px;
-    }
-    .section-title {
-      font-size: 0.9rem;
-    }
-    .breakdown-card {
-      padding: 0.75rem;
-      border-radius: 2px;
-      overflow: hidden;
-    }
-    .breakdown-list {
-      max-height: 260px;
-    }
-    .breakdown-item {
-      padding: 0.55rem 0.7rem;
-      min-height: 38px;
-    }
-    .time-button {
-      flex: 1 1 calc(50% - 0.125rem);
-      min-width: 0;
     }
 
     @media (max-width: 360px) {
       .container {
         padding: 0.5rem;
-      }
-      .event-counters {
-        padding: 0.75rem;
-        gap: 0.5rem;
-        border-radius: 2px;
-      }
-      .stats-grid {
-        gap: 0.3rem;
-      }
-      .stat-card {
-        padding: 0.5rem 0.3rem;
-        min-height: 65px;
-      }
-      .stat-value {
-        font-size: 1.25rem;
-      }
-      .stat-icon {
-        font-size: 1rem;
-      }
-      .stat-label {
-        font-size: 0.6rem;
-      }
-      .time-button {
-        padding: 0.35rem 0.6rem;
-        font-size: 0.7rem;
-      }
-      .chart-container {
-        height: 130px;
-      }
-      .breakdown-list {
-        max-height: 240px;
-      }
-      .breakdown-item {
-        padding: 0.5rem 0.65rem;
-        min-height: 36px;
-      }
-      .breakdown-name {
-        font-size: 0.85rem;
-      }
-      .breakdown-count {
-        font-size: 0.8rem;
       }
     }
   }
