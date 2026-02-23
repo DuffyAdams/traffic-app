@@ -55,7 +55,7 @@
         }
     }
 
-    const PMTILES_URL = "/maps/sandiego.pmtiles";
+    const PMTILES_URL = "/map_tiles/sandiego.pmtiles";
 
     onMount(() => {
         // Add PMTiles protocol
