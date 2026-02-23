@@ -30,6 +30,11 @@
         class:active={activeSource === "SDFD"}
         on:click={() => setSourceFilter("SDFD")}>Fire</button
     >
+    <button
+        class="source-tab"
+        class:active={activeSource === "map"}
+        on:click={() => setSourceFilter("map")}>Map</button
+    >
 </div>
 
 <style>

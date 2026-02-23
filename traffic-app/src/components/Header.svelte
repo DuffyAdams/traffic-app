@@ -8,6 +8,7 @@
 
     export let showEventCounters = false;
     export let darkMode = true;
+    export let activeSource = "all";
 
     const dispatch = createEventDispatcher();
 
@@ -84,16 +85,21 @@
         </div>
     </div>
 
-    <button class="header-action-banner" on:click={handleToggleEventCounters}>
-        <div class="banner-icon"><Fingerprint size={18} /></div>
-        <div class="banner-text">
-            SYSTEM DIAGNOSTICS
-            <span class="banner-subtext">STATISTICS</span>
-        </div>
-        <div class="banner-status" class:active={showEventCounters}>
-            {showEventCounters ? "[-]" : "[+]"}
-        </div>
-    </button>
+    {#if activeSource !== "map"}
+        <button
+            class="header-action-banner"
+            on:click={handleToggleEventCounters}
+        >
+            <div class="banner-icon"><Fingerprint size={18} /></div>
+            <div class="banner-text">
+                SYSTEM DIAGNOSTICS
+                <span class="banner-subtext">STATISTICS</span>
+            </div>
+            <div class="banner-status" class:active={showEventCounters}>
+                {showEventCounters ? "[-]" : "[+]"}
+            </div>
+        </button>
+    {/if}
 </header>
 
 <style>

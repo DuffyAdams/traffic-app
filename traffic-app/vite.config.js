@@ -13,10 +13,6 @@ export default defineConfig({
       '/api': {
         target: 'http://127.0.0.1:5002',
         changeOrigin: true
-      },
-      '/maps': {
-        target: 'http://127.0.0.1:5002',
-        changeOrigin: true
       }
     }
   }

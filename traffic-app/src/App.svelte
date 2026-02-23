@@ -11,6 +11,7 @@
   import ViewToggle from "./components/ViewToggle.svelte";
   import SourceTabs from "./components/SourceTabs.svelte";
   import StatsPanel from "./components/StatsPanel.svelte";
+  import MapTab from "./components/MapTab.svelte";
 
   // Import utilities
   import {
@@ -207,7 +208,7 @@
       if (showActiveOnly) {
         url += `&active_only=true`;
       }
-      if (activeSource && activeSource !== "all") {
+      if (activeSource && activeSource !== "all" && activeSource !== "map") {
         url += `&source=${encodeURIComponent(activeSource)}`;
       }
 
@@ -324,6 +325,9 @@
         description: incident.description || "No description available",
         showFullDescription: false,
         location: incident.location || "Unknown location",
+        neighborhood: incident.neighborhood || "",
+        latitude: incident.latitude ?? null,
+        longitude: incident.longitude ?? null,
         image: `/maps/${incident.map_filename}`,
         likes: typeof incident.likes === "number" ? incident.likes : 0,
         comments: Array.isArray(incident.comments) ? incident.comments : [],
@@ -391,7 +395,7 @@
 
     try {
       let url = "/api/incident_stats?date_filter=" + timeFilter;
-      if (activeSource && activeSource !== "all") {
+      if (activeSource && activeSource !== "all" && activeSource !== "map") {
         url += `&source=${encodeURIComponent(activeSource)}`;
       }
 
@@ -615,6 +619,7 @@
   }
 
   function handleTouchStart(e) {
+    if (activeSource === "map") return;
     touchStartX = e.touches[0].clientX;
     touchStartY = e.touches[0].clientY;
     pullStartY = e.touches[0].clientY;
@@ -623,6 +628,7 @@
   }
 
   function handleTouchMove(e) {
+    if (activeSource === "map") return;
     if (!swipeInProgress) return;
 
     touchEndX = e.touches[0].clientX;
@@ -656,6 +662,7 @@
   }
 
   function handleTouchEnd(e) {
+    if (activeSource === "map") return;
     if (!swipeInProgress) return;
 
     if (isPulling && pullDistance >= pullThreshold && !refreshing) {
@@ -807,7 +814,7 @@
       if (showActiveOnly) {
         url += `&active_only=true`;
       }
-      if (activeSource && activeSource !== "all") {
+      if (activeSource && activeSource !== "all" && activeSource !== "map") {
         url += `&source=${encodeURIComponent(activeSource)}`;
       }
 
@@ -885,6 +892,7 @@
   <Header
     {showEventCounters}
     {darkMode}
+    {activeSource}
     on:toggleEventCounters={toggleEventCounters}
     on:toggleDarkMode={toggleDarkMode}
   />
@@ -894,92 +902,99 @@
     on:changeSource={(e) => setSourceFilter(e.detail)}
   />
 
-  {#if showEventCounters}
-    <StatsPanel
-      {showEventCounters}
-      {eventsToday}
-      {eventsLastHour}
-      {eventsActive}
-      {totalIncidents}
-      {timeFilter}
-      {hourlyData}
-      {historicalCurrentHourAverage}
-      {incidentsByType}
-      {topLocations}
-      {selectedTypes}
-      {selectedLocations}
-      {darkMode}
-      on:filterTime={(e) => setTimeFilter(e.detail)}
-      on:filterType={(e) => filterByType(e.detail)}
-      on:filterLocation={(e) => filterByLocation(e.detail)}
-      on:resetTypeFilters={resetTypeFilters}
-      on:resetLocationFilters={resetLocationFilters}
+  <!-- Keep MapTab alive, just hide/show with CSS -->
+  <div style={activeSource === "map" ? "" : "display:none"}>
+    <MapTab />
+  </div>
+
+  {#if activeSource !== "map"}
+    {#if showEventCounters}
+      <StatsPanel
+        {showEventCounters}
+        {eventsToday}
+        {eventsLastHour}
+        {eventsActive}
+        {totalIncidents}
+        {timeFilter}
+        {hourlyData}
+        {historicalCurrentHourAverage}
+        {incidentsByType}
+        {topLocations}
+        {selectedTypes}
+        {selectedLocations}
+        {darkMode}
+        on:filterTime={(e) => setTimeFilter(e.detail)}
+        on:filterType={(e) => filterByType(e.detail)}
+        on:filterLocation={(e) => filterByLocation(e.detail)}
+        on:resetTypeFilters={resetTypeFilters}
+        on:resetLocationFilters={resetLocationFilters}
+      />
+    {/if}
+
+    <ViewToggle
+      {condensedView}
+      {swipeIndicator}
+      {swipeDirection}
+      on:toggle={toggleView}
     />
-  {/if}
 
-  <ViewToggle
-    {condensedView}
-    {swipeIndicator}
-    {swipeDirection}
-    on:toggle={toggleView}
-  />
-
-  {#if loading && posts.length === 0}
-    <div class="loading-container" in:fade={{ duration: 150 }}>
-      {#each Array(6) as _}
-        <SkeletonCard />
-      {/each}
-    </div>
-  {:else if posts.length === 0}
-    <div class="empty-state" in:fade={{ duration: 150 }}>
-      <div class="empty-icon">🔍</div>
-      <p>No incidents to display at the moment.</p>
-      <p>Check back soon for updates.</p>
-    </div>
-  {:else if condensedView}
-    <PostTable
-      {posts}
-      {expandedPostId}
-      on:toggleExpand={handleTableToggleExpand}
-      on:closeComments={handleTableCloseComments}
-      on:like={handlePostLike}
-      on:toggleComments={handlePostToggleComments}
-      on:share={handlePostShare}
-      on:toggleDescription={handlePostToggleDescription}
-      on:submitComment={handlePostSubmitComment}
-    />
-  {:else}
-    <div class="feed" in:fade={{ duration: 200 }}>
-      {#each posts as post, i (post.compositeId)}
-        <PostCard
-          {post}
-          index={i}
-          {postsPerPage}
-          on:like={handlePostLike}
-          on:toggleComments={handlePostToggleComments}
-          on:share={handlePostShare}
-          on:toggleDescription={handlePostToggleDescription}
-          on:submitComment={handlePostSubmitComment}
-        />
-      {/each}
-    </div>
-
-    {#if !allPostsLoaded && posts.length > 0 && posts.length >= postsPerPage}
-      <div
-        class="scroll-indicator"
-        in:fade={{ duration: 150 }}
-        on:click={forceLoadMore}
-        role="button"
-        tabindex="0"
-        on:keydown={(e) => e.key === "Enter" && forceLoadMore()}
-      >
-        <div class="scroll-dots">
-          <span class="dot"></span>
-          <span class="dot"></span>
-          <span class="dot"></span>
-        </div>
-        <p>More incidents available</p>
+    {#if loading && posts.length === 0}
+      <div class="loading-container" in:fade={{ duration: 150 }}>
+        {#each Array(6) as _}
+          <SkeletonCard />
+        {/each}
       </div>
+    {:else if posts.length === 0}
+      <div class="empty-state" in:fade={{ duration: 150 }}>
+        <div class="empty-icon">🔍</div>
+        <p>No incidents to display at the moment.</p>
+        <p>Check back soon for updates.</p>
+      </div>
+    {:else if condensedView}
+      <PostTable
+        {posts}
+        {expandedPostId}
+        on:toggleExpand={handleTableToggleExpand}
+        on:closeComments={handleTableCloseComments}
+        on:like={handlePostLike}
+        on:toggleComments={handlePostToggleComments}
+        on:share={handlePostShare}
+        on:toggleDescription={handlePostToggleDescription}
+        on:submitComment={handlePostSubmitComment}
+      />
+    {:else}
+      <div class="feed" in:fade={{ duration: 200 }}>
+        {#each posts as post, i (post.compositeId)}
+          <PostCard
+            {post}
+            index={i}
+            {postsPerPage}
+            on:like={handlePostLike}
+            on:toggleComments={handlePostToggleComments}
+            on:share={handlePostShare}
+            on:toggleDescription={handlePostToggleDescription}
+            on:submitComment={handlePostSubmitComment}
+          />
+        {/each}
+      </div>
+
+      {#if !allPostsLoaded && posts.length > 0 && posts.length >= postsPerPage}
+        <div
+          class="scroll-indicator"
+          in:fade={{ duration: 150 }}
+          on:click={forceLoadMore}
+          role="button"
+          tabindex="0"
+          on:keydown={(e) => e.key === "Enter" && forceLoadMore()}
+        >
+          <div class="scroll-dots">
+            <span class="dot"></span>
+            <span class="dot"></span>
+            <span class="dot"></span>
+          </div>
+          <p>More incidents available</p>
+        </div>
+      {/if}
     {/if}
   {/if}
 
