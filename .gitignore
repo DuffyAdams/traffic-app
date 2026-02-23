@@ -11,6 +11,5 @@ yarn-error.log*
 
 
 traffic_data.db
-traffic_data.db-shm
-traffic_data.db-wal
+
 
