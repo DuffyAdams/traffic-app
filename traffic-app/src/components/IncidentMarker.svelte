@@ -7,9 +7,21 @@
 
     let isHovered = false;
     let markerEl;
+    let showBelow = false;
 
     function onEnter() {
         isHovered = true;
+
+        if (markerEl) {
+            const rect = markerEl.getBoundingClientRect();
+            // Estimate max height of hover card + buffer
+            if (rect.top < 320) {
+                showBelow = true;
+            } else {
+                showBelow = false;
+            }
+        }
+
         // Walk up to the MapLibre marker wrapper and raise it above all others
         const mlMarker = markerEl?.closest(".maplibregl-marker");
         if (mlMarker) mlMarker.style.zIndex = "9999";
@@ -67,6 +79,7 @@
     {#if isHovered}
         <div
             class="hover-card"
+            class:show-below={showBelow}
             transition:scale={{ duration: 150, start: 0.95 }}
             style="border-color: {sourceColor}4d;"
         >
@@ -114,8 +127,12 @@
                 {/if}
             </div>
             <div
-                class="arrow-down"
-                style="filter: drop-shadow(0 1px 0 {sourceColor}4d);"
+                class="arrow"
+                class:arrow-up={showBelow}
+                class:arrow-down={!showBelow}
+                style="filter: drop-shadow(0 {showBelow
+                    ? '-1px'
+                    : '1px'} 0 {sourceColor}4d);"
             ></div>
         </div>
     {/if}
@@ -225,17 +242,32 @@
         z-index: 9999;
     }
 
-    .arrow-down {
+    .hover-card.show-below {
+        bottom: auto;
+        top: 24px; /* Position below the dot */
+        transform-origin: top center;
+    }
+
+    .arrow {
         position: absolute;
-        bottom: -6px;
         left: 50%;
         transform: translateX(-50%);
         width: 0;
         height: 0;
         border-left: 6px solid transparent;
         border-right: 6px solid transparent;
+    }
+
+    .arrow-down {
+        bottom: -6px;
         border-top: 6px solid rgba(8, 12, 18, 0.95);
         filter: drop-shadow(0 1px 0 rgba(136, 170, 255, 0.3));
+    }
+
+    .arrow-up {
+        top: -6px;
+        border-bottom: 6px solid rgba(8, 12, 18, 0.95);
+        filter: drop-shadow(0 -1px 0 rgba(136, 170, 255, 0.3));
     }
 
     .card-header {
