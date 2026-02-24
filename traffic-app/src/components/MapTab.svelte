@@ -16,15 +16,16 @@
     let markers = {}; // Store marker references by ID
     let refreshInterval;
 
-    // Source filters — all enabled by default
     let showCHP = true;
     let showSDPD = true;
     let showSDFD = true;
+    let showInactive = true;
 
     function toggleFilter(source) {
         if (source === "CHP") showCHP = !showCHP;
         else if (source === "SDPD") showSDPD = !showSDPD;
         else if (source === "SDFD") showSDFD = !showSDFD;
+        else if (source === "INACTIVE") showInactive = !showInactive;
         updateMarkers();
     }
 
@@ -572,6 +573,17 @@
 
         map.addControl(new maplibregl.NavigationControl(), "top-right");
 
+        // Add geolocate control to the map
+        map.addControl(
+            new maplibregl.GeolocateControl({
+                positionOptions: {
+                    enableHighAccuracy: true,
+                },
+                trackUserLocation: true,
+            }),
+            "top-right",
+        );
+
         map.on("load", () => {
             console.log("MapLibre GL map loaded with PMTiles — DEFCON theme");
             fetchAllIncidents();
@@ -688,6 +700,17 @@
                 style="background: {showSDFD ? '#ff3333' : '#555'};"
             ></span>
             FIRE
+        </button>
+        <button
+            class="filter-btn"
+            class:active={showInactive}
+            on:click={() => toggleFilter("INACTIVE")}
+        >
+            <span
+                class="filter-dot"
+                style="background: {showInactive ? '#888888' : '#555'};"
+            ></span>
+            INACTIVE
         </button>
     </div>
 </div>

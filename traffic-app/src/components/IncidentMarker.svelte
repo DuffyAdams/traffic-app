@@ -1,6 +1,7 @@
 <script>
     import { onMount } from "svelte";
     import { fade, scale } from "svelte/transition";
+    import IncidentIcon from "./IncidentIcon.svelte";
 
     export let incident;
 
@@ -20,12 +21,16 @@
         if (mlMarker) mlMarker.style.zIndex = "";
     }
 
-    // Color based on active status
-    $: dotColor = incident.active
-        ? incident.type && incident.type.toLowerCase().includes("fire")
-            ? "#ff4444"
-            : "#ff3333"
-        : "#666666";
+    // Color based on source and active status
+    $: sourceColor =
+        incident.source === "SDFD"
+            ? "#ff3333"
+            : incident.source === "SDPD"
+              ? "#3366ff"
+              : "#ffaa33"; // Default for CHP/Traffic
+
+    // Dim the color if inactive
+    $: iconColor = incident.active ? sourceColor : "#666666";
 </script>
 
 <!-- svelte-ignore a11y-no-static-element-interactions -->
@@ -36,24 +41,42 @@
     on:mouseenter={onEnter}
     on:mouseleave={onLeave}
 >
-    <!-- Pulsating Dot -->
+    <!-- Pulsating Ring for Active Incidents -->
     {#if incident.active}
-        <div class="pulse-ring"></div>
+        <div
+            class="pulse-ring"
+            style="background-color: {sourceColor}40;"
+        ></div>
     {/if}
+
+    <!-- Icon Container -->
     <div
-        class="dot"
+        class="icon-wrapper"
         class:inactive={!incident.active}
-        style="background-color: {dotColor};"
-    ></div>
+        style="--icon-color: {iconColor}; --glow-color: {sourceColor};"
+    >
+        <IncidentIcon
+            type={incident.type}
+            size={14}
+            fill={incident.active ? iconColor : "none"}
+            color={incident.active ? "#fff" : iconColor}
+        />
+    </div>
 
     <!-- Hover Preview Card -->
     {#if isHovered}
         <div
             class="hover-card"
             transition:scale={{ duration: 150, start: 0.95 }}
+            style="border-color: {sourceColor}4d;"
         >
-            <div class="card-header">
-                <span class="type">{incident.type || "Incident"}</span>
+            <div
+                class="card-header"
+                style="border-bottom-color: {sourceColor}33;"
+            >
+                <span class="type" style="color: {sourceColor};"
+                    >{incident.type || "Incident"}</span
+                >
                 <span class="time">{incident.time}</span>
             </div>
 
@@ -69,7 +92,10 @@
                     </div>
                 {/if}
                 {#if incident.description && incident.description !== "No description available"}
-                    <div class="description">
+                    <div
+                        class="description"
+                        style="border-top-color: {sourceColor}26;"
+                    >
                         <span class="label">INFO</span>
                         <span class="value desc-text"
                             >{incident.description}</span
@@ -77,14 +103,20 @@
                     </div>
                 {/if}
                 {#if incident.details && incident.details.length > 0}
-                    <div class="details">
+                    <div
+                        class="details"
+                        style="border-top-color: {sourceColor}1a;"
+                    >
                         {#each incident.details as detail}
                             <div class="detail-line">{detail}</div>
                         {/each}
                     </div>
                 {/if}
             </div>
-            <div class="arrow-down"></div>
+            <div
+                class="arrow-down"
+                style="filter: drop-shadow(0 1px 0 {sourceColor}4d);"
+            ></div>
         </div>
     {/if}
 </div>
@@ -93,9 +125,9 @@
     .marker-container {
         position: relative;
         cursor: pointer;
-        /* Center the dot on the coordinates */
-        width: 14px;
-        height: 14px;
+        /* Center the icon on the coordinates */
+        width: 24px;
+        height: 24px;
         transform: translate(-50%, -50%);
         z-index: 10;
         display: flex;
@@ -111,32 +143,40 @@
         display: none;
     }
 
-    .marker-container:hover .dot {
-        box-shadow: 0 0 12px rgba(255, 51, 51, 1);
+    .marker-container:hover .icon-wrapper {
+        box-shadow: 0 0 16px var(--glow-color);
+        transform: scale(1.1);
     }
 
-    .dot {
-        width: 10px;
-        height: 10px;
-        background-color: #ff3333;
+    .icon-wrapper {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        background-color: rgba(10, 15, 20, 0.9);
         border-radius: 50%;
         position: relative;
         z-index: 2;
-        box-shadow: 0 0 8px rgba(255, 51, 51, 0.8);
-        border: 1px solid rgba(255, 255, 255, 0.5);
+        box-shadow: 0 0 8px var(--icon-color);
+        border: 1px solid var(--icon-color);
+        transition: all 0.2s ease;
+        padding: 2px;
     }
 
-    .dot.inactive {
-        width: 8px;
-        height: 8px;
+    .icon-wrapper.inactive {
+        width: 16px;
+        height: 16px;
         box-shadow: none;
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        border: 1px solid rgba(150, 150, 150, 0.3);
         opacity: 0.6;
+        background-color: rgba(20, 20, 20, 0.8);
     }
 
-    .marker-container:hover .dot.inactive {
+    .marker-container:hover .icon-wrapper.inactive {
         opacity: 1;
-        box-shadow: 0 0 6px rgba(150, 150, 150, 0.5);
+        box-shadow: 0 0 8px rgba(200, 200, 200, 0.4);
+        transform: scale(1.2);
     }
 
     .pulse-ring {

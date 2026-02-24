@@ -1,31 +1,32 @@
 <script>
     import Plane from "lucide-svelte/icons/plane";
-import PawPrint from "lucide-svelte/icons/paw-print";
-import Wrench from "lucide-svelte/icons/wrench";
-import Ban from "lucide-svelte/icons/ban";
-import Flame from "lucide-svelte/icons/flame";
-import HardHat from "lucide-svelte/icons/hard-hat";
-import Cone from "lucide-svelte/icons/cone";
-import Skull from "lucide-svelte/icons/skull";
-import CarFront from "lucide-svelte/icons/car-front";
-import UserX from "lucide-svelte/icons/user-x";
-import Hammer from "lucide-svelte/icons/hammer";
-import Box from "lucide-svelte/icons/box";
-import ShieldAlert from "lucide-svelte/icons/shield-alert";
-import PhoneCall from "lucide-svelte/icons/phone-call";
-import Signpost from "lucide-svelte/icons/signpost";
-import Megaphone from "lucide-svelte/icons/megaphone";
-import RotateCcw from "lucide-svelte/icons/rotate-ccw";
-import Hand from "lucide-svelte/icons/hand";
-import Car from "lucide-svelte/icons/car";
-import TriangleAlert from "lucide-svelte/icons/triangle-alert";
-import ArrowLeftRight from "lucide-svelte/icons/arrow-left-right";
-import Siren from "lucide-svelte/icons/siren";
-import Heart from "lucide-svelte/icons/heart";
+    import PawPrint from "lucide-svelte/icons/paw-print";
+    import Wrench from "lucide-svelte/icons/wrench";
+    import Ban from "lucide-svelte/icons/ban";
+    import Flame from "lucide-svelte/icons/flame";
+    import HardHat from "lucide-svelte/icons/hard-hat";
+    import Cone from "lucide-svelte/icons/cone";
+    import Skull from "lucide-svelte/icons/skull";
+    import CarFront from "lucide-svelte/icons/car-front";
+    import UserX from "lucide-svelte/icons/user-x";
+    import Hammer from "lucide-svelte/icons/hammer";
+    import Box from "lucide-svelte/icons/box";
+    import ShieldAlert from "lucide-svelte/icons/shield-alert";
+    import PhoneCall from "lucide-svelte/icons/phone-call";
+    import Signpost from "lucide-svelte/icons/signpost";
+    import Megaphone from "lucide-svelte/icons/megaphone";
+    import RotateCcw from "lucide-svelte/icons/rotate-ccw";
+    import Hand from "lucide-svelte/icons/hand";
+    import Car from "lucide-svelte/icons/car";
+    import TriangleAlert from "lucide-svelte/icons/triangle-alert";
+    import ArrowLeftRight from "lucide-svelte/icons/arrow-left-right";
+    import Siren from "lucide-svelte/icons/siren";
+    import Heart from "lucide-svelte/icons/heart";
 
     export let type;
     export let size = 16;
     export let fill = "none";
+    export let color = "#ffffff";
 
     const iconMap = {
         "Aircraft Emergency": Plane,
@@ -71,4 +72,4 @@ import Heart from "lucide-svelte/icons/heart";
     $: Icon = iconMap[type] || Siren;
 </script>
 
-<svelte:component this={Icon} {size} {fill} />
+<svelte:component this={Icon} {size} {fill} {color} />
