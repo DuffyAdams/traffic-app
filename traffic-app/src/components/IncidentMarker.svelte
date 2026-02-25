@@ -31,6 +31,21 @@
 
     // Dim the color if inactive
     $: iconColor = incident.active ? sourceColor : "#666666";
+
+    // 4-step brightness (opacity) based on event age
+    $: ageMs = Date.now() - new Date(incident.timestamp).getTime();
+    $: ageMinutes = ageMs / (1000 * 60);
+
+    $: activeOpacity =
+        ageMinutes < 30
+            ? 1
+            : ageMinutes < 60
+              ? 0.8
+              : ageMinutes < 120
+                ? 0.6
+                : 0.4;
+
+    $: markerOpacity = isHovered ? 1 : incident.active ? activeOpacity : 0.3;
 </script>
 
 <!-- svelte-ignore a11y-no-static-element-interactions -->
@@ -40,9 +55,10 @@
     bind:this={markerEl}
     on:mouseenter={onEnter}
     on:mouseleave={onLeave}
+    style="opacity: {markerOpacity};"
 >
-    <!-- Pulsating Ring for Active Incidents -->
-    {#if incident.active}
+    <!-- Pulsating Ring for Active Incidents (recent < 15min) -->
+    {#if incident.active && ageMinutes <= 15}
         <div
             class="pulse-ring"
             style="background-color: {sourceColor}40;"
@@ -125,33 +141,28 @@
     .marker-container {
         position: relative;
         cursor: pointer;
-        /* Center the icon on the coordinates */
-        width: 24px;
-        height: 24px;
-        transform: translate(-50%, -50%);
+        /* Expand the container itself to act as the native hit area */
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background-color: rgba(
+            0,
+            0,
+            0,
+            0.01
+        ); /* Barely painted so iOS registers touch */
+        -webkit-tap-highlight-color: transparent;
         z-index: 10;
         display: flex;
         align-items: center;
         justify-content: center;
-    }
-
-    /* Expand the clickable/touch hit area without altering visual layout */
-    .marker-container::after {
-        content: "";
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        width: 32px;
-        height: 32px;
-        transform: translate(-50%, -50%);
-        z-index: 10;
-        background: transparent;
+        transition: opacity 0.2s ease;
     }
 
     @media (pointer: coarse) {
-        .marker-container::after {
-            width: 56px;
-            height: 56px;
+        .marker-container {
+            width: 64px; /* Huge reliable touch area on mobile */
+            height: 64px;
         }
     }
 
@@ -201,6 +212,10 @@
 
     .pulse-ring {
         position: absolute;
+        top: 50%;
+        left: 50%;
+        margin-top: -12px;
+        margin-left: -12px;
         width: 24px;
         height: 24px;
         background-color: rgba(255, 51, 51, 0.4);
@@ -224,7 +239,8 @@
     /* Hover Card */
     .hover-card {
         position: absolute;
-        bottom: 24px; /* Position above the dot */
+        bottom: 50%;
+        margin-bottom: 12px; /* Position above the icon center */
         left: 50%;
         transform-origin: bottom center;
         transform: translateX(-50%);
