@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:proxy": "VITE_PROD_URL=https://sandiegotraffic.com npm run dev",
+    "dev:backend": "cd .. && TESTMODE=true python3 traffic_scraper.py",
+    "dev:full": "npm run dev & npm run dev:backend",
     "build": "vite build",
     "preview": "vite preview"
   },
