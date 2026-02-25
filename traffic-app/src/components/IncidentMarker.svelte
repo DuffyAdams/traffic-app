@@ -135,6 +135,26 @@
         justify-content: center;
     }
 
+    /* Expand the clickable/touch hit area without altering visual layout */
+    .marker-container::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 32px;
+        height: 32px;
+        transform: translate(-50%, -50%);
+        z-index: 10;
+        background: transparent;
+    }
+
+    @media (pointer: coarse) {
+        .marker-container::after {
+            width: 56px;
+            height: 56px;
+        }
+    }
+
     .marker-container:hover {
         z-index: 1000;
     }
