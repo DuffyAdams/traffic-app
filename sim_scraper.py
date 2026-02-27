@@ -6,6 +6,7 @@ import json
 import time
 import uuid
 import sqlite3
+import random
 import subprocess
 import threading
 import hashlib
@@ -42,7 +43,7 @@ load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TARGET_DIR = os.path.join(BASE_DIR, "traffic-app", "maps")
-DB_FILE = os.path.join(BASE_DIR, "traffic_data.db")
+DB_FILE = os.path.join(BASE_DIR, "sim_test.db")
 MAP_GENERATOR = os.path.join(BASE_DIR, "generate_map.py")
 
 os.makedirs(TARGET_DIR, exist_ok=True)
@@ -90,7 +91,7 @@ app = Flask(__name__, static_folder=os.path.join(BASE_DIR, "traffic-app", "dist"
 CORS(app, resources={r"/api/*": {"origins": "*"}, r"/maps/*": {"origins": "*"}})
 
 # Test mode flag
-TESTMODE = os.environ.get("TESTMODE", "False").lower() == "true"
+TESTMODE = True
 
 # -----------------------------------
 # Database Functions
@@ -317,8 +318,8 @@ def generate_description(data):
 
         user_message = f"Summarize this traffic incident in one fluent sentence.\n{prompt}"
 
-        if TESTMODE:  # Return the prompt for debugging in test mode
-            return f"{system_prompt}\n\n{user_message}"
+        if TESTMODE:  # Return a mock description in test mode
+            return f"🚨 Simulated {data.get('Type')} reported in {data.get('Neighborhood', 'San Diego')}. Please use caution."
         else:
             response = client.chat.completions.create(
                 model="openai/gpt-5-nano",
@@ -844,82 +845,77 @@ def process_and_save_incident(incident):
         safe_print(f"Error processing incident {incident.get('No.')}: {inc_e}")
         return None
 
-def monitor_traffic_data(interval=60):
-    safe_print("Starting continuous traffic monitoring...")
+def generate_simulated_incident():
+    sources = ["CHP", "SDPD", "SDFD"]
+    source = random.choice(sources)
+    
+    # Random San Diego Coordinates
+    lat = random.uniform(32.55, 33.05)
+    lon = random.uniform(-117.25, -116.95)
+    
+    incident_id = f"SIM-{uuid.uuid4().hex[:8].upper()}"
+    now = datetime.now()
+    
+    types = {
+        "CHP": ["Traffic Collision", "Traffic Hazard", "Disabled Vehicle", "Road Conditions"],
+        "SDPD": ["Disturbance", "Suspicious Person", "Burglary", "Vandalism"],
+        "SDFD": ["Medical Emergency", "Structure Fire", "Vehicle Fire", "Rescue"]
+    }
+    
+    incident_type = random.choice(types[source])
+    
+    incident = {
+        "No.": incident_id,
+        "Date": now.strftime("%Y-%m-%d"),
+        "Timestamp": now.strftime("%Y-%m-%d %H:%M:%S"),
+        "City": "San Diego",
+        "Neighborhood": "Simulated Area",
+        "Location": f"Simulated Address {random.randint(100, 9999)}",
+        "Location Desc.": "Test Description",
+        "Type": incident_type,
+        "Details": [f"Simulated {incident_type} for testing."],
+        "Source": source,
+        "Latitude": lat,
+        "Longitude": lon
+    }
+    return incident
+
+def monitor_traffic_data(interval=30):
+    safe_print("Starting continuous traffic simulation...")
     safe_print(f"Data saved to: {DB_FILE}")
-    safe_print(f"Map generator: {MAP_GENERATOR}")
     safe_print("Press Ctrl+C to stop.")
     try:
         while True:
             try:
-                safe_print(f"Checking updates... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                safe_print(f"Generating simulated update... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                 
-                all_incidents = []
+                # Generate 1 to 3 new simulated incidents
+                num_new = random.randint(1, 3)
+                new_incidents = [generate_simulated_incident() for _ in range(num_new)]
                 
-                # Parallelize scraping of all sources
-                with ThreadPoolExecutor(max_workers=3) as executor:
-                    futures = {
-                        executor.submit(scrape_chp_incidents): "CHP",
-                        executor.submit(scrape_sdpd_incidents): "SDPD",
-                        executor.submit(scrape_sdfd_incidents): "SDFD",
-                    }
-                    for future in as_completed(futures):
-                        source = futures[future]
-                        try:
-                            incidents = future.result()
-                            all_incidents.extend(incidents)
-                            safe_print(f"{source}: {len(incidents)} incidents fetched")
-                        except Exception as e:
-                            safe_print(f"Error scraping {source}: {e}")
-                
-                # Process incidents in parallel
-                active_incident_ids = set()
-                if all_incidents:
-                    # Sort to process CHP first (already has coords)
-                    all_incidents.sort(key=lambda x: 0 if x.get("Source") == "CHP" else 1)
-                    
-                    # Use a ThreadPoolExecutor for incident processing (geocoding, maps, descriptions)
-                    # We use 10 workers to allow parallel map generation and OpenAI calls.
-                    with ThreadPoolExecutor(max_workers=10) as executor:
-                        process_futures = [executor.submit(process_and_save_incident, inc) for inc in all_incidents]
-                        for f in as_completed(process_futures):
-                            inc_id = f.result()
-                            if inc_id:
-                                active_incident_ids.add(inc_id)
-                else:
-                    safe_print("No valid data retrieved from any source.")
+                for inc in new_incidents:
+                    safe_print(f"Generated simulated incident: {inc['Source']} - {inc['Type']} at {inc['Latitude']}, {inc['Longitude']}")
 
-                # Mark incidents as inactive if they are not in the current scrape.
+                # Process incidents in parallel
+                with ThreadPoolExecutor(max_workers=5) as executor:
+                    process_futures = [executor.submit(process_and_save_incident, inc) for inc in new_incidents]
+                    for f in as_completed(process_futures):
+                        f.result()
+
+                # Deactivate older incidents (e.g., older than 1 hour) to simulate clearing
                 with db_lock:
                     with sqlite3.connect(DB_FILE, timeout=30) as conn:
                         cur = conn.cursor()
-                        if active_incident_ids:
-                            placeholders = ",".join("?" for _ in active_incident_ids)
-                            query = f"UPDATE incidents SET active = 0 WHERE incident_no NOT IN ({placeholders})"
-                            cur.execute(query, tuple(active_incident_ids))
-                        else:
-                            cur.execute("UPDATE incidents SET active = 0")
+                        one_hour_ago = (datetime.now() - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+                        cur.execute("UPDATE incidents SET active = 0 WHERE timestamp < ? AND active = 1", (one_hour_ago,))
                         conn.commit()
 
-                # Ping healthcheck for success
-                try:
-                    requests.get(HEALTHCHECK_URL, timeout=10)
-                    safe_print("Healthcheck ping: success")
-                except Exception as ping_e:
-                    safe_print(f"Failed to ping healthcheck success: {ping_e}")
-
             except Exception as e:
-                safe_print(f"Error in monitoring loop: {e}")
-                # Ping healthcheck for failure
-                try:
-                    requests.get(HEALTHCHECK_URL + "/fail", timeout=10)
-                    safe_print("Healthcheck ping: failure")
-                except Exception as ping_e:
-                    safe_print(f"Failed to ping healthcheck failure: {ping_e}")
+                safe_print(f"Error in simulation loop: {e}")
 
             time.sleep(interval)
     except KeyboardInterrupt:
-        safe_print("Monitoring stopped by user.")
+        safe_print("Simulation stopped by user.")
     except Exception as e:
         safe_print(f"Error: {e}")
         raise
