@@ -910,7 +910,6 @@
   {#if activeSource !== "map"}
     {#if showEventCounters}
       <StatsPanel
-        {showEventCounters}
         {eventsToday}
         {eventsLastHour}
         {eventsActive}
@@ -922,7 +921,6 @@
         {topLocations}
         {selectedTypes}
         {selectedLocations}
-        {darkMode}
         on:filterTime={(e) => setTimeFilter(e.detail)}
         on:filterType={(e) => filterByType(e.detail)}
         on:filterLocation={(e) => filterByLocation(e.detail)}

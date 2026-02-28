@@ -38,7 +38,7 @@
         align-items: center;
         justify-content: space-between;
         padding: 1rem 1.25rem;
-        border-radius: 2px;
+        border-radius: 6px;
         font-size: 0.9rem;
         font-family: var(--font-mono);
         text-transform: uppercase;

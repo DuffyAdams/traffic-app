@@ -163,8 +163,8 @@
                                             handleToggleDescription(e, post.id)}
                                     >
                                         {post.showFullDescription
-                                            ? "[-] COLLAPSE"
-                                            : "[+] EXPAND"}
+                                            ? "[-]"
+                                            : "[+]"}
                                     </button>
                                 {/if}
                             {:else}
@@ -310,7 +310,7 @@
         width: 100%;
         min-width: 100%;
         background: var(--bg-surface);
-        border-radius: 2px;
+        border-radius: 6px;
         border: 1px solid var(--border-color);
         overflow: hidden;
         margin-bottom: 2rem;
@@ -413,7 +413,7 @@
     .status-badge {
         display: inline-block;
         padding: 0.2rem 0.5rem;
-        border-radius: 2px;
+        border-radius: 6px;
         font-size: 0.75rem;
         font-family: var(--font-mono);
         text-transform: uppercase;
@@ -447,7 +447,7 @@
     .expanded-image {
         flex: 0 0 30%;
         max-width: 300px;
-        border-radius: 2px;
+        border-radius: 6px;
         overflow: hidden;
     }
 
@@ -455,7 +455,7 @@
         width: 100%;
         height: 200px;
         object-fit: cover;
-        border-radius: 2px;
+        border-radius: 6px;
     }
 
     .expanded-info {
@@ -482,7 +482,7 @@
         background: var(--bg-surface-elevated);
         padding: 0.85rem;
         border-left: 2px solid var(--accent-primary);
-        border-radius: 0 2px 2px 0;
+        border-radius: 0 6px 6px 0;
     }
 
     .description-text {
@@ -510,7 +510,7 @@
         align-items: center;
         transition: all 0.15s ease;
         text-transform: uppercase;
-        border-radius: 2px;
+        border-radius: 4px;
         vertical-align: middle;
     }
 
@@ -524,21 +524,24 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 0.25rem;
-        background: none;
-        border: none;
-        color: var(--text-muted);
-        font-size: 0.9rem;
-        font-weight: 600;
-        padding: 0.45rem 0.8rem;
-        border-radius: 2px;
+        gap: 0.3rem;
+        background: rgba(51, 102, 255, 0.05);
+        border: 1px solid rgba(51, 102, 255, 0.2);
+        color: var(--accent-primary);
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        font-size: 0.8rem;
+        font-weight: bold;
+        padding: 0.45rem 1rem;
+        border-radius: 6px;
         cursor: pointer;
-        transition: all 0.2s;
+        transition: all 0.15s;
     }
 
     .action-button:hover {
-        background-color: var(--hover-bg);
-        color: var(--primary-color);
+        background: rgba(51, 102, 255, 0.15);
+        border-color: var(--accent-primary);
+        color: #fff;
     }
 
     @keyframes sharpFlash {
@@ -590,7 +593,7 @@
         flex-direction: column;
         padding: 1.2rem;
         z-index: 20;
-        border-radius: 2px 2px 0 0;
+        border-radius: 6px 6px 0 0;
         box-sizing: border-box;
     }
 
@@ -610,7 +613,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 2px;
+        border-radius: 6px;
         padding: 0;
         transition: all 0.15s ease;
         outline: none;
@@ -647,7 +650,7 @@
         text-align: center;
         padding: 1rem 0;
         background-color: var(--bg-surface-elevated);
-        border-radius: 2px;
+        border-radius: 6px;
         opacity: 0.8;
         border: 1px dashed var(--border-color);
     }
@@ -673,7 +676,7 @@
         background: var(--bg-surface-elevated);
         border: 1px solid var(--border-color);
         color: var(--accent-primary);
-        border-radius: 2px;
+        border-radius: 6px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -712,7 +715,7 @@
         background-color: rgba(51, 102, 255, 0.05);
         border: 1px solid var(--border-color);
         padding: 0.6rem 0.8rem;
-        border-radius: 2px;
+        border-radius: 6px;
         font-size: 0.9rem;
         line-height: 1.4;
         color: var(--text-main);
@@ -729,7 +732,7 @@
         flex: 1;
         padding: 0.7rem 1rem;
         border: 1px solid var(--border-color);
-        border-radius: 2px;
+        border-radius: 6px;
         font-family: var(--font-mono);
         font-size: 0.9rem;
         background-color: var(--bg-surface-elevated);
@@ -746,7 +749,7 @@
         background: rgba(51, 102, 255, 0.1);
         color: var(--accent-primary);
         border: 1px solid var(--accent-primary);
-        border-radius: 2px;
+        border-radius: 6px;
         padding: 0.7rem 1.2rem;
         font-family: var(--font-mono);
         text-transform: uppercase;
@@ -767,7 +770,7 @@
         border-left: 2px solid var(--accent-secondary);
         padding: 0.6rem 1rem;
         font-size: 0.85rem;
-        border-radius: 2px;
+        border-radius: 6px;
     }
 
     @keyframes fadeIn {

@@ -5,11 +5,14 @@
     import "maplibre-gl/dist/maplibre-gl.css";
 
     import IncidentMarker from "./IncidentMarker.svelte";
-    import { formatTimestamp } from "../utils/helpers.js";
+    import { formatTimestamp, formatTime } from "../utils/helpers.js";
+    import { activeMarkerId } from "../stores/appStore.js";
+    import { fade, slide } from "svelte/transition";
 
     // We no longer rely on the parent's paginated feed.
     // MapTab fetches its own complete dataset.
     let allIncidents = [];
+    let activeIncidents = [];
 
     let mapContainer;
     let map;
@@ -57,6 +60,35 @@
     }
 
     const PMTILES_URL = "/map_tiles/sandiego.pmtiles";
+
+    $: {
+        const now = Date.now();
+        const fourHoursMs = 4 * 60 * 60 * 1000;
+
+        // Show all active incidents + inactive within last 4 hours, filtered by source
+        activeIncidents = allIncidents
+            .filter((inc) => {
+                if (!inc.latitude || !inc.longitude) return false;
+                // Source filter
+                if (inc.source === "CHP" && !showCHP) return false;
+                if (inc.source === "SDPD" && !showSDPD) return false;
+                if (inc.source === "SDFD" && !showSDFD) return false;
+                if (inc.active) return true;
+                // Inactive: only show if within last 4 hours
+                const incTime = new Date(inc.timestamp).getTime();
+                return now - incTime <= fourHoursMs;
+            })
+            .sort(
+                (a, b) =>
+                    new Date(b.timestamp).getTime() -
+                    new Date(a.timestamp).getTime(),
+            );
+
+        // Call updateMarkers whenever activeIncidents changes
+        if (map) {
+            updateMarkers(activeIncidents);
+        }
+    }
 
     onMount(() => {
         // Add PMTiles protocol
@@ -592,6 +624,11 @@
             console.log("MapLibre GL map loaded with PMTiles — DEFCON theme");
         });
 
+        // Close the active marker if the user clicks anywhere on the map
+        map.on("click", () => {
+            $activeMarkerId = null;
+        });
+
         return () => {
             if (refreshInterval) clearInterval(refreshInterval);
             if (map) {
@@ -603,26 +640,10 @@
         };
     });
 
-    function updateMarkers() {
-        if (!map || !allIncidents) return;
+    function updateMarkers(incidentsToRender) {
+        if (!map || !incidentsToRender) return;
 
-        const now = Date.now();
-        const fourHoursMs = 4 * 60 * 60 * 1000;
-
-        // Show all active incidents + inactive within last 4 hours, filtered by source
-        const activeIncidents = allIncidents.filter((inc) => {
-            if (!inc.latitude || !inc.longitude) return false;
-            // Source filter
-            if (inc.source === "CHP" && !showCHP) return false;
-            if (inc.source === "SDPD" && !showSDPD) return false;
-            if (inc.source === "SDFD" && !showSDFD) return false;
-            if (inc.active) return true;
-            // Inactive: only show if within last 4 hours
-            const incTime = new Date(inc.timestamp).getTime();
-            return now - incTime <= fourHoursMs;
-        });
-
-        const activeIds = new Set(activeIncidents.map((i) => i.id));
+        const activeIds = new Set(incidentsToRender.map((i) => i.id));
 
         // Remove old markers that are no longer active
         for (const [id, markerObj] of Object.entries(markers)) {
@@ -634,7 +655,7 @@
         }
 
         // Add or update markers
-        activeIncidents.forEach((inc) => {
+        incidentsToRender.forEach((inc) => {
             if (!markers[inc.id]) {
                 // Create a container element for the Svelte component
                 const el = document.createElement("div");
@@ -665,72 +686,159 @@
             }
         });
     }
+
+    function panToIncident(incident) {
+        if (map && incident.longitude && incident.latitude) {
+            map.flyTo({
+                center: [incident.longitude, incident.latitude],
+                zoom: 14,
+                essential: true,
+                duration: 1200,
+            });
+            $activeMarkerId = incident.id;
+        }
+    }
+
+    function getSourceColor(source) {
+        if (source === "CHP") return "#ffaa33";
+        if (source === "SDPD") return "#3366ff";
+        if (source === "SDFD") return "#ff3333";
+        return "#888888";
+    }
 </script>
 
-<div class="map-wrapper">
-    <div class="map-container" bind:this={mapContainer}></div>
-    <div class="map-filters">
-        <button
-            class="filter-btn"
-            class:active={showCHP}
-            on:click={() => toggleFilter("CHP")}
-        >
-            <span
-                class="filter-dot"
-                style="background: {showCHP ? '#ffaa33' : '#555'};"
-            ></span>
-            TRAFFIC
-        </button>
-        <button
-            class="filter-btn"
-            class:active={showSDPD}
-            on:click={() => toggleFilter("SDPD")}
-        >
-            <span
-                class="filter-dot"
-                style="background: {showSDPD ? '#3366ff' : '#555'};"
-            ></span>
-            POLICE
-        </button>
-        <button
-            class="filter-btn"
-            class:active={showSDFD}
-            on:click={() => toggleFilter("SDFD")}
-        >
-            <span
-                class="filter-dot"
-                style="background: {showSDFD ? '#ff3333' : '#555'};"
-            ></span>
-            FIRE
-        </button>
-        <button
-            class="filter-btn"
-            class:active={showInactive}
-            on:click={() => toggleFilter("INACTIVE")}
-        >
-            <span
-                class="filter-dot"
-                style="background: {showInactive ? '#888888' : '#555'};"
-            ></span>
-            INACTIVE
-        </button>
+<div class="map-layout">
+    <div class="map-wrapper">
+        <div class="map-container" bind:this={mapContainer}></div>
+        <div class="map-filters">
+            <button
+                class="filter-btn"
+                class:active={showCHP}
+                on:click={() => toggleFilter("CHP")}
+            >
+                <span
+                    class="filter-dot"
+                    style="background: {showCHP ? '#ffaa33' : '#555'};"
+                ></span>
+                TRAFFIC
+            </button>
+            <button
+                class="filter-btn"
+                class:active={showSDPD}
+                on:click={() => toggleFilter("SDPD")}
+            >
+                <span
+                    class="filter-dot"
+                    style="background: {showSDPD ? '#3366ff' : '#555'};"
+                ></span>
+                POLICE
+            </button>
+            <button
+                class="filter-btn"
+                class:active={showSDFD}
+                on:click={() => toggleFilter("SDFD")}
+            >
+                <span
+                    class="filter-dot"
+                    style="background: {showSDFD ? '#ff3333' : '#555'};"
+                ></span>
+                FIRE
+            </button>
+            <button
+                class="filter-btn"
+                class:active={showInactive}
+                on:click={() => toggleFilter("INACTIVE")}
+            >
+                <span
+                    class="filter-dot"
+                    style="background: {showInactive ? '#888888' : '#555'};"
+                ></span>
+                INACTIVE
+            </button>
+        </div>
+    </div>
+
+    <div class="incident-log">
+        <div class="log-header">
+            <h3>INCIDENT LOG ({activeIncidents.length})</h3>
+        </div>
+        <div class="log-list">
+            {#each activeIncidents as incident (incident.id)}
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div
+                    class="log-item"
+                    class:selected={$activeMarkerId === incident.id}
+                    class:inactive={!incident.active}
+                    on:click={() => panToIncident(incident)}
+                    in:slide={{ duration: 200 }}
+                >
+                    <div class="log-item-header">
+                        <span class="log-time"
+                            >{formatTime(incident.timestamp)}</span
+                        >
+                        <span
+                            class="log-source"
+                            style="color: {getSourceColor(incident.source)}"
+                        >
+                            [{incident.source || "UNK"}]
+                        </span>
+                    </div>
+                    <div class="log-desc">
+                        {incident.type || incident.description.split(" - ")[0]}
+                    </div>
+                    <div class="log-loc">
+                        {incident.neighborhood || incident.location}
+                    </div>
+                </div>
+            {/each}
+            {#if activeIncidents.length === 0}
+                <div class="empty-log">NO ACTIVE INCIDENTS</div>
+            {/if}
+        </div>
     </div>
 </div>
 
 <style>
+    .map-layout {
+        display: block;
+        height: calc(100vh - 160px);
+    }
+
     .map-wrapper {
         position: relative;
+        height: 100%;
     }
 
     .map-container {
         width: 100%;
-        height: calc(100vh - 160px);
+        height: 100%;
         min-height: 400px;
         border-radius: 4px;
         border: 1px solid var(--border-color);
         overflow: hidden;
         position: relative;
         background-color: #08090a;
+    }
+
+    @media (min-width: 1024px) {
+        .map-layout {
+            display: flex;
+            flex-direction: row;
+            gap: 1rem;
+            height: calc(100vh - 160px);
+            min-height: 400px;
+        }
+
+        .map-wrapper {
+            flex: 1;
+            height: 100%;
+            min-height: 400px;
+        }
+
+        .map-container {
+            height: 100%;
+        }
     }
 
     .map-filters {
@@ -740,6 +848,8 @@
         display: flex;
         gap: 6px;
         z-index: 1000;
+        flex-wrap: wrap;
+        max-width: calc(100% - 24px);
     }
 
     .filter-btn {
@@ -803,5 +913,147 @@
 
     :global(.maplibregl-ctrl-attrib a) {
         color: #446644 !important;
+    }
+
+    /* Incident Log Styles */
+    .incident-log {
+        background: #080a0e;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        overflow: hidden;
+    }
+
+    @media (max-width: 1023px) {
+        .incident-log {
+            display: none;
+        }
+    }
+
+    @media (min-width: 1024px) {
+        .incident-log {
+            width: 320px;
+            flex-shrink: 0;
+        }
+    }
+
+    @media (min-width: 1280px) {
+        .incident-log {
+            width: 380px;
+        }
+    }
+
+    .log-header {
+        padding: 12px 16px;
+        background: rgba(15, 20, 28, 0.9);
+        border-bottom: 1px solid rgba(136, 170, 255, 0.15);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .log-header h3 {
+        margin: 0;
+        font-family: "Share Tech Mono", monospace;
+        font-size: 0.85rem;
+        color: #88aaff;
+        letter-spacing: 0.1em;
+    }
+
+    .log-list {
+        flex: 1;
+        overflow-y: auto;
+        padding: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .log-list::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .log-list::-webkit-scrollbar-track {
+        background: #05080c;
+    }
+
+    .log-list::-webkit-scrollbar-thumb {
+        background: #2a3b5c;
+        border-radius: 3px;
+    }
+
+    .log-item {
+        background: rgba(15, 22, 32, 0.6);
+        border: 1px solid rgba(136, 170, 255, 0.1);
+        border-radius: 3px;
+        padding: 10px 12px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        position: relative;
+    }
+
+    .log-item:hover {
+        background: rgba(22, 35, 55, 0.8);
+        border-color: rgba(136, 170, 255, 0.4);
+        transform: translateX(4px);
+    }
+
+    .log-item.selected {
+        background: rgba(25, 45, 80, 0.9);
+        border-color: rgba(136, 170, 255, 0.8);
+        box-shadow: 0 0 15px rgba(51, 102, 255, 0.15);
+        border-left: 3px solid #88aaff;
+    }
+
+    .log-item.inactive {
+        opacity: 0.65;
+    }
+
+    .log-item.inactive:hover {
+        opacity: 0.9;
+    }
+
+    .log-item-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 6px;
+        font-family: "Share Tech Mono", monospace;
+        font-size: 0.75rem;
+    }
+
+    .log-time {
+        color: #88aaff;
+    }
+
+    .log-source {
+        font-weight: bold;
+    }
+
+    .log-desc {
+        font-size: 0.85rem;
+        color: #ddeeff;
+        margin-bottom: 4px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .log-loc {
+        font-size: 0.75rem;
+        color: #6688aa;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .empty-log {
+        text-align: center;
+        padding: 2rem 0;
+        color: #445566;
+        font-family: "Share Tech Mono", monospace;
+        font-size: 0.8rem;
+        letter-spacing: 0.1em;
     }
 </style>

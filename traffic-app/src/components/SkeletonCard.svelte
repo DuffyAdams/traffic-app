@@ -21,7 +21,7 @@
 <style>
     .skeleton-card {
         background: var(--card-bg);
-        border-radius: 2px;
+        border-radius: 6px;
         box-shadow:
             0 4px 20px var(--shadow-color),
             0 0 0 1px rgba(0, 0, 0, 0.03);
@@ -61,21 +61,21 @@
         width: 35%;
         height: 14px;
         background: var(--border-color);
-        border-radius: 2px;
+        border-radius: 6px;
     }
 
     .skeleton-location {
         width: 40%;
         height: 14px;
         background: var(--border-color);
-        border-radius: 2px;
+        border-radius: 6px;
     }
 
     .skeleton-description {
         width: 100%;
         height: 48px;
         background: var(--border-color);
-        border-radius: 2px;
+        border-radius: 6px;
         margin-bottom: 1.2rem;
     }
 
@@ -91,7 +91,7 @@
         flex: 1;
         height: 32px;
         background: var(--border-color);
-        border-radius: 2px;
+        border-radius: 6px;
     }
 
     @keyframes skeleton-pulse {
@@ -119,10 +119,10 @@
             flex: 0 0 100%;
             max-width: 100%;
             margin: 0 0 0.8rem 0;
-            border-radius: 2px;
+            border-radius: 6px;
         }
         .skeleton-image {
-            border-radius: 2px 2px 0 0;
+            border-radius: 6px 6px 0 0;
         }
         .skeleton-content {
             padding: 1rem 1rem 0.6rem;
@@ -139,10 +139,10 @@
     @media (max-width: 480px) {
         .skeleton-card {
             margin: 0 0 0.5rem 0;
-            border-radius: 2px;
+            border-radius: 6px;
         }
         .skeleton-image {
-            border-radius: 2px 2px 0 0;
+            border-radius: 6px 6px 0 0;
         }
         .skeleton-content {
             padding: 0.7rem 0.7rem 0.5rem;

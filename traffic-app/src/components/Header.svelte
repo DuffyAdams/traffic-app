@@ -178,7 +178,7 @@
         justify-content: center;
         cursor: pointer;
         transition: all 0.2s ease;
-        border-radius: 2px;
+        border-radius: 6px;
         box-shadow: 0 0 10px rgba(51, 102, 255, 0.15);
         position: relative;
         overflow: hidden;
@@ -237,7 +237,7 @@
         width: 100%;
         background: var(--bg-surface-elevated);
         border: 1px solid var(--accent-primary);
-        border-radius: 2px;
+        border-radius: 6px;
         padding: 1.25rem 1.75rem;
         color: var(--text-main);
         cursor: pointer;
@@ -338,6 +338,40 @@
         }
         .banner-text {
             font-size: 1.25rem;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .brand-titles h1 {
+            font-size: 1.7rem;
+        }
+        .brand-titles p {
+            font-size: 0.65rem;
+        }
+        .metric-label {
+            font-size: 0.75rem;
+        }
+        .metric-row.subtext {
+            font-size: 0.65rem;
+        }
+        .theme-toggle {
+            width: 38px;
+            height: 38px;
+        }
+        .banner-text {
+            font-size: 1.1rem;
+        }
+        .banner-icon {
+            transform: scale(0.9);
+        }
+    }
+
+    @media (max-width: 360px) {
+        .brand-titles h1 {
+            font-size: 1.45rem;
+        }
+        .header-brand {
+            gap: 0.5rem;
         }
     }
 </style>

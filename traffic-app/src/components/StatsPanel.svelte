@@ -11,8 +11,6 @@
     import IncidentIcon from "./IncidentIcon.svelte";
 
     const dispatch = createEventDispatcher();
-
-    export let showEventCounters = false;
     export let eventsToday = 0;
     export let eventsLastHour = 0;
     export let eventsActive = 0;
@@ -23,7 +21,6 @@
     export let topLocations = {};
     export let selectedTypes = new Set();
     export let selectedLocations = new Set();
-    export let darkMode = true;
     export let historicalCurrentHourAverage = 0;
 
     let currentTime = new Date();
@@ -422,7 +419,7 @@
         padding: 1.5rem;
         background: var(--bg-surface-elevated);
         border: 1px solid var(--border-color);
-        border-radius: 2px;
+        border-radius: 6px;
         color: var(--text-main);
         overflow: visible;
     }
@@ -443,7 +440,7 @@
     .stat-card {
         background: var(--bg-surface);
         border: 1px solid var(--border-color);
-        border-radius: 2px;
+        border-radius: 6px;
         text-align: center;
         padding: 0.75rem;
         display: flex;
@@ -474,12 +471,12 @@
         font-size: 2rem;
         font-family: var(--font-pixel);
         font-weight: normal;
-        color: var(--accent-secondary);
-        text-shadow: 1px 1px 0 rgba(255, 51, 51, 0.3);
+        color: #fff;
+        text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.3);
     }
 
     :global(body.dark-mode) .stat-value {
-        color: var(--accent-secondary);
+        color: #fff;
     }
 
     .stat-label {
@@ -499,7 +496,7 @@
         padding: 0.75rem 1rem;
         background: var(--bg-surface);
         border: 1px solid var(--border-color);
-        border-radius: 2px;
+        border-radius: 6px;
         min-width: 180px;
         gap: 0.5rem;
     }
@@ -522,7 +519,7 @@
         gap: 0.4rem;
         background: var(--bg-surface-elevated);
         padding: 0.3rem;
-        border-radius: 2px;
+        border-radius: 6px;
         border: 1px solid var(--border-color);
     }
 
@@ -535,7 +532,7 @@
         padding: 0.4rem 0.8rem;
         background: transparent;
         border: 1px solid transparent;
-        border-radius: 2px;
+        border-radius: 4px;
         color: var(--text-muted);
         font-size: 0.8rem;
         font-family: var(--font-mono);
@@ -576,7 +573,7 @@
         padding: 1rem 1.25rem;
         background: var(--bg-surface);
         border: 1px solid var(--border-color);
-        border-radius: 2px;
+        border-radius: 6px;
         display: flex;
         flex-direction: column;
         gap: 0.75rem;
@@ -609,7 +606,7 @@
         background: rgba(10, 17, 34, 0.4);
         border: 1px solid var(--border-color);
         padding: 0.3rem 0.6rem;
-        border-radius: 2px;
+        border-radius: 6px;
         box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
     }
 
@@ -636,7 +633,7 @@
         font-weight: bold;
         font-size: 0.7rem;
         padding: 0.15rem 0.4rem;
-        border-radius: 2px;
+        border-radius: 4px;
         letter-spacing: 0.05em;
         box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
         animation: subtlePulseBadge 1.5s infinite alternate;
@@ -695,7 +692,7 @@
     .bar {
         width: 100%;
         background-color: var(--accent-primary);
-        border-radius: 2px 2px 0 0;
+        border-radius: 4px 4px 0 0;
         transition:
             height 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275),
             background-color 0.3s;
@@ -796,7 +793,7 @@
         background: rgba(10, 17, 34, 0.95);
         border: 1px solid rgba(51, 102, 255, 0.3);
         padding: 6px 10px;
-        border-radius: 2px;
+        border-radius: 4px;
         z-index: 10;
         pointer-events: none;
         white-space: nowrap;
@@ -1090,9 +1087,6 @@
             padding: 0.75rem;
             border-radius: 2px;
         }
-        .chart-container {
-            height: 150px;
-        }
         .section-title {
             font-size: 0.9rem;
         }
@@ -1138,9 +1132,6 @@
             .time-button {
                 padding: 0.35rem 0.6rem;
                 font-size: 0.7rem;
-            }
-            .chart-container {
-                height: 130px;
             }
             .breakdown-list {
                 max-height: 240px;

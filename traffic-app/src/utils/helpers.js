@@ -62,6 +62,7 @@ export function formatTimeOnly(timestamp) {
         hour12: true
     });
 }
+export const formatTime = formatTimeOnly;
 
 // Format comment timestamp (relative time)
 export function formatCommentTimestamp(timestamp) {

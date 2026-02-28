@@ -317,8 +317,8 @@ def generate_description(data):
 
         user_message = f"Summarize this traffic incident in one fluent sentence.\n{prompt}"
 
-        if TESTMODE:  # Return the prompt for debugging in test mode
-            return f"{system_prompt}\n\n{user_message}"
+        if TESTMODE:  # Return a clean mock summary for debugging in test mode
+            return f"Mock incident summary for {data.get('Location')}."
         else:
             response = client.chat.completions.create(
                 model="openai/gpt-5-nano",

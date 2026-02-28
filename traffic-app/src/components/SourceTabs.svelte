@@ -43,8 +43,8 @@
         justify-content: center;
         gap: 0.4rem;
         margin-bottom: 0.8rem;
-        overflow-x: auto;
         padding: 5px 0 0.4rem 0;
+        flex-wrap: wrap;
     }
 
     .source-tab {
@@ -52,13 +52,15 @@
         border: 1px solid var(--border-color);
         color: var(--text-muted);
         padding: 0.4rem 1.2rem;
-        border-radius: 2px;
+        border-radius: 6px;
         font-size: 0.85rem;
         font-family: var(--font-mono);
         text-transform: uppercase;
         cursor: pointer;
         transition: all 0.15s ease;
         white-space: nowrap;
+        flex: 1 1 auto;
+        text-align: center;
     }
 
     :global(body.dark-mode) .source-tab {
@@ -83,5 +85,16 @@
         background: rgba(51, 102, 255, 0.15);
         color: #fff;
         border-color: var(--accent-primary);
+    }
+
+    @media (max-width: 480px) {
+        .source-tabs {
+            gap: 0.25rem;
+        }
+
+        .source-tab {
+            padding: 0.4rem 0.5rem;
+            font-size: 0.75rem;
+        }
     }
 </style>

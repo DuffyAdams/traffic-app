@@ -64,7 +64,7 @@
         border: 1px solid var(--border-color);
         color: var(--text-main);
         padding: 0;
-        border-radius: 2px;
+        border-radius: 6px;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -156,7 +156,7 @@
         background-color: #1e3a5f;
         color: white;
         padding: 0.75rem 1.5rem;
-        border-radius: 0 0 2px 2px;
+        border-radius: 0 0 6px 6px;
         font-weight: 600;
         font-size: 0.9rem;
         z-index: 100;
@@ -177,7 +177,7 @@
         border: 1px solid var(--border-color);
         border-right: none;
         color: var(--accent-primary);
-        border-radius: 2px 0 0 2px;
+        border-radius: 6px 0 0 6px;
         padding: 0.8rem 0.4rem;
         display: flex;
         flex-direction: column;

@@ -202,9 +202,7 @@
                             class="more-button"
                             on:click={handleToggleDescription}
                         >
-                            {post.showFullDescription
-                                ? "[-] COLLAPSE"
-                                : "[+] EXPAND"}
+                            {post.showFullDescription ? "[-]" : "[+]"}
                         </button>
                     {/if}
                 {:else}
@@ -270,7 +268,7 @@
         max-width: 400px;
         box-sizing: border-box;
         background: var(--bg-surface);
-        border-radius: 2px;
+        border-radius: 6px;
         border: 1px solid var(--border-color);
         transition: all 0.15s ease-out;
         position: relative;
@@ -334,7 +332,7 @@
         overflow: hidden;
         border-bottom: 1px solid var(--border-color);
         background-color: #000;
-        border-radius: 0;
+        border-radius: 6px 6px 0 0;
     }
 
     .placeholder-container {
@@ -365,7 +363,7 @@
         background-color: var(--bg-surface-elevated);
         color: var(--badge-color);
         padding: 0.3rem 0.6rem;
-        border-radius: 2px;
+        border-radius: 6px;
         border: 1px solid var(--badge-color);
         font-family: var(--font-mono);
         text-transform: uppercase;
@@ -409,7 +407,7 @@
         background-color: var(--accent-secondary);
         color: #fff;
         padding: 0.25rem 0.5rem;
-        border-radius: 2px;
+        border-radius: 6px;
         font-family: var(--font-mono);
         text-transform: uppercase;
         font-size: 0.7rem;
@@ -429,7 +427,7 @@
         background-color: rgba(0, 0, 0, 0.65);
         color: white;
         border: none;
-        border-radius: 2px;
+        border-radius: 6px;
         height: 26px;
         padding: 0 7px;
         display: flex;
@@ -483,7 +481,7 @@
         display: flex;
         flex-direction: column;
         z-index: 10;
-        border-radius: 2px 2px 0 0;
+        border-radius: 6px 6px 0 0;
         overflow: hidden;
     }
 
@@ -512,7 +510,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 2px;
+        border-radius: 6px;
         transition: all 0.2s;
     }
 
@@ -553,7 +551,7 @@
         width: 100%;
         height: 100%;
         object-fit: cover;
-        border-radius: 2px;
+        border-radius: 6px 6px 0 0;
         transition: transform 0.3s ease;
     }
 
@@ -566,7 +564,7 @@
         width: 100%;
         height: 100%;
         object-fit: cover;
-        border-radius: 2px;
+        border-radius: 6px 6px 0 0;
         transition: transform 0.3s ease;
     }
 
@@ -611,7 +609,7 @@
         background: var(--bg-surface-elevated);
         padding: 0.85rem;
         border-left: 2px solid var(--accent-primary);
-        border-radius: 0 2px 2px 0;
+        border-radius: 0 6px 6px 0;
     }
 
     .description-text {
@@ -639,7 +637,7 @@
         align-items: center;
         transition: all 0.15s ease;
         text-transform: uppercase;
-        border-radius: 2px;
+        border-radius: 4px;
         vertical-align: middle;
     }
 
@@ -675,7 +673,7 @@
         font-size: 0.8rem;
         font-weight: bold;
         padding: 0.4rem 0;
-        border-radius: 2px;
+        border-radius: 6px;
         cursor: pointer;
         transition: all 0.15s;
         flex: 1;
@@ -775,10 +773,10 @@
             flex: 0 0 100%;
             max-width: 100%;
             margin: 0 0 0.8rem 0;
-            border-radius: 2px;
+            border-radius: 6px;
         }
         .post-image-container {
-            border-radius: 2px 2px 0 0;
+            border-radius: 6px 6px 0 0;
         }
         .post-info {
             padding: 1rem 1rem 4rem;
@@ -793,10 +791,10 @@
     @media (max-width: 480px) {
         .post {
             margin: 0 0 0.5rem 0;
-            border-radius: 2px;
+            border-radius: 6px;
         }
         .post-image-container {
-            border-radius: 2px 2px 0 0;
+            border-radius: 6px 6px 0 0;
         }
         .post-info {
             padding: 0.7rem 0.7rem 4rem;

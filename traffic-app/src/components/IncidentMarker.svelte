@@ -2,10 +2,12 @@
     import { onMount } from "svelte";
     import { fade, scale } from "svelte/transition";
     import IncidentIcon from "./IncidentIcon.svelte";
+    import { activeMarkerId } from "../stores/appStore.js";
 
     export let incident;
 
     let isHovered = false;
+    $: isClicked = $activeMarkerId === incident.id;
     let markerEl;
     let showBelow = false;
 
@@ -24,13 +26,33 @@
 
         // Walk up to the MapLibre marker wrapper and raise it above all others
         const mlMarker = markerEl?.closest(".maplibregl-marker");
-        if (mlMarker) mlMarker.style.zIndex = "9999";
+        if (mlMarker && !$activeMarkerId) mlMarker.style.zIndex = "9999";
     }
 
     function onLeave() {
         isHovered = false;
         const mlMarker = markerEl?.closest(".maplibregl-marker");
-        if (mlMarker) mlMarker.style.zIndex = "";
+        if (mlMarker && !isClicked) mlMarker.style.zIndex = "";
+    }
+
+    function toggleClick(e) {
+        e.stopPropagation();
+        if ($activeMarkerId === incident.id) {
+            $activeMarkerId = null;
+        } else {
+            $activeMarkerId = incident.id;
+        }
+    }
+
+    // Reactively update z-index when state changes
+    $: {
+        if (markerEl) {
+            const mlMarker = markerEl.closest(".maplibregl-marker");
+            if (mlMarker) {
+                mlMarker.style.zIndex =
+                    (isHovered && !$activeMarkerId) || isClicked ? "9999" : "";
+            }
+        }
     }
 
     // Color based on source and active status
@@ -57,16 +79,23 @@
                 ? 0.6
                 : 0.4;
 
-    $: markerOpacity = isHovered ? 1 : incident.active ? activeOpacity : 0.3;
+    $: markerOpacity =
+        (isHovered && !$activeMarkerId) || isClicked
+            ? 1
+            : incident.active
+              ? activeOpacity
+              : 0.3;
 </script>
 
-<!-- svelte-ignore a11y-no-static-element-interactions -->
-<!-- svelte-ignore a11y-mouse-events-have-key-events -->
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<!-- svelte-ignore a11y_mouse_events_have_key_events -->
 <div
     class="marker-container"
     bind:this={markerEl}
     on:mouseenter={onEnter}
     on:mouseleave={onLeave}
+    on:click={toggleClick}
     style="opacity: {markerOpacity};"
 >
     <!-- Pulsating Ring for Active Incidents (recent < 15min) -->
@@ -81,6 +110,7 @@
     <div
         class="icon-wrapper"
         class:inactive={!incident.active}
+        class:is-clicked={isClicked}
         style="--icon-color: {iconColor}; --glow-color: {sourceColor};"
     >
         <IncidentIcon
@@ -92,12 +122,16 @@
     </div>
 
     <!-- Hover Preview Card -->
-    {#if isHovered}
+    {#if (isHovered && !$activeMarkerId) || isClicked}
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
             class="hover-card"
             class:show-below={showBelow}
+            class:is-clicked={isClicked}
             transition:scale={{ duration: 150, start: 0.95 }}
             style="border-color: {sourceColor}4d;"
+            on:click|stopPropagation
         >
             <div
                 class="card-header"
@@ -106,7 +140,19 @@
                 <span class="type" style="color: {sourceColor};"
                     >{incident.type || "Incident"}</span
                 >
-                <span class="time">{incident.time}</span>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="time">{incident.time}</span>
+                    {#if isClicked}
+                        <!-- svelte-ignore a11y_consider_explicit_label -->
+                        <button
+                            class="close-btn"
+                            on:click={(e) => {
+                                e.stopPropagation();
+                                $activeMarkerId = null;
+                            }}>×</button
+                        >
+                    {/if}
+                </div>
             </div>
 
             <div class="card-body">
@@ -127,7 +173,13 @@
                     >
                         <span class="label">INFO</span>
                         <span class="value desc-text"
-                            >{incident.description}</span
+                            >{incident.description
+                                .split("Neighborhood:")[0]
+                                .replace(
+                                    /Provide a factual.*?Keep the summary under 200 characters\. Add related emojis\. Summarize this traffic incident in one fluent sentence\.\s*/i,
+                                    "",
+                                )
+                                .trim()}</span
                         >
                     </div>
                 {/if}
@@ -191,9 +243,11 @@
         display: none;
     }
 
-    .marker-container:hover .icon-wrapper {
+    .marker-container:hover .icon-wrapper,
+    .icon-wrapper.is-clicked {
         box-shadow: 0 0 16px var(--glow-color);
         transform: scale(1.1);
+        border-color: #fff;
     }
 
     .icon-wrapper {
@@ -221,10 +275,12 @@
         background-color: rgba(20, 20, 20, 0.8);
     }
 
-    .marker-container:hover .icon-wrapper.inactive {
+    .marker-container:hover .icon-wrapper.inactive,
+    .icon-wrapper.inactive.is-clicked {
         opacity: 1;
         box-shadow: 0 0 8px rgba(200, 200, 200, 0.4);
         transform: scale(1.2);
+        border-color: #fff;
     }
 
     .pulse-ring {
@@ -266,7 +322,7 @@
         overflow-y: auto;
         background: rgba(8, 12, 18, 0.95);
         border: 1px solid rgba(136, 170, 255, 0.3);
-        border-radius: 4px;
+        border-radius: 6px;
         padding: 10px;
         box-shadow:
             0 4px 12px rgba(0, 0, 0, 0.5),
@@ -276,6 +332,10 @@
         color: #e0e0e0;
         font-family: "Share Tech Mono", monospace, ui-monospace, SFMono-Regular;
         z-index: 9999;
+    }
+
+    .hover-card.is-clicked {
+        pointer-events: auto;
     }
 
     .hover-card.show-below {
@@ -393,5 +453,27 @@
         padding: 1px 0;
         white-space: normal;
         word-wrap: break-word;
+    }
+
+    .close-btn {
+        background: rgba(255, 51, 51, 0.1);
+        border: 1px solid rgba(255, 51, 51, 0.3);
+        color: #ff5555;
+        border-radius: 4px;
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        line-height: 1;
+        cursor: pointer;
+        padding: 0;
+        transition: all 0.2s;
+    }
+
+    .close-btn:hover {
+        background: rgba(255, 51, 51, 0.3);
+        color: #fff;
     }
 </style>
