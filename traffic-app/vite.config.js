@@ -11,7 +11,11 @@ export default defineConfig({
     port: 5173, // Optional: lock to specific port
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:5002',
+        target: process.env.VITE_PROD_URL || 'http://127.0.0.1:5002',
+        changeOrigin: true
+      },
+      '/maps': {
+        target: process.env.VITE_PROD_URL || 'http://127.0.0.1:5002',
         changeOrigin: true
       }
     }

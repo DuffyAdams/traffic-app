@@ -58,8 +58,10 @@ GPT_KEY = os.getenv("GPT_KEY")
 #    raise ValueError("GPT_KEY not found in environment variables. Ensure it is set in the .env file.")
 
 # Initialize the OpenAI client with the API key
-client = OpenAI(api_key=GPT_KEY)
-
+client = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=GPT_KEY,
+)
 HEADERS = {
     "Accept": "application/json, text/javascript, */*; q=0.01",
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
@@ -88,8 +90,7 @@ app = Flask(__name__, static_folder=os.path.join(BASE_DIR, "traffic-app", "dist"
 CORS(app, resources={r"/api/*": {"origins": "*"}, r"/maps/*": {"origins": "*"}})
 
 # Test mode flag
-
-TESTMODE = True
+TESTMODE = os.environ.get("TESTMODE", "False").lower() == "true"
 
 # -----------------------------------
 # Database Functions
@@ -320,7 +321,7 @@ def generate_description(data):
             return f"{system_prompt}\n\n{user_message}"
         else:
             response = client.chat.completions.create(
-                model="gpt-5-nano-2025-08-07",
+                model="openai/gpt-5-nano",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_message},

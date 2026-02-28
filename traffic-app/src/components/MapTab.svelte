@@ -31,7 +31,7 @@
 
     async function fetchAllIncidents() {
         try {
-            const res = await fetch("/api/incidents?limit=500");
+            const res = await fetch("/api/incidents?limit=150");
             if (!res.ok) return;
             const data = await res.json();
             allIncidents = data
@@ -584,10 +584,12 @@
             "top-right",
         );
 
+        // Fetch incidents immediately! Don't wait for large PMTiles maps or styles to finish loading or parsing
+        fetchAllIncidents();
+        refreshInterval = setInterval(fetchAllIncidents, 60000);
+
         map.on("load", () => {
             console.log("MapLibre GL map loaded with PMTiles — DEFCON theme");
-            fetchAllIncidents();
-            refreshInterval = setInterval(fetchAllIncidents, 60000);
         });
 
         return () => {
@@ -602,7 +604,7 @@
     });
 
     function updateMarkers() {
-        if (!map || !map.loaded() || !allIncidents) return;
+        if (!map || !allIncidents) return;
 
         const now = Date.now();
         const fourHoursMs = 4 * 60 * 60 * 1000;
