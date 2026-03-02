@@ -20,6 +20,7 @@
     import Send from "lucide-svelte/icons/send";
     import IncidentIcon from "./IncidentIcon.svelte";
     import LazyImage from "./LazyImage.svelte";
+    import { mapPanTo } from "../stores/appStore.js";
 
     export let posts = [];
 
@@ -88,6 +89,18 @@
     function handleCommentClose(postId) {
         dispatch("toggleComments", { postId });
     }
+
+    function handleLocationClick(e, post) {
+        if (post.latitude != null && post.longitude != null) {
+            e.stopPropagation();
+            mapPanTo.set({
+                id: post.id,
+                latitude: post.latitude,
+                longitude: post.longitude,
+            });
+            dispatch("goToMap", { postId: post.id });
+        }
+    }
 </script>
 
 <div class="incidents-table">
@@ -124,7 +137,19 @@
                 <span class="mobile-time">{formatTimeOnly(post.timestamp)}</span
                 >
             </div>
-            <div class="table-cell location-cell">{post.location}</div>
+            <div
+                class="table-cell location-cell"
+                class:clickable-location={post.latitude != null &&
+                    post.longitude != null}
+                on:click={(e) => handleLocationClick(e, post)}
+                role="button"
+                tabindex="0"
+                on:keydown={(e) =>
+                    (e.key === "Enter" || e.key === " ") &&
+                    handleLocationClick(e, post)}
+            >
+                {post.location}
+            </div>
             <div class="table-cell status-cell">
                 {#if post.active}
                     <span class="status-badge active"
@@ -393,6 +418,20 @@
 
     .location-cell {
         flex: 1;
+    }
+
+    .location-cell.clickable-location {
+        cursor: pointer;
+        color: var(--accent-primary);
+        text-decoration: underline;
+        text-decoration-style: dashed;
+        text-underline-offset: 4px;
+        transition: all 0.2s;
+    }
+
+    .location-cell.clickable-location:hover {
+        color: #fff;
+        text-shadow: 0 0 8px var(--accent-primary);
     }
 
     .status-cell {

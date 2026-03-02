@@ -15,6 +15,7 @@ export const condensedView = writable(false);
 export const showEventCounters = writable(false);
 export const expandedPostId = writable(null);
 export const activeMarkerId = writable(null);
+export const mapPanTo = writable(null);
 
 // Filters
 export const selectedType = writable(null);

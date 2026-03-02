@@ -97,4 +97,12 @@
             font-size: 0.75rem;
         }
     }
+
+    @media (min-width: 768px) {
+        .source-tab {
+            flex: 0 1 auto;
+            padding: 0.3rem 1rem;
+            font-size: 0.8rem;
+        }
+    }
 </style>

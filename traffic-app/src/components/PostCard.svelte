@@ -16,6 +16,7 @@
     import Info from "lucide-svelte/icons/info";
     import X from "lucide-svelte/icons/x";
     import IncidentIcon from "./IncidentIcon.svelte";
+    import { mapPanTo } from "../stores/appStore.js";
     import LazyImage from "./LazyImage.svelte";
 
     export let post;
@@ -99,6 +100,18 @@
 
     function handleCommentClose() {
         dispatch("toggleComments", { postId: post.id });
+    }
+
+    function handleLocationClick(event) {
+        event.stopPropagation();
+        if (post.latitude != null && post.longitude != null) {
+            mapPanTo.set({
+                id: post.id,
+                latitude: post.latitude,
+                longitude: post.longitude,
+            });
+            dispatch("goToMap", { postId: post.id });
+        }
     }
 </script>
 
@@ -185,7 +198,14 @@
                     <Clock size={14} />
                     {post.time}
                 </span>
-                <span class="post-location">
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <span
+                    class="post-location"
+                    class:clickable-location={post.latitude != null &&
+                        post.longitude != null}
+                    on:click={handleLocationClick}
+                >
                     <MapPin size={14} />
                     {post.location}
                 </span>
@@ -596,7 +616,25 @@
         gap: 0.3rem;
     }
 
-    /* Pseudo-elements removed as icons are now inline SVGs */
+    .post-location {
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+    }
+
+    .clickable-location {
+        cursor: pointer;
+        color: var(--accent-primary);
+        text-decoration: underline;
+        text-decoration-style: dashed;
+        text-underline-offset: 4px;
+        transition: all 0.2s;
+    }
+
+    .clickable-location:hover {
+        color: #fff;
+        text-shadow: 0 0 8px var(--accent-primary);
+    }
 
     .post-description {
         font-size: 0.85rem;

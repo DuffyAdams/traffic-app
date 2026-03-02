@@ -6,7 +6,7 @@
 
     import IncidentMarker from "./IncidentMarker.svelte";
     import { formatTimestamp, formatTime } from "../utils/helpers.js";
-    import { activeMarkerId } from "../stores/appStore.js";
+    import { activeMarkerId, mapPanTo } from "../stores/appStore.js";
     import { fade, slide } from "svelte/transition";
 
     // We no longer rely on the parent's paginated feed.
@@ -88,6 +88,25 @@
         if (map) {
             updateMarkers(activeIncidents);
         }
+    }
+
+    // Reactively fly to a specific incident when mapPanTo is set
+    $: if (map && $mapPanTo) {
+        const panData = $mapPanTo;
+        $mapPanTo = null; // Reset early
+        // The container might just have been unhidden, so wait a tick, resize, then fly
+        setTimeout(() => {
+            if (map) {
+                map.resize();
+                map.flyTo({
+                    center: [panData.longitude, panData.latitude],
+                    zoom: 14,
+                    essential: true,
+                    duration: 1200,
+                });
+                $activeMarkerId = panData.id;
+            }
+        }, 150);
     }
 
     onMount(() => {

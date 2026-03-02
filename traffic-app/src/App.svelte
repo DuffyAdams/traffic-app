@@ -4,6 +4,7 @@
 
   // Import components
   import Header from "./components/Header.svelte";
+  import HeadlineTicker from "./components/HeadlineTicker.svelte";
   import SkeletonCard from "./components/SkeletonCard.svelte";
   import PostCard from "./components/PostCard.svelte";
   import PostTable from "./components/PostTable.svelte";
@@ -889,6 +890,7 @@
 </script>
 
 <div class="container" bind:this={scrollContainer}>
+  <HeadlineTicker events={posts.slice(0, 5)} />
   <Header
     {showEventCounters}
     {darkMode}
@@ -959,6 +961,7 @@
         on:share={handlePostShare}
         on:toggleDescription={handlePostToggleDescription}
         on:submitComment={handlePostSubmitComment}
+        on:goToMap={() => setSourceFilter("map")}
       />
     {:else}
       <div class="feed" in:fade={{ duration: 200 }}>
@@ -972,6 +975,7 @@
             on:share={handlePostShare}
             on:toggleDescription={handlePostToggleDescription}
             on:submitComment={handlePostSubmitComment}
+            on:goToMap={() => setSourceFilter("map")}
           />
         {/each}
       </div>

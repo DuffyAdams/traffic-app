@@ -238,7 +238,7 @@
         background: var(--bg-surface-elevated);
         border: 1px solid var(--accent-primary);
         border-radius: 6px;
-        padding: 1.25rem 1.75rem;
+        padding: 0.85rem 1.75rem;
         color: var(--text-main);
         cursor: pointer;
         text-align: left;
@@ -334,7 +334,7 @@
             height: 44px;
         }
         .header-action-banner {
-            padding: 0.75rem 1rem;
+            padding: 0.6rem 1rem;
         }
         .banner-text {
             font-size: 1.25rem;
