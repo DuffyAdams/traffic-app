@@ -381,13 +381,10 @@ def save_or_update_incident(data):
     
     new_description = None
     if not existing:
-        # New incident: generate description
-        new_description = generate_description(data)
-    elif details_json != (existing['details'] or ""):
-        # Details changed: generate new description
+        # New incident: generate initial description
         new_description = generate_description(data)
     else:
-        # Use existing description
+        # NEVER re-generate descriptions on active update cycles (we'll do it once at the very end)
         new_description = existing['description']
 
     # 2. Perform the actual DB update/insert
@@ -888,6 +885,50 @@ def monitor_traffic_data(interval=60):
                                 active_incident_ids.add(inc_id)
                 else:
                     safe_print("No valid data retrieved from any source.")
+
+                # Find inactive incidents to generate their final description
+                newly_inactive = []
+                with db_lock:
+                    with sqlite3.connect(DB_FILE, timeout=30) as conn:
+                        conn.row_factory = sqlite3.Row
+                        cur = conn.cursor()
+                        if active_incident_ids:
+                            placeholders = ",".join("?" for _ in active_incident_ids)
+                            query = f"SELECT * FROM incidents WHERE active = 1 AND incident_no NOT IN ({placeholders})"
+                            cur.execute(query, tuple(active_incident_ids))
+                        else:
+                            cur.execute("SELECT * FROM incidents WHERE active = 1")
+                        newly_inactive = [dict(row) for row in cur.fetchall()]
+
+                if newly_inactive:
+                    safe_print(f"Generating final summaries for {len(newly_inactive)} newly inactive incidents...")
+                    def process_final(incident_record):
+                        try:
+                            details = json.loads(incident_record.get("details", "[]") or "[]")
+                            if len(details) > 0:
+                                data = {
+                                    "Neighborhood": incident_record.get("neighborhood"),
+                                    "Location": incident_record.get("location"),
+                                    "Location Desc.": incident_record.get("location_desc"),
+                                    "Type": incident_record.get("type"),
+                                    "Details": details
+                                }
+                                final_desc = generate_description(data)
+                                with db_lock:
+                                    with sqlite3.connect(DB_FILE, timeout=30) as conn:
+                                        c = conn.cursor()
+                                        c.execute(
+                                            "UPDATE incidents SET description = ? WHERE incident_no = ? AND date = ?",
+                                            (final_desc, incident_record["incident_no"], incident_record["date"])
+                                        )
+                                        conn.commit()
+                        except Exception as ex:
+                            safe_print(f"Error generating final description for {incident_record.get('incident_no')}: {ex}")
+
+                    with ThreadPoolExecutor(max_workers=5) as executor:
+                        futures = [executor.submit(process_final, rec) for rec in newly_inactive]
+                        for f in as_completed(futures):
+                            pass
 
                 # Mark incidents as inactive if they are not in the current scrape.
                 with db_lock:
