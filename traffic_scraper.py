@@ -321,7 +321,7 @@ def generate_description(data):
             return f"Mock incident summary for {data.get('Location')}."
         else:
             response = client.chat.completions.create(
-                model="openai/gpt-5-nano",
+                model="mistralai/mistral-nemo",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_message},
