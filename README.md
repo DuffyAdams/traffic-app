@@ -1,7 +1,7 @@
 # Traffic Alerts App (San Diego)
 
 <div align="center">
-  <img src="screenshots/logo.png" alt="Traffic Alerts App Logo" width="200" />
+  <img src="screenshots/logo.png" alt="Traffic Alerts App Logo" width="400" />
 </div>
 
 A real-time dashboard and backend service that monitors, aggregates, and visualizes traffic and emergency incidents across the San Diego region.
