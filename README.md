@@ -1,5 +1,9 @@
 # Traffic Alerts App (San Diego)
 
+<div align="center">
+  <img src="screenshots/logo.png" alt="Traffic Alerts App Logo" width="200" />
+</div>
+
 A real-time dashboard and backend service that monitors, aggregates, and visualizes traffic and emergency incidents across the San Diego region.
 
 ## Overview
@@ -17,6 +21,14 @@ It provides an efficient way to track accidents, road hazards, maintenance activ
 * **AI-Generated Summaries**: Uses LLMs (via OpenRouter/Google Gemini) to transform dense dispatcher codes into easily readable, concise alerts.
 * **Modern Frontend**: A fully responsive web interface built with Svelte that includes interactive maps, real-time updates, and filtering capabilities.
 * **Interactive Community**: Users can "like" and comment on specific traffic incidents directly through the web UI.
+
+---
+
+## 📸 Screenshots
+
+| Dashboard | Map View | Analytics/Stats |
+|:---:|:---:|:---:|
+| <img src="screenshots/frontpage.png" alt="Frontpage Dashboard" height="300"/> | <img src="screenshots/map_screenshot.png" alt="Interactive Map View" height="300"/> | <img src="screenshots/stats_screenshot.png" alt="Traffic Statistics" height="300"/> |
 
 ---
 
