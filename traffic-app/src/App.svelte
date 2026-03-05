@@ -340,6 +340,7 @@
         likeErrorAnimation: false,
         active: Boolean(incident.active),
         liking: false,
+        severity: incident.severity ?? null,
       }));
 
     const filteredPosts = showActiveOnly
@@ -876,6 +877,7 @@
             commentError: "",
             likeErrorAnimation: false,
             active: Boolean(incident.active),
+            severity: incident.severity ?? null,
           };
         });
 
@@ -890,7 +892,18 @@
 </script>
 
 <div class="container" bind:this={scrollContainer}>
-  <HeadlineTicker events={posts.slice(0, 5)} />
+  <HeadlineTicker
+    events={[
+      ...posts.slice(0, 5),
+      ...posts.filter(
+        (p) =>
+          p.active &&
+          p.type &&
+          p.type.toLowerCase().includes("sig") &&
+          !posts.slice(0, 5).some((bp) => bp.id === p.id),
+      ),
+    ]}
+  />
   <Header
     {showEventCounters}
     {darkMode}

@@ -24,7 +24,11 @@
             <div class="ticker-track">
                 <div class="ticker-group">
                     {#each events as event}
-                        <div class="ticker-item">
+                        <div
+                            class="ticker-item"
+                            class:sig-alert={event.type &&
+                                event.type.toLowerCase().includes("sig")}
+                        >
                             <span class="ticker-time">[{event.time}]</span>
                             <span class="ticker-type"
                                 >{formatText(
@@ -49,7 +53,11 @@
                 <!-- Duplicate for infinite scroll -->
                 <div class="ticker-group" aria-hidden="true">
                     {#each events as event}
-                        <div class="ticker-item">
+                        <div
+                            class="ticker-item"
+                            class:sig-alert={event.type &&
+                                event.type.toLowerCase().includes("sig")}
+                        >
                             <span class="ticker-time">[{event.time}]</span>
                             <span class="ticker-type"
                                 >{formatText(
@@ -175,6 +183,21 @@
 
     .ticker-time {
         color: var(--text-muted, #a0aec0);
+    }
+
+    .sig-alert {
+        background: rgba(255, 51, 51, 0.15);
+        padding: 0.15rem 0.6rem;
+        border-radius: 4px;
+        border: 1px solid rgba(255, 51, 51, 0.3);
+    }
+
+    .sig-alert .ticker-time,
+    .sig-alert .ticker-type,
+    .sig-alert .ticker-desc {
+        color: #ff4d4d !important;
+        font-weight: 900 !important;
+        text-shadow: 0 0 8px rgba(255, 77, 77, 0.5);
     }
 
     .ticker-type {

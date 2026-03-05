@@ -137,6 +137,12 @@ def init_db():
             cur.execute("ALTER TABLE incidents ADD COLUMN geocode_precision TEXT DEFAULT 'unknown'")
         except sqlite3.OperationalError:
             pass  # Column likely exists
+        
+        # Migration: Add severity column (1-5 scale)
+        try:
+            cur.execute("ALTER TABLE incidents ADD COLUMN severity INTEGER DEFAULT NULL")
+        except sqlite3.OperationalError:
+            pass  # Column likely exists
         # Likes table
         cur.execute("""
             CREATE TABLE IF NOT EXISTS likes (
@@ -296,12 +302,14 @@ def load_system_prompt(filename):
 call_count = 0
 
 def generate_description(data):
+    """Generate a description and severity score for an incident.
+    Returns a tuple: (description_string, severity_int_or_None)
+    """
     global call_count
     call_count += 1
     safe_print("GPT API Calls:" + str(call_count))
 
     try:
-        # Generate a tweet-friendly description using ChatGPT's GPT-4o-mini model
         prompt = (
             f"Neighborhood: {data.get('Neighborhood')}\n"
             f"Location: {data.get('Location')} - {data.get('Location Desc.')}\n"
@@ -310,15 +318,24 @@ def generate_description(data):
         )
 
         system_prompt = (
-            "Provide a factual, tweet-length summary using the details given. "
-            "Do not add any warnings, advice, hashtags, or extra commentary. "
-            "Keep the summary under 200 characters. Add related emojis."
+            'You are a traffic incident analyst. Respond ONLY with a valid JSON object, no markdown or extra text.\n'
+            'The JSON must have exactly two keys:\n'
+            '  "summary": a factual, tweet-length summary (under 200 chars) with related emojis. '
+            'No warnings, advice, hashtags, or extra commentary.\n'
+            '  "severity": an integer from 1 to 5 based on this scale:\n'
+            '    1 = minor (very small delay, single vehicle stopped, should clear soon)\n'
+            '    2 = low (some lane impact, slowdowns)\n'
+            '    3 = moderate (multiple lanes impacted or prolonged delay)\n'
+            '    4 = high (road closed, serious collision, emergency response on scene)\n'
+            '    5 = critical (major incident, long-duration closure, multiple vehicles or injury)\n'
         )
 
-        user_message = f"Summarize this traffic incident in one fluent sentence.\n{prompt}"
+        user_message = f"Analyze this traffic incident and return JSON.\n{prompt}"
+        
+        is_sig_alert = data.get("Type") and "SIG" in data.get("Type", "").upper()
 
-        if TESTMODE:  # Return a clean mock summary for debugging in test mode
-            return f"Mock incident summary for {data.get('Location')}."
+        if TESTMODE:
+            return (f"Mock incident summary for {data.get('Location')}.", 5 if is_sig_alert else 2)
         else:
             response = client.chat.completions.create(
                 model="mistralai/mistral-nemo",
@@ -327,11 +344,43 @@ def generate_description(data):
                     {"role": "user", "content": user_message},
                 ]
             )
-            return response.choices[0].message.content.strip()
+            raw = response.choices[0].message.content.strip()
+            # Try to parse structured JSON response
+            try:
+                # Strip markdown code fences if the model wraps its response
+                cleaned = raw
+                if cleaned.startswith("```"):
+                    cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+                if cleaned.endswith("```"):
+                    cleaned = cleaned[:-3]
+                cleaned = cleaned.strip()
+
+                # Extract JSON object between first { and last } to handle
+                # trailing emojis/text the model sometimes appends
+                brace_start = cleaned.find("{")
+                brace_end = cleaned.rfind("}")
+                if brace_start != -1 and brace_end != -1 and brace_end > brace_start:
+                    cleaned = cleaned[brace_start:brace_end + 1]
+
+                parsed = json.loads(cleaned)
+                summary = str(parsed.get("summary", "")).strip()
+                if not summary:
+                    summary = raw[:500]
+                sev = parsed.get("severity")
+                severity = int(sev) if sev is not None and 1 <= int(sev) <= 5 else None
+                
+                if is_sig_alert:
+                    severity = 5
+                    
+                return (summary, severity)
+            except (json.JSONDecodeError, ValueError, TypeError):
+                safe_print(f"Could not parse structured JSON from LLM, raw response: {raw[:200]}")
+                return (raw[:500], 5 if is_sig_alert else None)
 
     except Exception as e:
         safe_print(f"Error generating description: {e}")
-        return "Traffic incident reported."
+        is_sig_alert = data.get("Type") and "SIG" in data.get("Type", "").upper()
+        return ("Traffic incident reported.", 5 if is_sig_alert else None)
 
 # -----------------------------------
 # Save or Update Incident
@@ -376,16 +425,18 @@ def save_or_update_incident(data):
         with sqlite3.connect(DB_FILE, timeout=30) as conn:
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
-            cur.execute("SELECT details, description FROM incidents WHERE incident_no = ? AND date = ?", (str(incident_no), date))
+            cur.execute("SELECT details, description, severity FROM incidents WHERE incident_no = ? AND date = ?", (str(incident_no), date))
             existing = cur.fetchone()
     
     new_description = None
+    new_severity = None
     if not existing:
-        # New incident: generate initial description
-        new_description = generate_description(data)
+        # New incident: generate initial description + severity
+        new_description, new_severity = generate_description(data)
     else:
         # NEVER re-generate descriptions on active update cycles (we'll do it once at the very end)
         new_description = existing['description']
+        new_severity = existing['severity']
 
     # 2. Perform the actual DB update/insert
     with db_lock:
@@ -438,10 +489,10 @@ def save_or_update_incident(data):
                 cur.execute("""
                     INSERT INTO incidents 
                     (incident_no, date, timestamp, city, neighborhood, location, location_desc, type, details, 
-                     description, latitude, longitude, map_filename, likes, comments, active, source, geocode_precision)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                     description, latitude, longitude, map_filename, likes, comments, active, source, geocode_precision, severity)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
                 """, (str(incident_no), date, new_timestamp, city, neighborhood, location, location_desc, type_field,
-                      details_json, new_description, latitude, longitude, new_map_filename, 0, '[]', source, geocode_precision))
+                      details_json, new_description, latitude, longitude, new_map_filename, 0, '[]', source, geocode_precision, new_severity))
                 conn.commit()
                 safe_print(f"Incident {incident_no} inserted.")
                 return True
@@ -913,13 +964,13 @@ def monitor_traffic_data(interval=60):
                                     "Type": incident_record.get("type"),
                                     "Details": details
                                 }
-                                final_desc = generate_description(data)
+                                final_desc, final_severity = generate_description(data)
                                 with db_lock:
                                     with sqlite3.connect(DB_FILE, timeout=30) as conn:
                                         c = conn.cursor()
                                         c.execute(
-                                            "UPDATE incidents SET description = ? WHERE incident_no = ? AND date = ?",
-                                            (final_desc, incident_record["incident_no"], incident_record["date"])
+                                            "UPDATE incidents SET description = ?, severity = ? WHERE incident_no = ? AND date = ?",
+                                            (final_desc, final_severity, incident_record["incident_no"], incident_record["date"])
                                         )
                                         conn.commit()
                         except Exception as ex:

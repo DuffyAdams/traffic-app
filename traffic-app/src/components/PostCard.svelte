@@ -69,6 +69,15 @@
     $: badgeColor = incidentColors[post.type] || "#fbbf24";
     $: isSigAlert = post.type === "SIG Alert";
 
+    const severityConfig = {
+        1: { label: "MINOR", color: "#64748b" },
+        2: { label: "LOW", color: "#06b6d4" },
+        3: { label: "MODERATE", color: "#eab308" },
+        4: { label: "HIGH", color: "#f97316" },
+        5: { label: "CRITICAL", color: "#ef4444" },
+    };
+    $: sevInfo = post.severity ? severityConfig[post.severity] : null;
+
     let showRawDetails = false;
 
     function toggleRawDetails() {
@@ -210,7 +219,26 @@
                     {post.location}
                 </span>
             </div>
-            <div class="post-description">
+            <div
+                class="post-description"
+                style="border-left-color: {sevInfo
+                    ? sevInfo.color
+                    : 'var(--accent-primary)'}"
+            >
+                {#if sevInfo}
+                    <div class="description-header">
+                        <div
+                            class="severity-inline-badge"
+                            class:severity-critical={post.severity === 5}
+                            style="--sev-color: {sevInfo.color}"
+                        >
+                            <span class="sev-score-box">{post.severity}</span>
+                            <span class="sev-label"
+                                >{sevInfo.label} SEVERITY</span
+                            >
+                        </div>
+                    </div>
+                {/if}
                 {#if post.description}
                     <span class="description-text">
                         {post.showFullDescription
@@ -438,6 +466,63 @@
         z-index: 1;
         border: 1px solid #ff4d4d;
         box-shadow: 0 0 10px rgba(255, 51, 51, 0.3);
+    }
+
+    .description-header {
+        margin-bottom: 0.75rem;
+        display: flex;
+        align-items: center;
+    }
+
+    .severity-inline-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid color-mix(in srgb, var(--sev-color) 40%, transparent);
+        color: var(--sev-color);
+        padding: 0.15rem 0.5rem 0.15rem 0.15rem;
+        border-radius: 4px;
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+        font-size: 0.6rem;
+        font-weight: bold;
+        box-shadow: 0 0 8px
+            color-mix(in srgb, var(--sev-color) 15%, transparent);
+    }
+
+    .severity-inline-badge .sev-score-box {
+        background: var(--sev-color);
+        color: #000;
+        width: 16px;
+        height: 16px;
+        border-radius: 3px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.65rem;
+        font-weight: 900;
+        line-height: 1;
+    }
+
+    .severity-inline-badge .sev-label {
+        letter-spacing: 0.05em;
+    }
+
+    .severity-inline-badge.severity-critical {
+        animation: severityPulseInline 2s infinite alternate;
+        border-color: var(--sev-color);
+    }
+
+    @keyframes severityPulseInline {
+        0% {
+            box-shadow: 0 0 4px
+                color-mix(in srgb, var(--sev-color) 20%, transparent);
+        }
+        100% {
+            box-shadow: 0 0 12px
+                color-mix(in srgb, var(--sev-color) 60%, transparent);
+        }
     }
 
     .raw-details-button {

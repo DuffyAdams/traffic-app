@@ -52,6 +52,7 @@
                     active: Boolean(inc.active),
                     source: inc.source || "",
                     details: Array.isArray(inc.Details) ? inc.Details : [],
+                    severity: inc.severity ?? null,
                 }));
             updateMarkers();
         } catch (err) {
@@ -74,9 +75,12 @@
                 if (inc.source === "SDPD" && !showSDPD) return false;
                 if (inc.source === "SDFD" && !showSDFD) return false;
                 if (inc.active) return true;
-                // Inactive: only show if within last 4 hours
+                // Inactive: only show if within last 4 hours (or 8 hours for Sig alerts)
                 const incTime = new Date(inc.timestamp).getTime();
-                return now - incTime <= fourHoursMs;
+                const isSigAlert =
+                    inc.type && inc.type.toLowerCase().includes("sig");
+                const maxAgeMs = isSigAlert ? fourHoursMs * 2 : fourHoursMs;
+                return now - incTime <= maxAgeMs;
             })
             .sort(
                 (a, b) =>
@@ -984,10 +988,10 @@
     .log-list {
         flex: 1;
         overflow-y: auto;
-        padding: 8px;
+        padding: 6px;
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: 4px;
     }
 
     .log-list::-webkit-scrollbar {
@@ -1007,7 +1011,7 @@
         background: rgba(15, 22, 32, 0.6);
         border: 1px solid rgba(136, 170, 255, 0.1);
         border-radius: 3px;
-        padding: 10px 12px;
+        padding: 6px 10px;
         cursor: pointer;
         transition: all 0.2s ease;
         position: relative;
@@ -1037,9 +1041,9 @@
     .log-item-header {
         display: flex;
         justify-content: space-between;
-        margin-bottom: 6px;
+        margin-bottom: 4px;
         font-family: "Share Tech Mono", monospace;
-        font-size: 0.75rem;
+        font-size: 0.7rem;
     }
 
     .log-time {
@@ -1051,16 +1055,16 @@
     }
 
     .log-desc {
-        font-size: 0.85rem;
+        font-size: 0.75rem;
         color: #ddeeff;
-        margin-bottom: 4px;
+        margin-bottom: 2px;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
     }
 
     .log-loc {
-        font-size: 0.75rem;
+        font-size: 0.65rem;
         color: #6688aa;
         white-space: nowrap;
         overflow: hidden;

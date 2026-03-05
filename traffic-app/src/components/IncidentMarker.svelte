@@ -85,6 +85,15 @@
             : incident.active
               ? activeOpacity
               : 0.3;
+
+    const severityConfig = {
+        1: { label: "MINOR", color: "#64748b" },
+        2: { label: "LOW", color: "#06b6d4" },
+        3: { label: "MODERATE", color: "#eab308" },
+        4: { label: "HIGH", color: "#f97316" },
+        5: { label: "CRITICAL", color: "#ef4444" },
+    };
+    $: sevInfo = incident.severity ? severityConfig[incident.severity] : null;
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -141,6 +150,13 @@
                     >{incident.type || "Incident"}</span
                 >
                 <div style="display: flex; align-items: center; gap: 8px;">
+                    {#if sevInfo}
+                        <span
+                            class="sev-pill"
+                            style="color: {sevInfo.color}; border-color: {sevInfo.color};"
+                            >{incident.severity}</span
+                        >
+                    {/if}
                     <span class="time">{incident.time}</span>
                     {#if isClicked}
                         <!-- svelte-ignore a11y_consider_explicit_label -->
@@ -475,5 +491,16 @@
     .close-btn:hover {
         background: rgba(255, 51, 51, 0.3);
         color: #fff;
+    }
+
+    .sev-pill {
+        font-size: 0.6rem;
+        font-weight: 900;
+        border: 1px solid;
+        border-radius: 4px;
+        padding: 1px 4px;
+        line-height: 1;
+        text-align: center;
+        min-width: 14px;
     }
 </style>
