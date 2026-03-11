@@ -892,7 +892,7 @@ def process_and_save_incident(incident):
         safe_print(f"Error processing incident {incident.get('No.')}: {inc_e}")
         return None
 
-def monitor_traffic_data(interval=60):
+def monitor_traffic_data(interval=15):
     safe_print("Starting continuous traffic monitoring...")
     safe_print(f"Data saved to: {DB_FILE}")
     safe_print(f"Map generator: {MAP_GENERATOR}")

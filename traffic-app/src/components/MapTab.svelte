@@ -641,7 +641,7 @@
 
         // Fetch incidents immediately! Don't wait for large PMTiles maps or styles to finish loading or parsing
         fetchAllIncidents();
-        refreshInterval = setInterval(fetchAllIncidents, 60000);
+        refreshInterval = setInterval(fetchAllIncidents, 10000);
 
         map.on("load", () => {
             console.log("MapLibre GL map loaded with PMTiles — DEFCON theme");
@@ -811,7 +811,10 @@
                         {incident.type || incident.description.split(" - ")[0]}
                     </div>
                     <div class="log-loc">
-                        {incident.neighborhood || incident.location}
+                        {incident.neighborhood &&
+                        incident.neighborhood !== "N/A"
+                            ? incident.neighborhood
+                            : incident.location}
                     </div>
                 </div>
             {/each}

@@ -18,6 +18,7 @@
     import IncidentIcon from "./IncidentIcon.svelte";
     import { mapPanTo } from "../stores/appStore.js";
     import LazyImage from "./LazyImage.svelte";
+    import LiveTimestamp from "./LiveTimestamp.svelte";
 
     export let post;
     export let index = 0;
@@ -205,7 +206,7 @@
             <div class="post-header">
                 <span class="post-time">
                     <Clock size={14} />
-                    {post.time}
+                    <LiveTimestamp timestamp={post.timestamp} />
                 </span>
                 <!-- svelte-ignore a11y_click_events_have_key_events -->
                 <!-- svelte-ignore a11y_no_static_element_interactions -->

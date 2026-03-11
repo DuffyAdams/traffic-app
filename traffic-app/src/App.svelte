@@ -759,12 +759,7 @@
     fetchIncidents();
     fetchIncidentStats();
 
-    const refreshInterval = setInterval(() => {
-      if (isOnline) {
-        fetchIncidentStats();
-        fetchIncidents();
-      }
-    }, 60000);
+    // Removed 60s fetchIncidents interval to prevent screen wiping
 
     window.addEventListener("scroll", debouncedHandleScroll);
 
@@ -785,10 +780,10 @@
         checkForUpdates();
         fetchIncidentStats();
       }
-    }, 30000);
+    }, 10000);
 
     return () => {
-      clearInterval(refreshInterval);
+      clearInterval(updateInterval);
       window.removeEventListener("online", updateOnlineStatus);
       window.removeEventListener("offline", updateOnlineStatus);
       window.removeEventListener("scroll", debouncedHandleScroll);
@@ -826,47 +821,51 @@
 
       if (!Array.isArray(newIncidents)) return;
 
-      const newProcessedPosts = newIncidents
-        .filter((incident) => {
-          if (!incident || typeof incident !== "object") return false;
-          if (
-            !incident.incident_no ||
-            !incident.timestamp
-            // Removed map_filename requirement to support sources without maps
-            // || !incident.map_filename
-          ) {
-            return false;
-          }
-          return true;
-        })
-        .map((incident) => {
-          const date = incident.timestamp
-            ? new Date(incident.timestamp).toLocaleDateString()
-            : "";
-          incident.compositeId = `${incident.incident_no}-${date}`;
-          return incident;
-        })
-        .filter((incident) => {
-          const duplicateKey = `${incident.incident_no}-${incident.timestamp}-${incident.location}`;
-          // If we haven't seen it, it's new.
-          if (seenCompositeKeys.has(duplicateKey)) {
-            return false;
-          }
-          return true;
-        })
-        .map((incident) => {
-          // Add to seen keys so we don't re-add it later
-          const key = `${incident.incident_no}-${incident.timestamp}-${incident.location}`;
-          seenCompositeKeys.add(key);
+      let updatedPosts = [...posts];
+      let newPostsCount = 0;
 
-          return {
+      newIncidents.forEach((incident) => {
+        if (!incident || !incident.incident_no || !incident.timestamp) return;
+
+        const existingIndex = updatedPosts.findIndex(
+          (p) => p.id === incident.incident_no,
+        );
+
+        if (existingIndex !== -1) {
+          // Update the existing post's properties without treating it as new
+          updatedPosts[existingIndex] = {
+            ...updatedPosts[existingIndex],
+            details: Array.isArray(incident.Details) ? incident.Details : [],
+            description: incident.description || "No description available",
+            location: incident.location || "Unknown location",
+            neighborhood: incident.neighborhood || "",
+            active: Boolean(incident.active),
+            severity: incident.severity ?? null,
+            likes:
+              typeof incident.likes === "number"
+                ? incident.likes
+                : updatedPosts[existingIndex].likes,
+          };
+        } else {
+          // It's a genuinely new post
+          newPostsCount++;
+
+          const date = new Date(incident.timestamp).toLocaleDateString();
+          const duplicateKey = `${incident.incident_no}-${incident.timestamp}-${incident.location}`;
+          seenCompositeKeys.add(duplicateKey);
+
+          updatedPosts.unshift({
             id: incident.incident_no,
-            compositeId: incident.compositeId,
+            compositeId: `${incident.incident_no}-${date}`,
+            details: Array.isArray(incident.Details) ? incident.Details : [],
             timestamp: incident.timestamp,
             time: formatTimestamp(incident.timestamp),
             description: incident.description || "No description available",
             showFullDescription: false,
             location: incident.location || "Unknown location",
+            neighborhood: incident.neighborhood || "",
+            latitude: incident.latitude ?? null,
+            longitude: incident.longitude ?? null,
             image: `/maps/${incident.map_filename}`,
             likes: typeof incident.likes === "number" ? incident.likes : 0,
             comments: Array.isArray(incident.comments) ? incident.comments : [],
@@ -877,13 +876,18 @@
             commentError: "",
             likeErrorAnimation: false,
             active: Boolean(incident.active),
+            liking: false,
             severity: incident.severity ?? null,
-          };
-        });
+          });
+        }
+      });
 
-      if (newProcessedPosts.length > 0) {
-        posts = [...newProcessedPosts, ...posts];
-        addToast(`${newProcessedPosts.length} new incident(s) found`, "info");
+      // Update posts optimally
+      if (newPostsCount > 0) {
+        posts = updatedPosts;
+        addToast(`${newPostsCount} new incident(s)`, "info");
+      } else {
+        posts = updatedPosts; // Triggers reactivity for updated properties
       }
     } catch (err) {
       console.error("Error checking for updates:", err);
