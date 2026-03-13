@@ -71,6 +71,7 @@ PARAMS = {"ddlComCenter": "BCCC"}
 CHP_SCRAPE_URL = "https://cad.chp.ca.gov/traffic.aspx?__EVENTTARGET=ddlComCenter&ddlComCenter=BCCC"
 SDPD_SCRAPE_URL = "https://webapps.sandiego.gov/sdpdonline"
 SDFD_API_URL = "https://webapps.sandiego.gov/SDFireDispatch/api/v1/Incidents"
+SDSO_API_URL = os.environ.get("SDSO_API_URL")
 HEALTHCHECK_URL = "https://hc-ping.com/7299c402-d91d-4d89-8f84-5e6b510631c0"
 
 # Regex patterns
@@ -475,9 +476,11 @@ def save_or_update_incident(data):
                     params.append(new_map_filename)
 
                 if updates:
-                    updates.append("active = 1")
+                    # If the scraper provided an active status, use it; otherwise default to 1
+                    active_status = data.get("active", 1)
+                    updates.append("active = ?")
                     query = f"UPDATE incidents SET {', '.join(updates)} WHERE incident_no = ? AND date = ?"
-                    params.extend([str(incident_no), date])
+                    params.extend([active_status, str(incident_no), date])
                     cur.execute(query, tuple(params))
                     conn.commit()
                     safe_print(f"Incident {incident_no} updated.")
@@ -486,13 +489,14 @@ def save_or_update_incident(data):
                     safe_print(f"No changes for incident {incident_no}.")
                     return False
             else:
+                active_status = data.get("active", 1)
                 cur.execute("""
                     INSERT INTO incidents 
                     (incident_no, date, timestamp, city, neighborhood, location, location_desc, type, details, 
                      description, latitude, longitude, map_filename, likes, comments, active, source, geocode_precision, severity)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (str(incident_no), date, new_timestamp, city, neighborhood, location, location_desc, type_field,
-                      details_json, new_description, latitude, longitude, new_map_filename, 0, '[]', source, geocode_precision, new_severity))
+                      details_json, new_description, latitude, longitude, new_map_filename, 0, '[]', active_status, source, geocode_precision, new_severity))
                 conn.commit()
                 safe_print(f"Incident {incident_no} inserted.")
                 return True
@@ -806,6 +810,79 @@ def scrape_sdfd_incidents():
         safe_print(f"Error scraping SDFD: {e}")
         return []
 
+# Add a cache and timestamp for SDSO API throttling (checks every 5 min)
+last_sdso_fetch = 0
+sdso_cache = []
+
+def scrape_sdso_incidents():
+    global last_sdso_fetch, sdso_cache
+    
+    current_time = time.time()
+    # 5 minutes = 300 seconds
+    if current_time - last_sdso_fetch < 300:
+        return sdso_cache
+        
+    safe_print("Scraping SDSO incidents...")
+    try:
+        response = requests.get(SDSO_API_URL, headers=HEADERS)
+        response.raise_for_status()
+        data = response.json()
+        
+        events = data.get("Events", [])
+        incidents = []
+        
+        for item in events:
+            # Fields: EventNumber, IsOpen, DateTime, Address, ServiceArea, Community, EventType
+            event_id = item.get("EventNumber", "")
+            is_open = item.get("IsOpen", False)
+            dt_str = item.get("DateTime", "")
+            address = item.get("Address", "")
+            community = item.get("Community", "")
+            event_type = item.get("EventType", "")
+            
+            # Create a consistent ID using prefix SDSO-
+            incident_id = f"SDSO-{event_id}"
+            
+            # Parse date "03/12/26 14:42" (MM/DD/YY HH:MM)
+            try:
+                dt_obj = datetime.strptime(dt_str, "%m/%d/%y %H:%M")
+                date_val = dt_obj.strftime("%Y-%m-%d")
+                time_val = dt_obj.strftime("%Y-%m-%d %H:%M:%S")
+            except Exception as e:
+                safe_print(f"Date parse error for SDSO {dt_str}: {e}")
+                date_val = datetime.now().strftime("%Y-%m-%d")
+                time_val = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            details = []
+            if item.get("ServiceArea"):
+                details.append(f"Service Area: {item.get('ServiceArea')}")
+
+            incident = {
+                "No.": incident_id,
+                "Date": date_val,
+                "Timestamp": time_val,
+                "City": "San Diego County",
+                "Neighborhood": community,
+                "Location": address,
+                "Location Desc.": "",
+                "Type": event_type,
+                "Details": details,
+                "Source": "SDSO",
+                "active": 1 if is_open else 0
+            }
+            incidents.append(incident)
+            
+        safe_print(f"Found {len(incidents)} SDSO incidents.")
+        
+        # update cache tracking
+        last_sdso_fetch = current_time
+        sdso_cache = incidents
+        
+        return incidents
+        
+    except Exception as e:
+        safe_print(f"Error scraping SDSO: {e}")
+        return []
 
 def run_map_generator(merged_data):
     if TESTMODE:
@@ -859,7 +936,7 @@ def process_and_save_incident(incident):
 
         if needs_geocoding:
             safe_print(f"DEBUG: Processing geocoding for {incident_no} ({incident.get('Source')})")
-            # Attempt to geocode if coordinates are missing (for SDPD/SDFD)
+            # Attempt to geocode if coordinates are missing (for SDPD/SDFD/SDSO)
             if "Longitude" not in incident or "Latitude" not in incident:
                 source = incident.get("Source")
                 location_str = incident.get("Location", "")
@@ -882,6 +959,18 @@ def process_and_save_incident(incident):
                     coords = geocode_location(query)
                     if coords:
                         incident.update(coords)
+                elif source == "SDSO":
+                    community = incident.get("Neighborhood", "")
+                    # Many SDSO addresses have cross streets separated by '/', replace with '&'
+                    address = location_str.replace('/', ' & ')
+                    if community:
+                        query = f"{address}, {community}, CA"
+                    else:
+                        query = f"{address}, San Diego County, CA"
+                    
+                    coords = geocode_location(query)
+                    if coords:
+                        incident.update(coords)
 
             if "Longitude" in incident and "Latitude" in incident:
                 run_map_generator(incident)
@@ -889,7 +978,8 @@ def process_and_save_incident(incident):
         save_or_update_incident(incident)
         return str(incident_no)
     except Exception as inc_e:
-        safe_print(f"Error processing incident {incident.get('No.')}: {inc_e}")
+        inc_id = incident.get('No.', 'unknown') if isinstance(incident, dict) else 'unknown'
+        safe_print(f"Error processing incident {inc_id}: {inc_e}")
         return None
 
 def monitor_traffic_data(interval=15):
@@ -905,11 +995,12 @@ def monitor_traffic_data(interval=15):
                 all_incidents = []
                 
                 # Parallelize scraping of all sources
-                with ThreadPoolExecutor(max_workers=3) as executor:
+                with ThreadPoolExecutor(max_workers=4) as executor:
                     futures = {
                         executor.submit(scrape_chp_incidents): "CHP",
                         executor.submit(scrape_sdpd_incidents): "SDPD",
                         executor.submit(scrape_sdfd_incidents): "SDFD",
+                        executor.submit(scrape_sdso_incidents): "SDSO",
                     }
                     for future in as_completed(futures):
                         source = futures[future]

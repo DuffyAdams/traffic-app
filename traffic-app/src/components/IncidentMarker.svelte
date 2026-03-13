@@ -61,7 +61,9 @@
             ? "#ff3333"
             : incident.source === "SDPD"
               ? "#3366ff"
-              : "#ffaa33"; // Default for CHP/Traffic
+              : incident.source === "SDSO"
+                ? "#00ccff"
+                : "#ffaa33"; // Default for CHP/Traffic
 
     // Dim the color if inactive
     $: iconColor = incident.active ? sourceColor : "#666666";
@@ -84,7 +86,7 @@
             ? 1
             : incident.active
               ? activeOpacity
-              : 0.3;
+              : 0.65;
 
     const severityConfig = {
         1: { label: "MINOR", color: "#64748b" },
@@ -286,8 +288,8 @@
         width: 16px;
         height: 16px;
         box-shadow: none;
-        border: 1px solid rgba(150, 150, 150, 0.3);
-        opacity: 0.6;
+        border: 1px solid rgba(150, 150, 150, 0.4);
+        opacity: 0.85;
         background-color: rgba(20, 20, 20, 0.8);
     }
 

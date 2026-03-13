@@ -21,14 +21,18 @@
 
     let showCHP = true;
     let showSDPD = true;
+    let showSDSO = true;
     let showSDFD = true;
-    let showInactive = true;
 
     function toggleFilter(source) {
         if (source === "CHP") showCHP = !showCHP;
-        else if (source === "SDPD") showSDPD = !showSDPD;
+        else if (source === "POLICE") {
+            // Toggle both Police and Sheriff together based on Police's current state
+            const toggledState = !showSDPD;
+            showSDPD = toggledState;
+            showSDSO = toggledState;
+        }
         else if (source === "SDFD") showSDFD = !showSDFD;
-        else if (source === "INACTIVE") showInactive = !showInactive;
         updateMarkers();
     }
 
@@ -63,24 +67,17 @@
     const PMTILES_URL = "/map_tiles/sandiego.pmtiles";
 
     $: {
-        const now = Date.now();
-        const fourHoursMs = 4 * 60 * 60 * 1000;
-
-        // Show all active incidents + inactive within last 4 hours, filtered by source
+        // Show all active incidents, filtered by source
         activeIncidents = allIncidents
             .filter((inc) => {
                 if (!inc.latitude || !inc.longitude) return false;
                 // Source filter
                 if (inc.source === "CHP" && !showCHP) return false;
                 if (inc.source === "SDPD" && !showSDPD) return false;
+                if (inc.source === "SDSO" && !showSDSO) return false;
                 if (inc.source === "SDFD" && !showSDFD) return false;
-                if (inc.active) return true;
-                // Inactive: only show if within last 4 hours (or 8 hours for Sig alerts)
-                const incTime = new Date(inc.timestamp).getTime();
-                const isSigAlert =
-                    inc.type && inc.type.toLowerCase().includes("sig");
-                const maxAgeMs = isSigAlert ? fourHoursMs * 2 : fourHoursMs;
-                return now - incTime <= maxAgeMs;
+                
+                return inc.active;
             })
             .sort(
                 (a, b) =>
@@ -725,6 +722,7 @@
     function getSourceColor(source) {
         if (source === "CHP") return "#ffaa33";
         if (source === "SDPD") return "#3366ff";
+        if (source === "SDSO") return "#00ccff"; // Distinct cyan color for sheriff
         if (source === "SDFD") return "#ff3333";
         return "#888888";
     }
@@ -747,14 +745,14 @@
             </button>
             <button
                 class="filter-btn"
-                class:active={showSDPD}
-                on:click={() => toggleFilter("SDPD")}
+                class:active={showSDPD && showSDSO}
+                on:click={() => toggleFilter("POLICE")}
             >
                 <span
                     class="filter-dot"
-                    style="background: {showSDPD ? '#3366ff' : '#555'};"
+                    style="background: {(showSDPD && showSDSO) ? 'linear-gradient(135deg, #3366ff 50%, #00ccff 50%)' : '#555'};"
                 ></span>
-                POLICE
+                POLICE / SHERIFF
             </button>
             <button
                 class="filter-btn"
@@ -766,18 +764,6 @@
                     style="background: {showSDFD ? '#ff3333' : '#555'};"
                 ></span>
                 FIRE
-            </button>
-            <button
-                class="filter-btn"
-                class:active={showInactive}
-                on:click={() => toggleFilter("INACTIVE")}
-            >
-                <span
-                    class="filter-dot"
-                    style="background: {showInactive ? '#888888' : '#555'};"
-                ></span>
-                INACTIVE
-            </button>
         </div>
     </div>
 

@@ -138,6 +138,10 @@ export function getIconForIncidentType(type) {
         "REPORT OF DEATH": "skull",
         "PRISONER IN CUSTODY": "lock",
         "MENTAL CASE": "brain",
+        // Sheriff Types
+        "ABANDONED VEHICLE": "car-off",
+        "REPORT - 459 BURGLARY, VEHICLE": "car",
+        "DISTURBANCE": "volume-2",
         // Fire Types
         "MEDICAL": "activity",
         "STRUCTURE FIRE": "flame",

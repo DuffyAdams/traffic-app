@@ -23,7 +23,12 @@
     <button
         class="source-tab"
         class:active={activeSource === "SDPD"}
-        on:click={() => setSourceFilter("SDPD")}>Police</button
+        on:click={() => setSourceFilter("SDPD")}>SDPD</button
+    >
+    <button
+        class="source-tab"
+        class:active={activeSource === "SDSO"}
+        on:click={() => setSourceFilter("SDSO")}>Sheriff</button
     >
     <button
         class="source-tab"
