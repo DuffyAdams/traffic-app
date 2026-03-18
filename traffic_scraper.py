@@ -1487,7 +1487,7 @@ def run_scraper_and_server():
     scraper_thread = threading.Thread(target=monitor_traffic_data, daemon=True)
     scraper_thread.start()
     safe_print("Starting Flask server...")
-    app.run(debug=False, host="0.0.0.0", port=5002, threaded=True)
+    app.run(debug=False, host="127.0.0.1", port=5002, threaded=True)
 
 if __name__ == "__main__":
     safe_print("Traffic Alert System Starting...")

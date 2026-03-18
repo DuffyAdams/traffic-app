@@ -7,6 +7,7 @@
         formatTimeOnly,
         truncateDescription,
         formatCommentTimestamp,
+        highlightFuzzy,
     } from "../utils/helpers.js";
     import CommentOverlay from "./CommentOverlay.svelte";
     import { fly } from "svelte/transition";
@@ -23,8 +24,8 @@
     import { mapPanTo } from "../stores/appStore.js";
 
     export let posts = [];
-
     export let expandedPostId = null;
+    export let searchQuery = "";
 
     const dispatch = createEventDispatcher();
 
@@ -130,7 +131,7 @@
                 >
                     <IncidentIcon type={post.type} />
                 </span>
-                <span class="incident-type-small">{post.type}</span>
+                <span class="incident-type-small">{@html highlightFuzzy(post.type, searchQuery)}</span>
             </div>
             <div class="table-cell time-cell">
                 <span class="full-time">{post.time}</span>
@@ -148,7 +149,7 @@
                     (e.key === "Enter" || e.key === " ") &&
                     handleLocationClick(e, post)}
             >
-                {post.location}
+                {@html highlightFuzzy(post.location, searchQuery)}
             </div>
             <div class="table-cell status-cell">
                 {#if post.active}
@@ -177,9 +178,9 @@
                         <div class="post-description">
                             {#if post.description}
                                 <span class="description-text">
-                                    {post.showFullDescription
-                                        ? post.description
-                                        : truncateDescription(post.description)}
+                                    {@html post.showFullDescription
+                                        ? highlightFuzzy(post.description, searchQuery)
+                                        : highlightFuzzy(truncateDescription(post.description), searchQuery)}
                                 </span>
                                 {#if post.description.length > 200}
                                     <button

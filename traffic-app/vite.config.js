@@ -7,7 +7,7 @@ export default defineConfig({
     include: ['lucide-svelte']
   },
   server: {
-    host: '0.0.0.0', // Important for exposure
+    host: '127.0.0.1', // Locked to local network only for security
     port: 5173, // Optional: lock to specific port
     proxy: {
       '/api': {

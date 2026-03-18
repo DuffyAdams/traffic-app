@@ -169,3 +169,29 @@ export function calculateNiceStepSize(data) {
 
     return niceStep * magnitude;
 }
+
+// Highlight matched search queries
+export function highlightFuzzy(text, query) {
+    if (!text) return "";
+    const escapedText = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    if (!query || query.trim() === "") return escapedText;
+
+    const q = query.trim().toLowerCase();
+    
+    if (escapedText.toLowerCase().includes(q)) {
+        const escapedQ = q.replace(/[-/\\\\^$*+?.()|[\\]{}]/g, '\\\\$&');
+        const regex = new RegExp(`(${escapedQ})`, "gi");
+        return escapedText.replace(regex, '<mark class="search-highlight">$1</mark>');
+    }
+
+    const words = q.split(/\\s+/).filter(Boolean);
+    let highlightedText = escapedText;
+    for (const word of words) {
+        if (word.length > 0) {
+            const escapedWord = word.replace(/[-/\\\\^$*+?.()|[\\]{}]/g, '\\\\$&');
+            const regex = new RegExp(`(${escapedWord})`, "gi");
+            highlightedText = highlightedText.replace(regex, '<mark class="search-highlight">$1</mark>');
+        }
+    }
+    return highlightedText;
+}

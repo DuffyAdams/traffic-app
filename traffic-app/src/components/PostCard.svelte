@@ -6,6 +6,7 @@
         getIconForIncidentType,
         formatTimestamp,
         truncateDescription,
+        highlightFuzzy,
     } from "../utils/helpers.js";
     import Zap from "lucide-svelte/icons/zap";
     import Clock from "lucide-svelte/icons/clock";
@@ -23,6 +24,7 @@
     export let post;
     export let index = 0;
     export let postsPerPage = 30;
+    export let searchQuery = "";
 
     const dispatch = createEventDispatcher();
 
@@ -144,7 +146,7 @@
                 <span class="incident-icon">
                     <IncidentIcon type={post.type} />
                 </span>
-                <span class="incident-type">{post.type}</span>
+                <span class="incident-type">{@html highlightFuzzy(post.type, searchQuery)}</span>
             </div>
             {#if post.active}
                 <div class="active-badge">
@@ -217,7 +219,7 @@
                     on:click={handleLocationClick}
                 >
                     <MapPin size={14} />
-                    {post.location}
+                    {@html highlightFuzzy(post.location, searchQuery)}
                 </span>
             </div>
             <div
@@ -242,9 +244,9 @@
                 {/if}
                 {#if post.description}
                     <span class="description-text">
-                        {post.showFullDescription
-                            ? post.description
-                            : truncateDescription(post.description)}
+                        {@html post.showFullDescription
+                            ? highlightFuzzy(post.description, searchQuery)
+                            : highlightFuzzy(truncateDescription(post.description), searchQuery)}
                     </span>
                     {#if post.description.length > 200}
                         <button
@@ -311,6 +313,15 @@
 </div>
 
 <style>
+    :global(.search-highlight) {
+        background-color: color-mix(in srgb, var(--accent-primary) 40%, transparent);
+        color: var(--text-main);
+        padding: 0 0.15rem;
+        border-radius: 3px;
+        font-weight: 700;
+        box-shadow: inset 0 0 0 1px var(--accent-primary);
+    }
+
     .post {
         flex: 0 0 calc(33.333% - 1.5rem);
         min-width: 300px;

@@ -12,6 +12,7 @@
   import ViewToggle from "./components/ViewToggle.svelte";
   import SourceTabs from "./components/SourceTabs.svelte";
   import StatsPanel from "./components/StatsPanel.svelte";
+  import SearchBar from "./components/SearchBar.svelte";
   import MapTab from "./components/MapTab.svelte";
 
   // Import utilities
@@ -52,7 +53,27 @@
   let showEventCounters = false;
   let showActiveOnly = false;
   let timeFilter = "day";
+  let searchQuery = "";
   let seenCompositeKeys = new Set();
+
+  function fuzzyMatch(query, text) {
+      if (!query) return true;
+      if (!text) return false;
+      const q = query.toLowerCase();
+      const t = text.toLowerCase();
+      if (t.includes(q)) return true;
+      
+      const words = q.split(/\s+/).filter(Boolean);
+      return words.every(word => t.includes(word));
+  }
+
+  $: displayPosts = searchQuery
+      ? posts.filter(p => {
+          const searchSpace = `${p.description} ${p.location} ${p.type || ''} ${p.neighborhood || ''} ${p.id}`;
+          return fuzzyMatch(searchQuery, searchSpace);
+      })
+      : posts;
+
   let hourlyData = [];
   let historicalCurrentHourAverage = 0;
 
@@ -916,10 +937,19 @@
     on:toggleDarkMode={toggleDarkMode}
   />
 
-  <SourceTabs
-    {activeSource}
-    on:changeSource={(e) => setSourceFilter(e.detail)}
-  />
+  <div class="toolbar">
+    <div class="tabs-container">
+      <SourceTabs
+        {activeSource}
+        on:changeSource={(e) => setSourceFilter(e.detail)}
+      />
+    </div>
+    {#if activeSource !== "map"}
+      <div class="search-wrapper">
+        <SearchBar bind:value={searchQuery} />
+      </div>
+    {/if}
+  </div>
 
   <!-- Keep MapTab alive, just hide/show with CSS -->
   <div style={activeSource === "map" ? "" : "display:none"}>
@@ -963,13 +993,20 @@
       </div>
     {:else if posts.length === 0}
       <div class="empty-state" in:fade={{ duration: 150 }}>
-        <div class="empty-icon">🔍</div>
+        <div class="empty-icon">📂</div>
         <p>No incidents to display at the moment.</p>
         <p>Check back soon for updates.</p>
       </div>
+    {:else if displayPosts.length === 0}
+      <div class="empty-state" in:fade={{ duration: 150 }}>
+        <div class="empty-icon">🔍</div>
+        <p>No incidents match your search.</p>
+        <p>Try adjusting your query or loading more posts.</p>
+      </div>
     {:else if condensedView}
       <PostTable
-        {posts}
+        posts={displayPosts}
+        {searchQuery}
         {expandedPostId}
         on:toggleExpand={handleTableToggleExpand}
         on:closeComments={handleTableCloseComments}
@@ -982,11 +1019,12 @@
       />
     {:else}
       <div class="feed" in:fade={{ duration: 200 }}>
-        {#each posts as post, i (post.compositeId)}
+        {#each displayPosts as post, i (post.compositeId)}
           <PostCard
             {post}
             index={i}
             {postsPerPage}
+            {searchQuery}
             on:like={handlePostLike}
             on:toggleComments={handlePostToggleComments}
             on:share={handlePostShare}
@@ -996,24 +1034,24 @@
           />
         {/each}
       </div>
+    {/if}
 
-      {#if !allPostsLoaded && posts.length > 0 && posts.length >= postsPerPage}
-        <div
-          class="scroll-indicator"
-          in:fade={{ duration: 150 }}
-          on:click={forceLoadMore}
-          role="button"
-          tabindex="0"
-          on:keydown={(e) => e.key === "Enter" && forceLoadMore()}
-        >
-          <div class="scroll-dots">
-            <span class="dot"></span>
-            <span class="dot"></span>
-            <span class="dot"></span>
-          </div>
-          <p>More incidents available</p>
+    {#if !allPostsLoaded && posts.length > 0 && posts.length >= postsPerPage}
+      <div
+        class="scroll-indicator"
+        in:fade={{ duration: 150 }}
+        on:click={forceLoadMore}
+        role="button"
+        tabindex="0"
+        on:keydown={(e) => e.key === "Enter" && forceLoadMore()}
+      >
+        <div class="scroll-dots">
+          <span class="dot"></span>
+          <span class="dot"></span>
+          <span class="dot"></span>
         </div>
-      {/if}
+        <p>More incidents available</p>
+      </div>
     {/if}
   {/if}
 
@@ -1316,6 +1354,48 @@
       .container {
         padding: 0.5rem;
       }
+    }
+  }
+  
+  /* Toolbar layout */
+  .toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 0.8rem;
+    align-items: center;
+    position: relative;
+  }
+  
+  .tabs-container {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+  }
+
+  .search-wrapper {
+    width: 100%;
+    max-width: 400px;
+  }
+
+  @media (min-width: 768px) {
+    .toolbar {
+      flex-direction: row;
+      justify-content: center;
+      align-items: center;
+    }
+    .tabs-container {
+      width: auto;
+      flex: 0 1 auto;
+    }
+    .search-wrapper {
+      width: 250px;
+      flex-shrink: 0;
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      margin: 0;
     }
   }
 </style>
