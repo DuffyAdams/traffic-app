@@ -10,7 +10,7 @@ import hashlib
 import sqlite3
 import threading
 from typing import Optional, Dict, Tuple
-from geopy.geocoders import Nominatim
+from geopy.geocoders import Nominatim, ArcGIS
 
 # Thread lock for cache operations
 _cache_lock = threading.Lock()
@@ -19,12 +19,12 @@ _cache_lock = threading.Lock()
 _nominatim_lock = threading.Lock()
 _last_request_time = 0
 
-# San Diego bounding box (approximate metro area)
+# San Diego County bounding box
 SD_BOUNDS = {
     "min_lat": 32.5,
-    "max_lat": 33.3,
-    "min_lon": -117.6,
-    "max_lon": -116.9
+    "max_lat": 33.55,
+    "min_lon": -117.65,
+    "max_lon": -116.0
 }
 
 # Abbreviation expansion map
@@ -356,9 +356,47 @@ def geocode_location(
                 return result
                 
         except Exception as e:
-            debug_print(f"GEOCODE: Error for '{query}': {e}")
+            debug_print(f"GEOCODE (Nominatim): Error for '{query}': {e}")
     
-    debug_print(f"GEOCODE: All attempts failed for '{location_query}'")
+    debug_print(f"GEOCODE: Nominatim failed for '{location_query}', falling back to ArcGIS")
+    
+    try:
+        arcgis_geolocator = ArcGIS()
+        for query, precision in variations:
+            try:
+                debug_print(f"GEOCODE (ArcGIS): Trying '{query}'")
+                location = arcgis_geolocator.geocode(query)
+                
+                if location:
+                    lat, lon = location.latitude, location.longitude
+                    
+                    if not is_in_san_diego(lat, lon):
+                        debug_print(f"GEOCODE (ArcGIS): Rejected '{query}' - outside San Diego bounds ({lat}, {lon})")
+                        continue
+                    
+                    addr = location.address or ""
+                    if "California" not in addr and "San Diego" not in addr and "CA" not in addr:
+                        debug_print(f"GEOCODE (ArcGIS): Rejected '{query}' - address doesn't mention CA/SD: {addr[:80]}")
+                        continue
+                        
+                    debug_print(f"GEOCODE (ArcGIS): Success '{query}' -> ({lat}, {lon}) [precision={precision}]")
+                    
+                    result = {
+                        "Latitude": lat,
+                        "Longitude": lon,
+                        "precision": precision
+                    }
+                    
+                    if cache:
+                        cache.set(normalized, lat, lon, precision)
+                        
+                    return result
+            except Exception as e:
+                debug_print(f"GEOCODE (ArcGIS): Error for '{query}': {e}")
+    except Exception as e:
+        debug_print(f"GEOCODE (ArcGIS): Init error: {e}")
+        
+    debug_print(f"GEOCODE: All attempts (Nominatim + ArcGIS) failed for '{location_query}'")
     return None
 
 

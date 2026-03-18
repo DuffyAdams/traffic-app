@@ -38,7 +38,7 @@
     <button
         class="source-tab"
         class:active={activeSource === "map"}
-        on:click={() => setSourceFilter("map")}>Map</button
+        on:click={() => setSourceFilter("map")}>🗺️ Map</button
     >
 </div>
 
