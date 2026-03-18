@@ -338,13 +338,23 @@ def generate_description(data):
         if TESTMODE:
             return (f"Mock incident summary for {data.get('Location')}.", 5 if is_sig_alert else 2)
         else:
-            response = client.chat.completions.create(
-                model="mistralai/mistral-nemo",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message},
-                ]
-            )
+            try:
+                response = client.chat.completions.create(
+                    model="openrouter/hunter-alpha",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message},
+                    ]
+                )
+            except Exception as e:
+                safe_print(f"Primary model failed: {e}. Falling back to mistralai/mistral-nemo")
+                response = client.chat.completions.create(
+                    model="mistralai/mistral-nemo",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message},
+                    ]
+                )
             raw = response.choices[0].message.content.strip()
             # Try to parse structured JSON response
             try:
@@ -1487,7 +1497,13 @@ def run_scraper_and_server():
     scraper_thread = threading.Thread(target=monitor_traffic_data, daemon=True)
     scraper_thread.start()
     safe_print("Starting Flask server...")
-    app.run(debug=False, host="127.0.0.1", port=5002, threaded=True)
+    try:
+        app.run(debug=False, host="127.0.0.1", port=5002, threaded=True)
+    except Exception as e:
+        safe_print(f"Server error: {e}")
+        os._exit(1)
+    except SystemExit:
+        os._exit(1)
 
 if __name__ == "__main__":
     safe_print("Traffic Alert System Starting...")
@@ -1496,4 +1512,7 @@ if __name__ == "__main__":
     print(f"SQLite DB file: {DB_FILE}")
     if not os.path.exists(MAP_GENERATOR):
         print(f"WARNING: Map generator script not found at {MAP_GENERATOR}")
-    run_scraper_and_server()
+    try:
+        run_scraper_and_server()
+    except KeyboardInterrupt:
+        os._exit(0)
