@@ -7,12 +7,16 @@ import json
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# Import shared geocoding module
-from geocoding import GeocodingCache, geocode_location, normalize_street
+# Project root is one directory above scripts/ — needed for imports and paths
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, PROJECT_ROOT)
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_FILE = os.path.join(BASE_DIR, "traffic_data.db")
-TARGET_DIR = os.path.join(BASE_DIR, "traffic-app", "maps")
+# Import shared geocoding module (lives at project root)
+from geocoding import GeocodingCache, geocode_location, normalize_street  # noqa: E402
+
+BASE_DIR      = PROJECT_ROOT
+DB_FILE       = os.path.join(BASE_DIR, "traffic_data.db")
+TARGET_DIR    = os.path.join(BASE_DIR, "traffic-app", "maps")
 MAP_GENERATOR = os.path.join(BASE_DIR, "generate_map.py")
 
 # Initialize shared geocoding cache

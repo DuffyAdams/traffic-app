@@ -1,10 +1,13 @@
+import os
 import sqlite3
 import random
 from datetime import datetime, timedelta
 import uuid
 import json
 
-DB_FILE = "traffic_data.db"
+# Project root is one directory above scripts/
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_FILE = os.path.join(PROJECT_ROOT, "traffic_data.db")
 
 def add_mock_data():
     conn = sqlite3.connect(DB_FILE)

@@ -1,6 +1,7 @@
 import sqlite3
+import os
 
-DB_FILE = "/Users/duffyadams/Documents/traffic-app-repo/traffic-app/traffic_data.db"
+DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "traffic_data.db")
 
 def unify_collision_types():
     with sqlite3.connect(DB_FILE) as conn:
