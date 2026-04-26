@@ -23,6 +23,7 @@
     formatTimestamp,
     getIconForIncidentType,
     calculateNiceStepSize,
+    buildIncidentImagePath,
   } from "./utils/helpers.js";
 
   // Import stores
@@ -65,6 +66,42 @@
       
       const words = q.split(/\s+/).filter(Boolean);
       return words.every(word => t.includes(word));
+  }
+
+  function buildPostFromIncident(incident, existingPost = {}) {
+    const timestamp = incident.timestamp || existingPost.timestamp || "";
+    const date = timestamp ? new Date(timestamp).toLocaleDateString() : "";
+
+    return {
+      id: incident.incident_no ?? existingPost.id,
+      compositeId: `${incident.incident_no}-${date}`,
+      details: Array.isArray(incident.Details) ? incident.Details : [],
+      timestamp,
+      time: formatTimestamp(timestamp),
+      description: incident.description || "No description available",
+      showFullDescription: existingPost.showFullDescription ?? false,
+      location: incident.location || "Unknown location",
+      neighborhood: incident.neighborhood || "",
+      latitude: incident.latitude ?? null,
+      longitude: incident.longitude ?? null,
+      image: buildIncidentImagePath(incident.map_filename),
+      likes:
+        typeof incident.likes === "number"
+          ? incident.likes
+          : existingPost.likes ?? 0,
+      comments: Array.isArray(incident.comments)
+        ? incident.comments
+        : existingPost.comments ?? [],
+      newComment: existingPost.newComment ?? "",
+      showComments: existingPost.showComments ?? false,
+      type: incident.type || "Traffic Incident",
+      likeError: existingPost.likeError ?? "",
+      commentError: existingPost.commentError ?? "",
+      likeErrorAnimation: existingPost.likeErrorAnimation ?? false,
+      active: Boolean(incident.active),
+      liking: existingPost.liking ?? false,
+      severity: incident.severity ?? null,
+    };
   }
 
   $: displayPosts = searchQuery
@@ -339,29 +376,7 @@
         return true;
       })
       .map((incident) => ({
-        id: incident.incident_no,
-        compositeId: incident.compositeId,
-        details: Array.isArray(incident.Details) ? incident.Details : [],
-        timestamp: incident.timestamp,
-        time: formatTimestamp(incident.timestamp),
-        description: incident.description || "No description available",
-        showFullDescription: false,
-        location: incident.location || "Unknown location",
-        neighborhood: incident.neighborhood || "",
-        latitude: incident.latitude ?? null,
-        longitude: incident.longitude ?? null,
-        image: `/maps/${incident.map_filename}`,
-        likes: typeof incident.likes === "number" ? incident.likes : 0,
-        comments: Array.isArray(incident.comments) ? incident.comments : [],
-        newComment: "",
-        showComments: false,
-        type: incident.type || "Traffic Incident",
-        likeError: "",
-        commentError: "",
-        likeErrorAnimation: false,
-        active: Boolean(incident.active),
-        liking: false,
-        severity: incident.severity ?? null,
+        ...buildPostFromIncident(incident),
       }));
 
     const filteredPosts = showActiveOnly
@@ -856,50 +871,15 @@
           // Update the existing post's properties without treating it as new
           updatedPosts[existingIndex] = {
             ...updatedPosts[existingIndex],
-            details: Array.isArray(incident.Details) ? incident.Details : [],
-            description: incident.description || "No description available",
-            location: incident.location || "Unknown location",
-            neighborhood: incident.neighborhood || "",
-            active: Boolean(incident.active),
-            severity: incident.severity ?? null,
-            likes:
-              typeof incident.likes === "number"
-                ? incident.likes
-                : updatedPosts[existingIndex].likes,
+            ...buildPostFromIncident(incident, updatedPosts[existingIndex]),
           };
         } else {
           // It's a genuinely new post
           newPostsCount++;
-
-          const date = new Date(incident.timestamp).toLocaleDateString();
           const duplicateKey = `${incident.incident_no}-${incident.timestamp}-${incident.location}`;
           seenCompositeKeys.add(duplicateKey);
 
-          updatedPosts.unshift({
-            id: incident.incident_no,
-            compositeId: `${incident.incident_no}-${date}`,
-            details: Array.isArray(incident.Details) ? incident.Details : [],
-            timestamp: incident.timestamp,
-            time: formatTimestamp(incident.timestamp),
-            description: incident.description || "No description available",
-            showFullDescription: false,
-            location: incident.location || "Unknown location",
-            neighborhood: incident.neighborhood || "",
-            latitude: incident.latitude ?? null,
-            longitude: incident.longitude ?? null,
-            image: `/maps/${incident.map_filename}`,
-            likes: typeof incident.likes === "number" ? incident.likes : 0,
-            comments: Array.isArray(incident.comments) ? incident.comments : [],
-            newComment: "",
-            showComments: false,
-            type: incident.type || "Traffic Incident",
-            likeError: "",
-            commentError: "",
-            likeErrorAnimation: false,
-            active: Boolean(incident.active),
-            liking: false,
-            severity: incident.severity ?? null,
-          });
+          updatedPosts.unshift(buildPostFromIncident(incident));
         }
       });
 

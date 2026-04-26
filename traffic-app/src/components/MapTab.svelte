@@ -24,6 +24,74 @@
     let showSDSO = true;
     let showSDFD = true;
 
+    const SAN_DIEGO_BOUNDS = [
+        [-117.35, 32.45], // Southwest corner
+        [-116.75, 33.18], // Northeast corner
+    ];
+    const [BOUNDS_SW, BOUNDS_NE] = SAN_DIEGO_BOUNDS;
+    const RUBBER_BAND_RESISTANCE = 0.18;
+    const MIN_ZOOM = 10.5;
+
+    function clamp(value, min, max) {
+        return Math.min(max, Math.max(min, value));
+    }
+
+    function getClampedCenter(center) {
+        return new maplibregl.LngLat(
+            clamp(center.lng, BOUNDS_SW[0], BOUNDS_NE[0]),
+            clamp(center.lat, BOUNDS_SW[1], BOUNDS_NE[1]),
+        );
+    }
+
+    function getRubberBandCenter(center) {
+        let lng = center.lng;
+        let lat = center.lat;
+        let isOutside = false;
+
+        if (lng < BOUNDS_SW[0]) {
+            lng = BOUNDS_SW[0] + (lng - BOUNDS_SW[0]) * RUBBER_BAND_RESISTANCE;
+            isOutside = true;
+        } else if (lng > BOUNDS_NE[0]) {
+            lng = BOUNDS_NE[0] + (lng - BOUNDS_NE[0]) * RUBBER_BAND_RESISTANCE;
+            isOutside = true;
+        }
+
+        if (lat < BOUNDS_SW[1]) {
+            lat = BOUNDS_SW[1] + (lat - BOUNDS_SW[1]) * RUBBER_BAND_RESISTANCE;
+            isOutside = true;
+        } else if (lat > BOUNDS_NE[1]) {
+            lat = BOUNDS_NE[1] + (lat - BOUNDS_NE[1]) * RUBBER_BAND_RESISTANCE;
+            isOutside = true;
+        }
+
+        return {
+            center: new maplibregl.LngLat(lng, lat),
+            isOutside,
+        };
+    }
+
+    function softConstrain(lngLat, zoom) {
+        const { center } = getRubberBandCenter(lngLat);
+        return { center, zoom: Math.max(zoom, MIN_ZOOM) };
+    }
+
+    function snapBackToBounds(animated = true) {
+        if (!map) return;
+
+        const center = map.getCenter();
+        const clamped = getClampedCenter(center);
+        const needsSnap =
+            center.lng !== clamped.lng || center.lat !== clamped.lat;
+
+        if (!needsSnap) return;
+
+        map.easeTo({
+            center: clamped,
+            duration: animated ? 260 : 0,
+            essential: true,
+        });
+    }
+
     function toggleFilter(source) {
         if (source === "CHP") showCHP = !showCHP;
         else if (source === "POLICE") {
@@ -134,7 +202,7 @@
                     id: "background",
                     type: "background",
                     paint: {
-                        "background-color": "#08090a",
+                        "background-color": "rgba(8, 9, 10, 0)",
                     },
                 },
                 // ── Earth / Land ──
@@ -613,15 +681,14 @@
             container: mapContainer,
             style: style,
             center: [-117.1611, 32.7157], // San Diego coordinates
-            zoom: 10,
-            minZoom: 9,
+            zoom: 10.8,
+            minZoom: MIN_ZOOM,
             maxZoom: 18,
-            maxBounds: [
-                [-117.9, 32.2], // Southwest corner
-                [-116.5, 33.35], // Northeast corner
-            ],
+            renderWorldCopies: false,
             hash: false,
         });
+
+        map.setTransformConstrain(softConstrain);
 
         map.addControl(new maplibregl.NavigationControl(), "top-right");
 
@@ -647,6 +714,10 @@
         // Close the active marker if the user clicks anywhere on the map
         map.on("click", () => {
             $activeMarkerId = null;
+        });
+
+        map.on("dragend", () => {
+            snapBackToBounds(true);
         });
 
         return () => {
@@ -830,7 +901,13 @@
         border: 1px solid var(--border-color);
         overflow: hidden;
         position: relative;
-        background-color: #08090a;
+        background:
+            radial-gradient(
+                circle at 50% 45%,
+                rgba(51, 102, 255, 0.14) 0%,
+                rgba(8, 9, 10, 0.94) 58%,
+                #040506 100%
+            );
     }
 
     @media (min-width: 1024px) {

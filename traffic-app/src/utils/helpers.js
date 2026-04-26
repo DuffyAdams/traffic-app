@@ -64,6 +64,15 @@ export function formatTimeOnly(timestamp) {
 }
 export const formatTime = formatTimeOnly;
 
+export function buildIncidentImagePath(mapFilename) {
+    if (!mapFilename || typeof mapFilename !== "string") return "";
+
+    const trimmed = mapFilename.trim();
+    if (!trimmed) return "";
+
+    return trimmed.startsWith("/maps/") ? trimmed : `/maps/${trimmed}`;
+}
+
 // Format comment timestamp (relative time)
 export function formatCommentTimestamp(timestamp) {
     if (!timestamp) return "";
@@ -94,7 +103,7 @@ export function formatCommentTimestamp(timestamp) {
 // Truncate description text
 export function truncateDescription(text, length = 150) {
     if (!text) return '';
-    if (text.length <= 200) return text;
+    if (text.length <= length) return text;
 
     const lastSpaceIndex = text.lastIndexOf(' ', length);
     if (lastSpaceIndex === -1) return text.substring(0, length);

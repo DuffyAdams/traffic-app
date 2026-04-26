@@ -1,6 +1,18 @@
 <script>
     import { onMount } from "svelte";
-    import { Chart as ChartJS, CategoryScale, TimeScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler, LineController } from "chart.js";
+    import {
+        Chart as ChartJS,
+        CategoryScale,
+        TimeScale,
+        LinearScale,
+        PointElement,
+        LineElement,
+        Title,
+        Tooltip,
+        Legend,
+        Filler,
+        LineController,
+    } from "chart.js";
     import "chartjs-adapter-date-fns";
 
     export let data;
@@ -8,6 +20,19 @@
 
     let chart;
     let canvas;
+
+    ChartJS.register(
+        CategoryScale,
+        TimeScale,
+        LinearScale,
+        PointElement,
+        LineElement,
+        Title,
+        Tooltip,
+        Legend,
+        Filler,
+        LineController,
+    );
 
     onMount(() => {
         if (canvas) {
