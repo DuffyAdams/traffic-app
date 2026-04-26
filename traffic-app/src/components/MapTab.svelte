@@ -138,7 +138,7 @@
         // Show all active incidents, filtered by source
         activeIncidents = allIncidents
             .filter((inc) => {
-                if (!inc.latitude || !inc.longitude) return false;
+                if (inc.latitude == null || inc.longitude == null) return false;
                 // Source filter
                 if (inc.source === "CHP" && !showCHP) return false;
                 if (inc.source === "SDPD" && !showSDPD) return false;
@@ -167,9 +167,12 @@
         setTimeout(() => {
             if (map) {
                 map.resize();
+                const targetZoom = panData.preserveZoom
+                    ? map.getZoom()
+                    : 14;
                 map.flyTo({
                     center: [panData.longitude, panData.latitude],
-                    zoom: 14,
+                    zoom: targetZoom,
                     essential: true,
                     duration: 1200,
                 });
@@ -779,7 +782,7 @@
     }
 
     function panToIncident(incident) {
-        if (map && incident.longitude && incident.latitude) {
+        if (map && incident.longitude != null && incident.latitude != null) {
             map.flyTo({
                 center: [incident.longitude, incident.latitude],
                 zoom: 14,

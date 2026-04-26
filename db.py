@@ -117,6 +117,7 @@ def read_incidents(
     active_only=False,
     cursor=None,
     date_filter=None,
+    device_uuid=None,
 ):
     """Fetch incidents with optional filtering, cursor-based pagination, and embedded comments."""
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
@@ -154,6 +155,7 @@ def read_incidents(
 
         if incidents:
             _attach_comments(cur, incidents)
+            _attach_user_like_state(cur, incidents, device_uuid)
 
         return incidents
 
@@ -184,6 +186,24 @@ def _attach_comments(cur, incidents):
             inc["Details"] = json.loads(inc["details"]) if inc["details"] else []
         except Exception:
             inc["Details"] = []
+
+
+def _attach_user_like_state(cur, incidents, device_uuid):
+    """Annotate incidents with whether the current device has liked them."""
+    liked_incidents = set()
+
+    if device_uuid:
+        incident_nos = [inc["incident_no"] for inc in incidents]
+        placeholders = ",".join("?" for _ in incident_nos)
+        cur.execute(
+            f"SELECT incident_no FROM likes WHERE device_uuid = ? "
+            f"AND incident_no IN ({placeholders})",
+            (device_uuid, *incident_nos),
+        )
+        liked_incidents = {row[0] for row in cur.fetchall()}
+
+    for inc in incidents:
+        inc["liked_by_user"] = inc["incident_no"] in liked_incidents
 
 
 def incident_exists(incident_no, date):

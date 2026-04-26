@@ -53,6 +53,7 @@ def _set_uuid_cookie(response, device_uuid):
 
 @app.route("/api/incidents")
 def get_incidents():
+    device_uuid    = _get_or_create_uuid(request)
     limit         = int(request.args.get("limit", 20))
     cursor        = request.args.get("cursor")
     incident_types = request.args.getlist("type")
@@ -64,14 +65,11 @@ def get_incidents():
     incidents = read_incidents(
         limit=limit, cursor=cursor, incident_types=incident_types,
         locations=locations, sources=sources, active_only=active_only,
-        date_filter=date_filter,
+        date_filter=date_filter, device_uuid=device_uuid,
     )
 
     response = jsonify(incidents)
-    if COOKIE_NAME not in request.cookies:
-        device_uuid = str(uuid.uuid4())
-        _set_uuid_cookie(response, device_uuid)
-    return response
+    return _set_uuid_cookie(response, device_uuid)
 
 
 @app.route("/api/incident_stats")
@@ -281,10 +279,13 @@ def like_incident(incident_id):
         result = cur.fetchone()
         likes_count = result[0] if result else 0
 
-    response = jsonify({"likes": likes_count})
-    response.set_cookie(COOKIE_NAME, device_uuid, max_age=COOKIE_MAX_AGE,
-                        secure=False, httponly=True, samesite="Lax")
-    return response
+    response = jsonify(
+        {
+            "likes": likes_count,
+            "liked_by_user": request.method != "DELETE",
+        }
+    )
+    return _set_uuid_cookie(response, device_uuid)
 
 
 # ---------------------------------------------------------------------------

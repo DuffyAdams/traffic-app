@@ -2,7 +2,7 @@
     import { onMount } from "svelte";
     import { fade, scale } from "svelte/transition";
     import IncidentIcon from "./IncidentIcon.svelte";
-    import { activeMarkerId } from "../stores/appStore.js";
+    import { activeMarkerId, mapPanTo } from "../stores/appStore.js";
 
     export let incident;
 
@@ -39,7 +39,16 @@
         e.stopPropagation();
         if ($activeMarkerId === incident.id) {
             $activeMarkerId = null;
+            isHovered = false;
         } else {
+            if (incident.latitude != null && incident.longitude != null) {
+                mapPanTo.set({
+                    id: incident.id,
+                    latitude: incident.latitude,
+                    longitude: incident.longitude,
+                    preserveZoom: true,
+                });
+            }
             $activeMarkerId = incident.id;
         }
     }
@@ -137,13 +146,13 @@
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
-            class="hover-card"
-            class:show-below={showBelow}
-            class:is-clicked={isClicked}
-            transition:scale={{ duration: 150, start: 0.95 }}
-            style="border-color: {sourceColor}4d;"
-            on:click|stopPropagation
-        >
+        class="hover-card"
+        class:show-below={showBelow}
+        class:is-clicked={isClicked}
+        transition:scale={{ duration: 150, start: 0.95 }}
+        style="border-color: {sourceColor}4d;"
+        on:click={toggleClick}
+    >
             <div
                 class="card-header"
                 style="border-bottom-color: {sourceColor}33;"
@@ -167,6 +176,7 @@
                             on:click={(e) => {
                                 e.stopPropagation();
                                 $activeMarkerId = null;
+                                isHovered = false;
                             }}>×</button
                         >
                     {/if}

@@ -200,14 +200,14 @@
                         <div class="expanded-actions">
                             <button
                                 class="action-button like-button"
-                                class:liked={post.likes > 0}
+                                class:liked={post.likedByUser}
                                 class:like-error={post.likeErrorAnimation}
                                 on:click={(e) => handleLike(e, post.id)}
                             >
                                 <span class="button-icon">
                                     <Heart
                                         size={18}
-                                        fill={post.likes > 0
+                                        fill={post.likedByUser
                                             ? "currentColor"
                                             : "none"}
                                     />

@@ -101,6 +101,10 @@
       active: Boolean(incident.active),
       liking: existingPost.liking ?? false,
       severity: incident.severity ?? null,
+      likedByUser:
+        typeof incident.liked_by_user === "boolean"
+          ? incident.liked_by_user
+          : existingPost.likedByUser ?? false,
     };
   }
 
@@ -237,8 +241,9 @@
     if (currentController) {
       currentController.abort();
     }
-    currentController = new AbortController();
-    const signal = currentController.signal;
+    const controller = new AbortController();
+    currentController = controller;
+    const signal = controller.signal;
 
     try {
       if (currentPage === 1) {
@@ -336,7 +341,9 @@
           loadingMore = false;
         }
       }
-      currentController = null;
+      if (currentController === controller) {
+        currentController = null;
+      }
     }
   }
 
@@ -428,8 +435,9 @@
     if (statsController) {
       statsController.abort();
     }
-    statsController = new AbortController();
-    const signal = statsController.signal;
+    const controller = new AbortController();
+    statsController = controller;
+    const signal = controller.signal;
 
     try {
       let url = "/api/incident_stats?date_filter=" + timeFilter;
@@ -460,6 +468,8 @@
         );
         // Important: Create new array reference for caching to trigger Svelte reactivity
         hourlyData = [...(cachedStats.hourlyData || [])];
+        historicalCurrentHourAverage =
+          cachedStats.historicalCurrentHourAverage || 0;
         return;
       }
 
@@ -496,7 +506,9 @@
         addToast("Failed to load incident statistics.", "error");
       }
     } finally {
-      statsController = null;
+      if (statsController === controller) {
+        statsController = null;
+      }
     }
   }
 
@@ -507,13 +519,15 @@
     posts = posts.map((p) => (p.id === postId ? { ...p, liking: true } : p));
 
     const originalLikes = post.likes;
-    const wasLiked = post.likes > 0;
+    const wasLiked = Boolean(post.likedByUser);
+    const nextLikes = Math.max(0, originalLikes + (wasLiked ? -1 : 1));
 
     posts = posts.map((p) =>
       p.id === postId
         ? {
             ...p,
-            likes: wasLiked ? 0 : 1,
+            likes: nextLikes,
+            likedByUser: !wasLiked,
             likeError: "",
             likeErrorAnimation: false,
           }
@@ -533,21 +547,31 @@
       const data = await retryWithBackoff(fetchFn, 2, 500);
       posts = posts.map((p) =>
         p.id === postId
-          ? { ...p, likes: data.likes, likeError: "", liking: false }
+          ? {
+              ...p,
+              likes: data.likes,
+              likedByUser: Boolean(data.liked_by_user),
+              likeError: "",
+              liking: false,
+            }
           : p,
       );
     } catch (err) {
       console.error("Error updating like:", err);
-      if (wasLiked) {
-        posts = posts.map((p) =>
-          p.id === postId ? { ...p, liking: false } : p,
-        );
-      } else {
-        addToast("Failed to like post. Please try again.", "error");
-        posts = posts.map((p) =>
-          p.id === postId ? { ...p, likes: originalLikes, liking: false } : p,
-        );
-      }
+      addToast(
+        `Failed to ${wasLiked ? "unlike" : "like"} post. Please try again.`,
+        "error",
+      );
+      posts = posts.map((p) =>
+        p.id === postId
+          ? {
+              ...p,
+              likes: originalLikes,
+              likedByUser: wasLiked,
+              liking: false,
+            }
+          : p,
+      );
     }
   }
 
