@@ -26,13 +26,23 @@
     let currentTime = new Date();
     let hoveredIndex = null;
 
+    $: expectedBucketCount =
+        timeFilter === "day"
+            ? 24
+            : timeFilter === "week"
+              ? 7
+              : timeFilter === "month"
+                ? 30
+                : 12;
+    $: chartData = normalizeChartData(hourlyData, expectedBucketCount);
+
     // Div-based chart computations
-    $: maxValue = hourlyData && hourlyData.length ? Math.max(...hourlyData) : 0;
+    $: maxValue = chartData && chartData.length ? Math.max(...chartData) : 0;
     $: yMax = Math.max(maxValue * 1.15, 10);
 
     $: average =
-        hourlyData && hourlyData.length
-            ? hourlyData.reduce((a, b) => a + b, 0) / hourlyData.length
+        chartData && chartData.length
+            ? chartData.reduce((a, b) => a + b, 0) / chartData.length
             : 0;
     // Define spike relative to historical average for THIS exact hour/day-of-week
     // Using a floor of 2 to avoid dividing zeroes into infinity
@@ -50,14 +60,14 @@
             };
         }
 
-        if (!hourlyData || hourlyData.length === 0)
+        if (!chartData || chartData.length === 0)
             return {
                 text: "NO DATA",
                 color: "var(--text-muted)",
                 isLive: false,
                 hidden: false,
             };
-        const currentValue = hourlyData[hourlyData.length - 1];
+        const currentValue = chartData[chartData.length - 1];
 
         if (
             currentValue >= spikeThreshold &&
@@ -151,6 +161,13 @@
                           month: "short",
                       });
                   });
+
+    function normalizeChartData(values, expectedLength) {
+        const data = Array.isArray(values) ? values.map(Number) : [];
+        if (data.length === expectedLength) return data;
+        if (data.length > expectedLength) return data.slice(data.length - expectedLength);
+        return [...Array(expectedLength - data.length).fill(0), ...data];
+    }
 
     function setTimeFilter(newFilter) {
         dispatch("filterTime", newFilter);
@@ -248,9 +265,9 @@
         </div>
 
         <div class="custom-chart-container">
-            {#if hourlyData && hourlyData.length > 0}
+            {#if chartData && chartData.length > 0}
                 <div class="chart-bars">
-                    {#each hourlyData as value, i}
+                    {#each chartData as value, i (`${timeFilter}-${i}`)}
                         <!-- svelte-ignore a11y-no-static-element-interactions -->
                         <div
                             class="bar-wrapper"
@@ -629,6 +646,8 @@
     .live-badge {
         background-color: #ef4444;
         color: white;
+        display: inline-flex;
+        align-items: center;
         font-family: var(--font-mono);
         font-weight: bold;
         font-size: 0.7rem;

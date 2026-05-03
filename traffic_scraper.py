@@ -24,6 +24,15 @@ def safe_print(*args, **kwargs):
         print(*args, **kwargs)
         sys.stdout.flush()
 
+
+def looks_like_datetime(value):
+    if not value:
+        return False
+    return bool(
+        re.match(r"^\d{4}-\d{2}-\d{2}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$", value)
+        or re.match(r"^\d{1,2}/\d{1,2}/\d{2,4}(?:\s+\d{1,2}:\d{2})?", value)
+    )
+
 import requests
 from bs4 import BeautifulSoup
 import pytz
@@ -629,8 +638,20 @@ def scrape_sdpd_incidents():
             
         rows = table.find("tbody").find_all("tr")
         incidents = []
-        
-        headers = ["Call DateTime", "Call Type", "Division", "Neighborhood", "Block Address"]
+        header_cells = table.find_all("th")
+        header_map = {
+            cell.get_text(" ", strip=True).lower(): idx
+            for idx, cell in enumerate(header_cells)
+        }
+
+        def get_col(cols, *names, fallback=None):
+            for name in names:
+                idx = header_map.get(name.lower())
+                if idx is not None and idx < len(cols):
+                    return cols[idx]
+            if fallback is not None and fallback < len(cols):
+                return cols[fallback]
+            return ""
         
         for row in rows:
             cols = [ele.text.strip() for ele in row.find_all("td")]
@@ -642,11 +663,15 @@ def scrape_sdpd_incidents():
             if len(cols) < 5:
                 continue
                 
-            dt_str = cols[0]
-            call_type = cols[1]
-            division = cols[2]
-            neighborhood = cols[3]
-            address = cols[4]
+            dt_str = get_col(cols, "Call DateTime", "Call Date", "Date", fallback=0)
+            call_type = get_col(cols, "Call Type", "Type", "Incident Type", fallback=1)
+            division = get_col(cols, "Division", fallback=2)
+            neighborhood = get_col(cols, "Neighborhood", fallback=3)
+            address = get_col(cols, "Block Address", "Address", fallback=4)
+
+            if looks_like_datetime(call_type):
+                safe_print(f"WARNING: SDPD call type parsed as a date for row: {cols}")
+                call_type = "Police Incident"
             
             # Create a consistent ID using hash of date + address + type
             unique_str = f"{dt_str}_{address}_{call_type}"
@@ -835,8 +860,8 @@ def process_and_save_incident(incident):
                     if coords:
                         incident.update(coords)
 
-            if "Longitude" in incident and "Latitude" in incident:
-                run_map_generator(incident)
+            # Cards now render mini maps directly from lon/lat using local PMTiles,
+            # so new incidents no longer need Mapbox static images generated here.
         
         save_or_update_incident(incident)
         return str(incident_no)

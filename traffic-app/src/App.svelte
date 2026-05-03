@@ -97,6 +97,7 @@
   let statsCache = {};
   let statsController = null;
   let currentRequestId = 0;
+  let currentStatsRequestId = 0;
 
   // Touch/swipe handling
   let touchStartX = 0;
@@ -329,7 +330,7 @@
         neighborhood: incident.neighborhood || "",
         latitude: incident.latitude ?? null,
         longitude: incident.longitude ?? null,
-        image: `/maps/${incident.map_filename}`,
+        image: incident.map_filename ? `/maps/${incident.map_filename}` : "",
         likes: typeof incident.likes === "number" ? incident.likes : 0,
         comments: Array.isArray(incident.comments) ? incident.comments : [],
         newComment: "",
@@ -388,6 +389,8 @@
   }
 
   async function fetchIncidentStats() {
+    const requestId = ++currentStatsRequestId;
+
     if (statsController) {
       statsController.abort();
     }
@@ -406,6 +409,7 @@
         Date.now() - statsCache[cacheKey].timestamp < 30000
       ) {
         const cachedStats = statsCache[cacheKey].data;
+        if (requestId !== currentStatsRequestId) return;
         eventsToday = cachedStats.eventsToday;
         eventsLastHour = cachedStats.eventsLastHour;
         eventsActive = cachedStats.eventsActive;
@@ -422,7 +426,9 @@
           ),
         );
         // Important: Create new array reference for caching to trigger Svelte reactivity
-        hourlyData = [...(cachedStats.hourlyData || [])];
+        hourlyData = (cachedStats.hourlyData || []).map(Number);
+        historicalCurrentHourAverage =
+          cachedStats.historicalCurrentHourAverage || 0;
         return;
       }
 
@@ -437,6 +443,10 @@
       };
 
       const stats = await retryWithBackoff(fetchFn, 3, 1000);
+
+      if (requestId !== currentStatsRequestId) {
+        return;
+      }
 
       statsCache[cacheKey] = { data: stats, timestamp: Date.now() };
 
@@ -459,7 +469,9 @@
         addToast("Failed to load incident statistics.", "error");
       }
     } finally {
-      statsController = null;
+      if (requestId === currentStatsRequestId) {
+        statsController = null;
+      }
     }
   }
 
@@ -866,7 +878,7 @@
             description: incident.description || "No description available",
             showFullDescription: false,
             location: incident.location || "Unknown location",
-            image: `/maps/${incident.map_filename}`,
+            image: incident.map_filename ? `/maps/${incident.map_filename}` : "",
             likes: typeof incident.likes === "number" ? incident.likes : 0,
             comments: Array.isArray(incident.comments) ? incident.comments : [],
             newComment: "",
@@ -906,7 +918,7 @@
 
   <!-- Keep MapTab alive, just hide/show with CSS -->
   <div style={activeSource === "map" ? "" : "display:none"}>
-    <MapTab />
+    <MapTab isVisible={activeSource === "map"} />
   </div>
 
   {#if activeSource !== "map"}
