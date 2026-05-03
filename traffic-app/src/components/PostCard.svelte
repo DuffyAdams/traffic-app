@@ -20,6 +20,7 @@
     import { mapPanTo } from "../stores/appStore.js";
     import LazyImage from "./LazyImage.svelte";
     import LiveTimestamp from "./LiveTimestamp.svelte";
+    import IncidentMiniMap from "./IncidentMiniMap.svelte";
 
     export let post;
     export let index = 0;
@@ -168,7 +169,14 @@
                 class={`placeholder-container ${post.active ? "active" : ""}`}
                 style="--bg-color: {badgeColor}"
             >
-                {#if post.image && post.image !== "/maps/" && post.image !== "/maps/"}
+                {#if post.latitude != null && post.longitude != null}
+                    <IncidentMiniMap
+                        latitude={post.latitude}
+                        longitude={post.longitude}
+                        type={post.type}
+                        active={post.active}
+                    />
+                {:else if post.image && post.image !== "/maps/"}
                     <LazyImage
                         src={post.image}
                         alt="Incident location map"

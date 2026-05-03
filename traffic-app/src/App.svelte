@@ -159,6 +159,7 @@
   let statsCache = {};
   let statsController = null;
   let currentRequestId = 0;
+  let currentStatsRequestId = 0;
 
   // Touch/swipe handling
   let touchStartX = 0;
@@ -432,6 +433,8 @@
   }
 
   async function fetchIncidentStats() {
+    const requestId = ++currentStatsRequestId;
+
     if (statsController) {
       statsController.abort();
     }
@@ -451,6 +454,7 @@
         Date.now() - statsCache[cacheKey].timestamp < 30000
       ) {
         const cachedStats = statsCache[cacheKey].data;
+        if (requestId !== currentStatsRequestId) return;
         eventsToday = cachedStats.eventsToday;
         eventsLastHour = cachedStats.eventsLastHour;
         eventsActive = cachedStats.eventsActive;
@@ -467,7 +471,7 @@
           ),
         );
         // Important: Create new array reference for caching to trigger Svelte reactivity
-        hourlyData = [...(cachedStats.hourlyData || [])];
+        hourlyData = (cachedStats.hourlyData || []).map(Number);
         historicalCurrentHourAverage =
           cachedStats.historicalCurrentHourAverage || 0;
         return;
@@ -484,6 +488,10 @@
       };
 
       const stats = await retryWithBackoff(fetchFn, 3, 1000);
+
+      if (requestId !== currentStatsRequestId) {
+        return;
+      }
 
       statsCache[cacheKey] = { data: stats, timestamp: Date.now() };
 
@@ -506,7 +514,7 @@
         addToast("Failed to load incident statistics.", "error");
       }
     } finally {
-      if (statsController === controller) {
+      if (requestId === currentStatsRequestId) {
         statsController = null;
       }
     }
@@ -957,7 +965,7 @@
 
   <!-- Keep MapTab alive, just hide/show with CSS -->
   <div style={activeSource === "map" ? "" : "display:none"}>
-    <MapTab />
+    <MapTab isVisible={activeSource === "map"} />
   </div>
 
   {#if activeSource !== "map"}

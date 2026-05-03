@@ -4,18 +4,18 @@ Entry point for the Traffic Alert System.
 
 Structure
 ---------
-config.py     — constants, paths, Flask app, locks, clients
-logger.py     — thread-safe safe_print()
-db.py         — SQLite schema, CRUD operations
-llm.py        — LLM description + severity generation
+config.py     - constants, paths, Flask app, locks, clients
+logger.py     - thread-safe safe_print()
+db.py         - SQLite schema, CRUD operations
+llm.py        - LLM description + severity generation
 scrapers/
-  chp.py      — California Highway Patrol scraper
-  sdpd.py     — San Diego Police Department scraper
-  sdfd.py     — San Diego Fire Department scraper
-  sdso.py     — San Diego Sheriff's Office scraper
-monitor.py    — background monitoring loop + geocoding orchestration
-routes.py     — Flask API endpoints
-traffic_scraper.py  ← you are here (entry point only)
+  chp.py      - California Highway Patrol scraper
+  sdpd.py     - San Diego Police Department scraper
+  sdfd.py     - San Diego Fire Department scraper
+  sdso.py     - San Diego Sheriff's Office scraper
+monitor.py    - background monitoring loop + geocoding orchestration
+routes.py     - Flask API endpoints
+traffic_scraper.py  - you are here (entry point only)
 """
 
 import threading

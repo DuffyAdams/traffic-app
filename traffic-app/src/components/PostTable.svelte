@@ -21,6 +21,7 @@
     import Send from "lucide-svelte/icons/send";
     import IncidentIcon from "./IncidentIcon.svelte";
     import LazyImage from "./LazyImage.svelte";
+    import IncidentMiniMap from "./IncidentMiniMap.svelte";
     import { mapPanTo } from "../stores/appStore.js";
 
     export let posts = [];
@@ -167,12 +168,21 @@
             <div class="expanded-details" transition:slide={{ duration: 200 }}>
                 <div class="expanded-content">
                     <div class="expanded-image">
-                        <LazyImage
-                            src={post.image}
-                            alt="Incident location map"
-                            className=""
-                            priority={i < 3}
-                        />
+                        {#if post.latitude != null && post.longitude != null}
+                            <IncidentMiniMap
+                                latitude={post.latitude}
+                                longitude={post.longitude}
+                                type={post.type}
+                                active={post.active}
+                            />
+                        {:else}
+                            <LazyImage
+                                src={post.image}
+                                alt="Incident location map"
+                                className=""
+                                priority={i < 3}
+                            />
+                        {/if}
                     </div>
                     <div class="expanded-info">
                         <div class="post-description">
@@ -487,6 +497,7 @@
     .expanded-image {
         flex: 0 0 30%;
         max-width: 300px;
+        height: 200px;
         border-radius: 6px;
         overflow: hidden;
     }

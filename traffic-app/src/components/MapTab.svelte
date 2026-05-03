@@ -1,16 +1,15 @@
 <script>
     import { onMount, onDestroy, mount, unmount } from "svelte";
-    import maplibregl from "maplibre-gl";
-    import * as pmtiles from "pmtiles";
     import "maplibre-gl/dist/maplibre-gl.css";
 
     import IncidentMarker from "./IncidentMarker.svelte";
     import { formatTimestamp, formatTime } from "../utils/helpers.js";
     import { activeMarkerId, mapPanTo } from "../stores/appStore.js";
-    import { fade, slide } from "svelte/transition";
+    import { fade } from "svelte/transition";
 
     // We no longer rely on the parent's paginated feed.
     // MapTab fetches its own complete dataset.
+    export let isVisible = false;
     let allIncidents = [];
     let activeIncidents = [];
 
@@ -18,6 +17,10 @@
     let map;
     let markers = {}; // Store marker references by ID
     let refreshInterval;
+    let maplibregl = null;
+    let pmtiles = null;
+    let mapLibrariesPromise = null;
+    let isDestroyed = false;
 
     let showCHP = true;
     let showSDPD = true;
@@ -134,6 +137,39 @@
 
     const PMTILES_URL = "/map_tiles/sandiego.pmtiles";
 
+    async function loadMapLibraries() {
+        if (!mapLibrariesPromise) {
+            mapLibrariesPromise = Promise.all([
+                import("maplibre-gl"),
+                import("pmtiles"),
+            ]).then(([maplibreModule, pmtilesModule]) => {
+                maplibregl = maplibreModule.default;
+                pmtiles = pmtilesModule;
+                return { maplibregl, pmtiles };
+            });
+        }
+
+        return mapLibrariesPromise;
+    }
+
+    function startPolling() {
+        if (!map || refreshInterval || !isVisible) return;
+        fetchAllIncidents();
+        refreshInterval = setInterval(fetchAllIncidents, 60000);
+    }
+
+    function stopPolling() {
+        if (!refreshInterval) return;
+        clearInterval(refreshInterval);
+        refreshInterval = undefined;
+    }
+
+    $: if (isVisible && map) {
+        startPolling();
+    } else {
+        stopPolling();
+    }
+
     $: {
         // Show all active incidents, filtered by source
         activeIncidents = allIncidents
@@ -182,13 +218,19 @@
     }
 
     onMount(() => {
+        isDestroyed = false;
+
+        async function initializeMap() {
+            await loadMapLibraries();
+            if (isDestroyed || map || !mapContainer) return;
+
         // Add PMTiles protocol
-        let protocol = new pmtiles.Protocol();
-        maplibregl.addProtocol("pmtiles", protocol.tile);
+            let protocol = new pmtiles.Protocol();
+            maplibregl.addProtocol("pmtiles", protocol.tile);
 
         // DEFCON-style dark command center map
         /** @type {import('maplibre-gl').StyleSpecification} */
-        const style = {
+            const style = {
             version: 8,
             name: "DEFCON Dark",
             sources: {
@@ -680,57 +722,63 @@
             ],
         };
 
-        map = new maplibregl.Map({
-            container: mapContainer,
-            style: style,
-            center: [-117.1611, 32.7157], // San Diego coordinates
-            zoom: 10.8,
-            minZoom: MIN_ZOOM,
-            maxZoom: 18,
-            renderWorldCopies: false,
-            hash: false,
-        });
+            map = new maplibregl.Map({
+                container: mapContainer,
+                style: style,
+                center: [-117.1611, 32.7157], // San Diego coordinates
+                zoom: 10.8,
+                minZoom: MIN_ZOOM,
+                maxZoom: 18,
+                renderWorldCopies: false,
+                hash: false,
+            });
 
-        map.setTransformConstrain(softConstrain);
+            map.setTransformConstrain(softConstrain);
 
-        map.addControl(new maplibregl.NavigationControl(), "top-right");
+            map.addControl(new maplibregl.NavigationControl(), "top-right");
 
-        // Add geolocate control to the map
-        map.addControl(
-            new maplibregl.GeolocateControl({
-                positionOptions: {
-                    enableHighAccuracy: true,
-                },
-                trackUserLocation: true,
-            }),
-            "top-right",
-        );
+            // Add geolocate control to the map
+            map.addControl(
+                new maplibregl.GeolocateControl({
+                    positionOptions: {
+                        enableHighAccuracy: true,
+                    },
+                    trackUserLocation: true,
+                }),
+                "top-right",
+            );
 
-        // Fetch incidents immediately! Don't wait for large PMTiles maps or styles to finish loading or parsing
-        fetchAllIncidents();
-        refreshInterval = setInterval(fetchAllIncidents, 10000);
+            if (isVisible) {
+                startPolling();
+            }
 
-        map.on("load", () => {
-            console.log("MapLibre GL map loaded with PMTiles — DEFCON theme");
-        });
+            map.on("load", () => {
+                console.log("MapLibre GL map loaded with PMTiles — DEFCON theme");
+            });
 
-        // Close the active marker if the user clicks anywhere on the map
-        map.on("click", () => {
-            $activeMarkerId = null;
-        });
+            // Close the active marker if the user clicks anywhere on the map
+            map.on("click", () => {
+                $activeMarkerId = null;
+            });
 
-        map.on("dragend", () => {
-            snapBackToBounds(true);
-        });
+            map.on("dragend", () => {
+                snapBackToBounds(true);
+            });
+        }
+
+        void initializeMap();
 
         return () => {
-            if (refreshInterval) clearInterval(refreshInterval);
+            isDestroyed = true;
+            stopPolling();
             if (map) {
                 // Remove all markers before destroying map
                 Object.values(markers).forEach((m) => m.marker.remove());
                 map.remove();
             }
-            maplibregl.removeProtocol("pmtiles");
+            if (maplibregl) {
+                maplibregl.removeProtocol("pmtiles");
+            }
         };
     });
 
@@ -838,6 +886,7 @@
                     style="background: {showSDFD ? '#ff3333' : '#555'};"
                 ></span>
                 FIRE
+            </button>
         </div>
     </div>
 
@@ -854,7 +903,7 @@
                     class:selected={$activeMarkerId === incident.id}
                     class:inactive={!incident.active}
                     on:click={() => panToIncident(incident)}
-                    in:slide={{ duration: 200 }}
+                    in:fade={{ duration: 200 }}
                 >
                     <div class="log-item-header">
                         <span class="log-time"
