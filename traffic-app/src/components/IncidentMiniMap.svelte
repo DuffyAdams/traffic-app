@@ -1,7 +1,7 @@
 <script context="module">
     import "maplibre-gl/dist/maplibre-gl.css";
 
-    const MAX_ACTIVE_MINI_MAPS = 4;
+    const MAX_ACTIVE_MINI_MAPS = 8;
     let activeMiniMaps = [];
     let protocolRegistered = false;
     let mapLibPromise = null;
@@ -64,8 +64,11 @@
     let resizeObserver;
     let isNearViewport = false;
     let canRenderMap = false;
+    let mapReady = false;
+    let mapUnavailable = false;
     let isDestroyed = false;
     let initRequestId = 0;
+    let lastCoordinateKey = "";
 
     const incidentColors = {
         "Traffic Hazard": "#fbbf24",
@@ -121,6 +124,7 @@
 
     function requestMapSlot() {
         if (!isNearViewport) return;
+        mapUnavailable = false;
         claimMiniMapSlot(miniMapInstance);
         canRenderMap = true;
     }
@@ -151,6 +155,7 @@
         if (
             map ||
             !canRenderMap ||
+            mapUnavailable ||
             longitude == null ||
             latitude == null ||
             !mapContainer
@@ -165,6 +170,7 @@
             requestId !== initRequestId ||
             map ||
             !canRenderMap ||
+            mapUnavailable ||
             longitude == null ||
             latitude == null ||
             !mapContainer ||
@@ -174,17 +180,30 @@
         }
 
         ensureProtocol();
-        map = new maplibregl.Map({
-            container: mapContainer,
-            style: getStyle(),
-            center: [longitude, latitude],
-            zoom: MINI_MAP_ZOOM,
-            interactive: false,
-            attributionControl: false,
-            fadeDuration: 0,
-        });
+        mapReady = false;
+
+        try {
+            map = new maplibregl.Map({
+                container: mapContainer,
+                style: getStyle(),
+                center: [longitude, latitude],
+                zoom: MINI_MAP_ZOOM,
+                interactive: false,
+                attributionControl: false,
+                fadeDuration: 0,
+            });
+        } catch (error) {
+            console.warn("IncidentMiniMap: failed to create map", error);
+            handleMapUnavailable();
+            return;
+        }
 
         startResizeObserver();
+
+        map.once("error", (event) => {
+            console.warn("IncidentMiniMap: map failed to load", event?.error || event);
+            handleMapUnavailable();
+        });
 
         map.once("load", () => {
             updatePosition();
@@ -193,6 +212,10 @@
                     map.resize();
                 }
             });
+        });
+
+        map.once("idle", () => {
+            validateRenderedMap();
         });
     }
 
@@ -204,6 +227,39 @@
         if (!map) return;
         map.remove();
         map = null;
+        mapReady = false;
+    }
+
+    function handleMapUnavailable() {
+        mapUnavailable = true;
+        canRenderMap = false;
+        initRequestId++;
+        destroyMap();
+    }
+
+    function validateRenderedMap() {
+        if (!map || isDestroyed) return;
+
+        const renderedFeatures = map.queryRenderedFeatures({
+            layers: [
+                "earth",
+                "landuse_park",
+                "water",
+                "buildings",
+                "road_minor",
+                "road_major",
+                "road_highway_casing",
+                "road_highway",
+                "road_label_major",
+            ],
+        });
+
+        if (renderedFeatures.length === 0) {
+            handleMapUnavailable();
+            return;
+        }
+
+        mapReady = true;
     }
 
     function getStyle() {
@@ -376,6 +432,17 @@
         map.jumpTo({ center });
     }
 
+    function resetForCoordinateChange() {
+        const coordinateKey = `${latitude ?? ""},${longitude ?? ""}`;
+        if (coordinateKey === lastCoordinateKey) return;
+
+        lastCoordinateKey = coordinateKey;
+        mapUnavailable = false;
+        mapReady = false;
+        initRequestId++;
+        destroyMap(false);
+    }
+
     onMount(() => {
         isDestroyed = false;
         if (longitude == null || latitude == null) return;
@@ -405,6 +472,7 @@
         observer.observe(shell);
     });
 
+    $: resetForCoordinateChange();
     $: if (isNearViewport && canRenderMap && mapContainer) void createMap();
     $: updatePosition();
 
@@ -421,8 +489,13 @@
     bind:this={shell}
     style="--marker-color: {markerColor};"
 >
+    <div class="mini-map-fallback" aria-hidden="true">
+        <span class="fallback-road fallback-road-one"></span>
+        <span class="fallback-road fallback-road-two"></span>
+        <span class="fallback-road fallback-road-three"></span>
+    </div>
     {#if isNearViewport && canRenderMap}
-        <div class="mini-map" bind:this={mapContainer}></div>
+        <div class:ready={mapReady} class="mini-map" bind:this={mapContainer}></div>
     {/if}
     <div
         class:active
@@ -448,10 +521,76 @@
             #08090a;
     }
 
+    .mini-map-fallback,
     .mini-map {
+        position: absolute;
+        inset: 0;
         width: 100%;
         height: 100%;
+    }
+
+    .mini-map-fallback {
+        background:
+            linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+            linear-gradient(0deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+            radial-gradient(
+                circle at center,
+                color-mix(in srgb, var(--marker-color, #fbbf24) 16%, transparent),
+                transparent 34%
+            ),
+            linear-gradient(135deg, #0a1018, #07090d 62%, #10131a);
+        background-size:
+            36px 36px,
+            36px 36px,
+            auto,
+            auto;
+        opacity: 0.95;
+    }
+
+    .fallback-road {
+        position: absolute;
+        height: 3px;
+        border-radius: 999px;
+        background: rgba(74, 90, 120, 0.8);
+        box-shadow: 0 0 10px rgba(37, 99, 235, 0.16);
+        transform-origin: center;
+    }
+
+    .fallback-road-one {
+        left: -12%;
+        top: 30%;
+        width: 78%;
+        transform: rotate(-8deg);
+    }
+
+    .fallback-road-two {
+        right: -10%;
+        top: 58%;
+        width: 72%;
+        transform: rotate(11deg);
+    }
+
+    .fallback-road-three {
+        left: 44%;
+        top: -8%;
+        width: 3px;
+        height: 118%;
+        background: rgba(47, 102, 255, 0.75);
+        transform: rotate(-16deg);
+        box-shadow:
+            0 0 0 2px rgba(17, 47, 120, 0.35),
+            0 0 14px rgba(47, 102, 255, 0.45);
+    }
+
+    .mini-map {
         background: #08090a;
+        opacity: 0;
+        transition: opacity 160ms ease;
+        z-index: 1;
+    }
+
+    .mini-map.ready {
+        opacity: 1;
     }
 
     .mini-incident-icon {

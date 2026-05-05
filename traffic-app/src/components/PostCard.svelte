@@ -401,12 +401,14 @@
         border-bottom: 1px solid var(--border-color);
         background-color: #000;
         border-radius: 6px 6px 0 0;
+        isolation: isolate;
     }
 
     .placeholder-container {
         width: 100%;
         height: 100%;
         position: relative;
+        z-index: 0;
     }
 
     .placeholder-content {
@@ -440,7 +442,7 @@
         display: flex;
         align-items: center;
         gap: 0.4rem;
-        z-index: 1;
+        z-index: 5;
         transition: all 0.15s ease;
     }
 
@@ -483,7 +485,7 @@
         display: flex;
         align-items: center;
         gap: 0.25rem;
-        z-index: 1;
+        z-index: 5;
         border: 1px solid #ff4d4d;
         box-shadow: 0 0 10px rgba(255, 51, 51, 0.3);
     }
