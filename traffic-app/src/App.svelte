@@ -13,7 +13,6 @@
   import SourceTabs from "./components/SourceTabs.svelte";
   import StatsPanel from "./components/StatsPanel.svelte";
   import SearchBar from "./components/SearchBar.svelte";
-  import MapTab from "./components/MapTab.svelte";
 
   // Import utilities
   import {
@@ -56,6 +55,8 @@
   let timeFilter = "day";
   let searchQuery = "";
   let seenCompositeKeys = new Set();
+  let MapTabComponent = null;
+  let mapTabLoadPromise = null;
 
   function fuzzyMatch(query, text) {
       if (!query) return true;
@@ -124,12 +125,29 @@
   function setSourceFilter(source) {
     if (activeSource === source) return;
     activeSource = source;
+    if (source === "map") {
+      void ensureMapTabLoaded();
+      return;
+    }
     currentPage = 1;
     // Reset other filters as they might not apply
     // selectedTypes = new Set();
     // selectedLocations = new Set();
     fetchIncidents();
     fetchIncidentStats();
+  }
+
+  async function ensureMapTabLoaded() {
+    if (MapTabComponent) return MapTabComponent;
+    if (!mapTabLoadPromise) {
+      mapTabLoadPromise = import("./components/MapTab.svelte").then(
+        (module) => {
+          MapTabComponent = module.default;
+          return MapTabComponent;
+        },
+      );
+    }
+    return mapTabLoadPromise;
   }
 
   // Network status
@@ -824,9 +842,6 @@
     window.addEventListener("offline", updateOnlineStatus);
     updateOnlineStatus();
 
-    fetchIncidents();
-    fetchIncidentStats();
-
     // Removed 60s fetchIncidents interval to prevent screen wiping
 
     window.addEventListener("scroll", debouncedHandleScroll);
@@ -963,10 +978,16 @@
     {/if}
   </div>
 
-  <!-- Keep MapTab alive, just hide/show with CSS -->
-  <div style={activeSource === "map" ? "" : "display:none"}>
-    <MapTab isVisible={activeSource === "map"} />
-  </div>
+  {#if activeSource === "map" && !MapTabComponent}
+    <div class="map-loading">Loading map...</div>
+  {/if}
+
+  <!-- Load the map tab lazily, then keep it mounted after the first open -->
+  {#if MapTabComponent}
+    <div style={activeSource === "map" ? "" : "display:none"}>
+      <svelte:component this={MapTabComponent} isVisible={activeSource === "map"} />
+    </div>
+  {/if}
 
   {#if activeSource !== "map"}
     {#if showEventCounters}
