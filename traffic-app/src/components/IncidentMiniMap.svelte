@@ -34,10 +34,21 @@
         activeMiniMaps.push(instance);
 
         while (activeMiniMaps.length > MAX_ACTIVE_MINI_MAPS) {
-            const oldest = activeMiniMaps.shift();
-            if (oldest && oldest !== instance) {
-                oldest.deactivate();
+            const evictionIndex = activeMiniMaps.findIndex(
+                (item) =>
+                    item !== instance &&
+                    (!item.isNearViewport() || !item.isMapReady()),
+            );
+
+            if (evictionIndex === -1) {
+                // Keep already-visible ready maps alive even if we temporarily
+                // exceed the soft cap, otherwise live cards blur when new
+                // incidents mount above them.
+                break;
             }
+
+            const [evicted] = activeMiniMaps.splice(evictionIndex, 1);
+            evicted?.deactivate();
         }
     }
 
@@ -56,7 +67,7 @@
     export let active = false;
 
     const PMTILES_URL = "/map_tiles/sandiego.pmtiles";
-    const MINI_MAP_ZOOM = 12.8;
+    const MINI_MAP_ZOOM = 12.1;
     let shell;
     let mapContainer;
     let map;
@@ -65,6 +76,7 @@
     let isNearViewport = false;
     let canRenderMap = false;
     let mapReady = false;
+    let hasRenderedOnce = false;
     let mapUnavailable = false;
     let isDestroyed = false;
     let initRequestId = 0;
@@ -119,6 +131,12 @@
         deactivate() {
             canRenderMap = false;
             destroyMap(false);
+        },
+        isNearViewport() {
+            return isNearViewport;
+        },
+        isMapReady() {
+            return mapReady;
         },
     };
 
@@ -260,6 +278,7 @@
         }
 
         mapReady = true;
+        hasRenderedOnce = true;
     }
 
     function getStyle() {
@@ -486,16 +505,27 @@
 
 <div
     class="mini-map-shell"
+    class:loading={!mapReady && !hasRenderedOnce}
     bind:this={shell}
     style="--marker-color: {markerColor};"
 >
-    <div class="mini-map-fallback" aria-hidden="true">
+    <div
+        class:ready={mapReady}
+        class:loaded-before={hasRenderedOnce}
+        class="mini-map-fallback"
+        aria-hidden="true"
+    >
         <span class="fallback-road fallback-road-one"></span>
         <span class="fallback-road fallback-road-two"></span>
         <span class="fallback-road fallback-road-three"></span>
     </div>
     {#if isNearViewport && canRenderMap}
-        <div class:ready={mapReady} class="mini-map" bind:this={mapContainer}></div>
+        <div
+            class:ready={mapReady}
+            class:loaded-before={hasRenderedOnce}
+            class="mini-map"
+            bind:this={mapContainer}
+        ></div>
     {/if}
     <div
         class:active
@@ -545,6 +575,24 @@
             auto,
             auto;
         opacity: 0.95;
+        filter: blur(14px);
+        transform: scale(1.05);
+        transition:
+            filter 220ms ease,
+            opacity 220ms ease,
+            transform 220ms ease;
+    }
+
+    .mini-map-fallback.ready {
+        opacity: 0.28;
+        filter: blur(0);
+        transform: scale(1);
+    }
+
+    .mini-map-fallback.loaded-before:not(.ready) {
+        opacity: 0.28;
+        filter: blur(0);
+        transform: scale(1);
     }
 
     .fallback-road {
@@ -585,20 +633,50 @@
     .mini-map {
         background: #08090a;
         opacity: 0;
+        filter: blur(16px);
+        transform: scale(1.04);
         transition: opacity 160ms ease;
         z-index: 1;
     }
 
     .mini-map.ready {
         opacity: 1;
+        filter: blur(0);
+        transform: scale(1);
+        transition:
+            opacity 160ms ease,
+            filter 220ms ease,
+            transform 220ms ease;
+    }
+
+    .mini-map.loaded-before:not(.ready) {
+        opacity: 1;
+        filter: blur(0);
+        transform: scale(1);
+    }
+
+    .mini-map-shell.loading::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        pointer-events: none;
+        background: linear-gradient(
+            90deg,
+            rgba(255, 255, 255, 0.03) 0%,
+            rgba(255, 255, 255, 0.08) 50%,
+            rgba(255, 255, 255, 0.03) 100%
+        );
+        background-size: 200% 100%;
+        animation: miniMapShimmer 1.6s linear infinite;
     }
 
     .mini-incident-icon {
         position: absolute;
         left: 50%;
         top: 50%;
-        width: 26px;
-        height: 26px;
+        width: 22px;
+        height: 22px;
         transform: translate(-50%, -50%);
         border-radius: 50%;
         display: flex;
@@ -608,14 +686,14 @@
         background: var(--marker-color);
         border: 2px solid #ffffff;
         box-shadow:
-            0 0 0 5px color-mix(in srgb, var(--marker-color) 20%, transparent),
-            0 0 18px color-mix(in srgb, var(--marker-color) 60%, transparent);
+            0 0 0 4px color-mix(in srgb, var(--marker-color) 20%, transparent),
+            0 0 16px color-mix(in srgb, var(--marker-color) 60%, transparent);
         z-index: 2;
     }
 
     .mini-incident-icon :global(svg) {
-        width: 15px;
-        height: 15px;
+        width: 13px;
+        height: 13px;
         stroke-width: 2.5;
     }
 
@@ -638,6 +716,15 @@
             box-shadow:
                 0 0 0 4px color-mix(in srgb, var(--marker-color) 0%, transparent),
                 0 0 15px color-mix(in srgb, var(--marker-color) 65%, transparent);
+        }
+    }
+
+    @keyframes miniMapShimmer {
+        0% {
+            background-position: -200% 0;
+        }
+        100% {
+            background-position: 200% 0;
         }
     }
 </style>
