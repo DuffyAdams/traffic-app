@@ -4,12 +4,16 @@ Database initialisation and all CRUD operations for the traffic app.
 """
 
 import json
+import re
 import sqlite3
 from datetime import datetime
 
 from config import DB_FILE, db_lock
 from logger import safe_print
 from llm import generate_description
+
+
+TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +252,18 @@ def save_or_update_incident(data):
     type_field = data.get("Type", "")
     if type_field and type_field.startswith("Trfc Collision"):
         type_field = "Traffic Collision"
+
+    # SDPD sometimes shifts its table so the incident datetime lands in `Type`
+    # and the actual label lands in `Location Desc.`. Recover that shape here.
+    if (
+        source == "SDPD"
+        and isinstance(type_field, str)
+        and TIMESTAMP_PATTERN.match(type_field)
+        and location_desc
+    ):
+        new_timestamp = type_field
+        date = type_field[:10]
+        type_field = location_desc
 
     new_details = data.get("Details", [])
     if isinstance(new_details, str):

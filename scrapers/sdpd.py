@@ -11,6 +11,49 @@ from config import SDPD_SCRAPE_URL, HEADERS
 from logger import safe_print
 
 
+def _looks_like_datetime(value):
+    if not value:
+        return False
+
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%m/%d/%Y %H:%M:%S", "%m/%d/%Y %I:%M:%S %p"):
+        try:
+            datetime.strptime(value, fmt)
+            return True
+        except ValueError:
+            continue
+
+    return False
+
+
+def _extract_sdpd_columns(cols):
+    """Normalize SDPD table rows across known layouts."""
+    if len(cols) < 5:
+        return None
+
+    # Current layout includes a leading empty control/details column:
+    # ["", datetime, call type, division, neighborhood, block address]
+    if len(cols) >= 6 and not cols[0] and _looks_like_datetime(cols[1]):
+        dt_str, call_type, division, neighborhood, address = cols[1:6]
+        # Preserve the historically-generated ID shape to avoid duplicate
+        # active SDPD rows after the scraper fix lands.
+        unique_str = f"_{division}_{dt_str}"
+        return dt_str, call_type, division, neighborhood, address, unique_str
+
+    # Fallback for a plain five-column layout with no control column.
+    if _looks_like_datetime(cols[0]):
+        dt_str, call_type, division, neighborhood, address = cols[:5]
+        unique_str = f"{dt_str}_{address}_{call_type}"
+        return dt_str, call_type, division, neighborhood, address, unique_str
+
+    # Defensive fallback if SDPD changes the DOM again but keeps datetime in col 1.
+    if len(cols) >= 6 and _looks_like_datetime(cols[1]):
+        dt_str, call_type, division, neighborhood, address = cols[1:6]
+        unique_str = f"{dt_str}_{address}_{call_type}"
+        return dt_str, call_type, division, neighborhood, address, unique_str
+
+    return None
+
+
 def scrape_sdpd_incidents():
     """Return a list of incident dicts from the SDPD online CAD table."""
     safe_print("Scraping SDPD incidents...")
@@ -26,12 +69,12 @@ def scrape_sdpd_incidents():
         incidents = []
         for row in table.find("tbody").find_all("tr"):
             cols = [ele.text.strip() for ele in row.find_all("td")]
-            if len(cols) < 5:
+            parsed = _extract_sdpd_columns(cols)
+            if not parsed:
                 continue
 
-            dt_str, call_type, division, neighborhood, address = cols[:5]
+            dt_str, call_type, division, neighborhood, address, unique_str = parsed
 
-            unique_str  = f"{dt_str}_{address}_{call_type}"
             incident_id = "SDPD-" + hashlib.md5(unique_str.encode()).hexdigest()[:8]
 
             try:

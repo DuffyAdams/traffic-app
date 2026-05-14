@@ -31,9 +31,25 @@
         [-117.35, 32.45], // Southwest corner
         [-116.75, 33.18], // Northeast corner
     ];
-    const [BOUNDS_SW, BOUNDS_NE] = SAN_DIEGO_BOUNDS;
+    const CONSTRAINT_PADDING = {
+        lng: 0.06,
+        lat: 0.04,
+    };
+    const CONSTRAINED_BOUNDS = [
+        [
+            SAN_DIEGO_BOUNDS[0][0] - CONSTRAINT_PADDING.lng,
+            SAN_DIEGO_BOUNDS[0][1] - CONSTRAINT_PADDING.lat,
+        ],
+        [
+            SAN_DIEGO_BOUNDS[1][0] + CONSTRAINT_PADDING.lng,
+            SAN_DIEGO_BOUNDS[1][1] + CONSTRAINT_PADDING.lat,
+        ],
+    ];
+    const [BOUNDS_SW, BOUNDS_NE] = CONSTRAINED_BOUNDS;
     const RUBBER_BAND_RESISTANCE = 0.18;
-    const MIN_ZOOM = 10.5;
+    const MIN_ZOOM = 9.2;
+    const INCIDENT_FOCUS_MIN_ZOOM = 12.5;
+    const INCIDENT_FOCUS_ZOOM = 14;
 
     function clamp(value, min, max) {
         return Math.min(max, Math.max(min, value));
@@ -76,6 +92,14 @@
     function softConstrain(lngLat, zoom) {
         const { center } = getRubberBandCenter(lngLat);
         return { center, zoom: Math.max(zoom, MIN_ZOOM) };
+    }
+
+    function getIncidentFocusZoom(preserveZoom = false) {
+        if (!map) return INCIDENT_FOCUS_ZOOM;
+
+        return preserveZoom
+            ? Math.max(map.getZoom(), INCIDENT_FOCUS_MIN_ZOOM)
+            : INCIDENT_FOCUS_ZOOM;
     }
 
     function snapBackToBounds(animated = true) {
@@ -203,9 +227,9 @@
         setTimeout(() => {
             if (map) {
                 map.resize();
-                const targetZoom = panData.preserveZoom
-                    ? map.getZoom()
-                    : 14;
+                const targetZoom = getIncidentFocusZoom(
+                    panData.preserveZoom,
+                );
                 map.flyTo({
                     center: [panData.longitude, panData.latitude],
                     zoom: targetZoom,
@@ -833,7 +857,7 @@
         if (map && incident.longitude != null && incident.latitude != null) {
             map.flyTo({
                 center: [incident.longitude, incident.latitude],
-                zoom: 14,
+                zoom: getIncidentFocusZoom(),
                 essential: true,
                 duration: 1200,
             });

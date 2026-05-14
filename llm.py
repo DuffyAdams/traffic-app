@@ -73,7 +73,7 @@ def _call_llm(system_prompt, user_message):
     ]
     try:
         return llm_client.chat.completions.create(
-            model="openrouter/hunter-alpha", messages=messages
+            model="deepseek/deepseek-v4-flash:free", messages=messages
         )
     except Exception as e:
         safe_print(f"Primary model failed: {e}. Falling back to mistralai/mistral-nemo")
