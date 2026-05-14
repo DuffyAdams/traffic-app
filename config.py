@@ -51,6 +51,20 @@ PARAMS = {"ddlComCenter": "BCCC"}
 COOKIE_NAME    = "traffic_app_uuid"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 365  # 1 year
 
+# ── Public API guardrails ────────────────────────────────────────────────────
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get(
+        "TRAFFIC_APP_ALLOWED_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
+    if origin.strip()
+]
+API_DEFAULT_RATE_LIMIT = os.environ.get("API_DEFAULT_RATE_LIMIT", "300 per minute")
+API_READ_RATE_LIMIT    = os.environ.get("API_READ_RATE_LIMIT", "120 per minute")
+API_WRITE_RATE_LIMIT   = os.environ.get("API_WRITE_RATE_LIMIT", "20 per minute")
+TRUST_PROXY_HEADERS    = os.environ.get("TRUST_PROXY_HEADERS", "false").lower() == "true"
+
 # ── OpenAI / OpenRouter client ───────────────────────────────────────────────
 GPT_KEY = os.getenv("GPT_KEY")
 llm_client = OpenAI(
@@ -67,4 +81,11 @@ print_lock = threading.Lock()
 
 # ── Flask app ─────────────────────────────────────────────────────────────────
 app = Flask(__name__, static_folder=os.path.join(BASE_DIR, "traffic-app", "dist"))
-CORS(app, resources={r"/api/*": {"origins": "*"}, r"/maps/*": {"origins": "*"}})
+app.config["MAX_CONTENT_LENGTH"] = 64 * 1024
+CORS(
+    app,
+    resources={
+        r"/api/*": {"origins": ALLOWED_ORIGINS},
+        r"/maps/*": {"origins": ALLOWED_ORIGINS},
+    },
+)

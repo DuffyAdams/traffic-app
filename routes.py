@@ -5,18 +5,37 @@ Import this module to register all routes on the shared `app` instance.
 """
 
 import sqlite3
+import time
 import uuid
 from datetime import datetime, timedelta
+from threading import Lock
 
 import requests
 from dateutil.relativedelta import relativedelta
-from flask import jsonify, request, send_from_directory
+from flask import abort, jsonify, request, send_from_directory
 
 from config import (
-    app, DB_FILE, TARGET_DIR, COOKIE_NAME, COOKIE_MAX_AGE, db_lock
+    app, DB_FILE, TARGET_DIR, COOKIE_NAME, COOKIE_MAX_AGE, db_lock,
+    API_READ_RATE_LIMIT, API_WRITE_RATE_LIMIT, TRUST_PROXY_HEADERS,
 )
 from db import read_incidents
 from logger import safe_print
+
+
+MAX_INCIDENT_LIMIT = 150
+MAX_FILTER_VALUES = 25
+MAX_FILTER_LENGTH = 80
+MAX_COMMENT_LENGTH = 500
+MAX_USERNAME_LENGTH = 40
+READ_CACHE_TTL = 20
+STATS_CACHE_TTL = 45
+ALLOWED_DATE_FILTERS = {None, "day", "daily", "week", "month", "year"}
+ALLOWED_SOURCES = {"CHP", "SDPD", "SDSO", "SDFD"}
+
+_response_cache = {}
+_cache_lock = Lock()
+_rate_limit_hits = {}
+_rate_limit_lock = Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -47,26 +66,146 @@ def _set_uuid_cookie(response, device_uuid):
     return response
 
 
+def _parse_limit(default=20, max_value=MAX_INCIDENT_LIMIT):
+    raw_limit = request.args.get("limit", str(default))
+    try:
+        limit = int(raw_limit)
+    except (TypeError, ValueError):
+        abort(400, description="Invalid limit")
+
+    return max(1, min(limit, max_value))
+
+
+def _clean_filter_values(name, allowed_values=None):
+    values = []
+    for raw_value in request.args.getlist(name)[:MAX_FILTER_VALUES]:
+        value = raw_value.strip()
+        if not value:
+            continue
+        if len(value) > MAX_FILTER_LENGTH:
+            abort(400, description=f"{name} value is too long")
+        if allowed_values and value not in allowed_values:
+            abort(400, description=f"Invalid {name} value")
+        values.append(value)
+    return values
+
+
+def _get_date_filter():
+    date_filter = request.args.get("date_filter")
+    if date_filter not in ALLOWED_DATE_FILTERS:
+        abort(400, description="Invalid date_filter")
+    return date_filter
+
+
+def _cache_key(prefix, *extra_parts):
+    args = tuple(
+        sorted(
+            (key, tuple(sorted(value.strip() for value in values)))
+            for key, values in request.args.lists()
+        )
+    )
+    return (prefix, args, extra_parts)
+
+
+def _get_cached_response(key):
+    now = time.time()
+    with _cache_lock:
+        cached = _response_cache.get(key)
+        if not cached:
+            return None
+        expires_at, payload = cached
+        if expires_at <= now:
+            _response_cache.pop(key, None)
+            return None
+        return payload
+
+
+def _set_cached_response(key, payload, ttl):
+    with _cache_lock:
+        _response_cache[key] = (time.time() + ttl, payload)
+
+
+def _clear_response_cache():
+    with _cache_lock:
+        _response_cache.clear()
+
+
+def _validate_incident_id(incident_id):
+    if not incident_id or len(incident_id) > 80:
+        abort(400, description="Invalid incident id")
+    return incident_id
+
+
+def _parse_rate_limit(limit_spec):
+    count_part, _, period_part = limit_spec.partition(" per ")
+    try:
+        max_requests = int(count_part.strip())
+    except ValueError:
+        max_requests = 60
+
+    period = period_part.strip().lower()
+    if period.startswith("hour"):
+        window_seconds = 3600
+    elif period.startswith("second"):
+        window_seconds = 1
+    else:
+        window_seconds = 60
+
+    return max_requests, window_seconds
+
+
+def _client_ip():
+    forwarded_for = request.headers.get("X-Forwarded-For", "")
+    if TRUST_PROXY_HEADERS and forwarded_for:
+        return forwarded_for.split(",", 1)[0].strip()
+    return request.remote_addr or "unknown"
+
+
+def _enforce_rate_limit(bucket, limit_spec):
+    max_requests, window_seconds = _parse_rate_limit(limit_spec)
+    now = time.time()
+    key = (_client_ip(), bucket)
+
+    with _rate_limit_lock:
+        window = [
+            hit_at
+            for hit_at in _rate_limit_hits.get(key, [])
+            if now - hit_at < window_seconds
+        ]
+        if len(window) >= max_requests:
+            abort(429, description="Too many requests")
+        window.append(now)
+        _rate_limit_hits[key] = window
+
+
 # ---------------------------------------------------------------------------
 # Incident list & stats
 # ---------------------------------------------------------------------------
 
 @app.route("/api/incidents")
 def get_incidents():
+    _enforce_rate_limit("read", API_READ_RATE_LIMIT)
     device_uuid    = _get_or_create_uuid(request)
-    limit         = int(request.args.get("limit", 20))
+    limit         = _parse_limit()
     cursor        = request.args.get("cursor")
-    incident_types = request.args.getlist("type")
-    locations     = request.args.getlist("location")
-    sources       = request.args.getlist("source")
+    if cursor and len(cursor) > 120:
+        abort(400, description="Invalid cursor")
+    incident_types = _clean_filter_values("type")
+    locations     = _clean_filter_values("location")
+    sources       = _clean_filter_values("source", ALLOWED_SOURCES)
     active_only   = request.args.get("active_only", "false").lower() == "true"
-    date_filter   = request.args.get("date_filter")
+    date_filter   = _get_date_filter()
 
-    incidents = read_incidents(
-        limit=limit, cursor=cursor, incident_types=incident_types,
-        locations=locations, sources=sources, active_only=active_only,
-        date_filter=date_filter, device_uuid=device_uuid,
-    )
+    cache_key = _cache_key("incidents", device_uuid)
+    incidents = _get_cached_response(cache_key)
+    if incidents is None:
+        incidents = read_incidents(
+            limit=limit, cursor=cursor, incident_types=incident_types,
+            locations=locations, sources=sources, active_only=active_only,
+            date_filter=date_filter, device_uuid=device_uuid,
+        )
+        _set_cached_response(cache_key, incidents, READ_CACHE_TTL)
+
 
     response = jsonify(incidents)
     return _set_uuid_cookie(response, device_uuid)
@@ -74,8 +213,14 @@ def get_incidents():
 
 @app.route("/api/incident_stats")
 def get_incident_stats():
-    date_filter = request.args.get("date_filter")
-    sources     = request.args.getlist("source")
+    _enforce_rate_limit("read", API_READ_RATE_LIMIT)
+    date_filter = _get_date_filter()
+    sources     = _clean_filter_values("source", ALLOWED_SOURCES)
+
+    cache_key = _cache_key("incident_stats")
+    cached_payload = _get_cached_response(cache_key)
+    if cached_payload is not None:
+        return jsonify(cached_payload)
 
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
         cur = conn.cursor()
@@ -138,7 +283,7 @@ def get_incident_stats():
         # ── Historical hourly average ──────────────────────────────────────
         historical_avg = _historical_hour_average(cur, sources)
 
-    return jsonify({
+    payload = {
         "eventsToday":                 events_today,
         "eventsLastHour":              events_last_hour,
         "eventsActive":                events_active,
@@ -147,7 +292,9 @@ def get_incident_stats():
         "topLocations":                top_locations,
         "hourlyData":                  chart_data,
         "historicalCurrentHourAverage": historical_avg,
-    })
+    }
+    _set_cached_response(cache_key, payload, STATS_CACHE_TTL)
+    return jsonify(payload)
 
 
 def _count_with_source(cur, sources, extra_cond, extra_params):
@@ -242,6 +389,7 @@ def _historical_hour_average(cur, sources):
 
 @app.route("/maps/<filename>")
 def get_map(filename):
+    _enforce_rate_limit("read", API_READ_RATE_LIMIT)
     return send_from_directory(TARGET_DIR, filename)
 
 
@@ -251,6 +399,8 @@ def get_map(filename):
 
 @app.route("/api/incidents/<incident_id>/like", methods=["POST", "DELETE"])
 def like_incident(incident_id):
+    _enforce_rate_limit("write", API_WRITE_RATE_LIMIT)
+    incident_id = _validate_incident_id(incident_id)
     device_uuid = _get_or_create_uuid(request)
 
     with db_lock:
@@ -272,6 +422,7 @@ def like_incident(incident_id):
                 cur.execute("UPDATE incidents SET likes = likes + 1 WHERE incident_no = ?",
                             (incident_id,))
             conn.commit()
+            _clear_response_cache()
 
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
         cur = conn.cursor()
@@ -294,13 +445,20 @@ def like_incident(incident_id):
 
 @app.route("/api/incidents/<incident_id>/comment", methods=["POST"])
 def comment_incident(incident_id):
+    _enforce_rate_limit("write", API_WRITE_RATE_LIMIT)
+    incident_id = _validate_incident_id(incident_id)
     device_uuid  = _get_or_create_uuid(request)
-    new_comment  = request.json.get("comment", "")
-    username     = request.json.get("username", "Anonymous")
-    timestamp    = request.json.get("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    payload      = request.get_json(silent=True) or {}
+    new_comment  = str(payload.get("comment", "")).strip()
+    username     = str(payload.get("username", "Anonymous")).strip() or "Anonymous"
+    timestamp    = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     if not new_comment:
         return jsonify({"error": "Empty comment"}), 400
+    if len(new_comment) > MAX_COMMENT_LENGTH:
+        return jsonify({"error": "Comment is too long"}), 400
+    if len(username) > MAX_USERNAME_LENGTH:
+        username = username[:MAX_USERNAME_LENGTH]
 
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
         conn.execute("PRAGMA foreign_keys = ON")
@@ -318,6 +476,7 @@ def comment_incident(incident_id):
                 (incident_id, device_uuid, username, new_comment, timestamp),
             )
             conn.commit()
+            _clear_response_cache()
             cur.execute(
                 "SELECT username, comment, timestamp FROM comments WHERE incident_no = ? ORDER BY timestamp ASC",
                 (incident_id,),
@@ -338,6 +497,7 @@ def comment_incident(incident_id):
 
 @app.route("/api/user/check", methods=["GET"])
 def check_user():
+    _enforce_rate_limit("read", API_READ_RATE_LIMIT)
     device_uuid = _get_or_create_uuid(request)
     response    = jsonify({"uuid": device_uuid})
     return _set_uuid_cookie(response, device_uuid)
