@@ -170,7 +170,7 @@
 
     .side-toggle {
         position: fixed;
-        right: 0;
+        right: -5px;
         top: 50%;
         transform: translateY(-50%);
         background: var(--bg-surface-elevated);
