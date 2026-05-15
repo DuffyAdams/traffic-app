@@ -66,20 +66,14 @@ def generate_description(data):
 # ---------------------------------------------------------------------------
 
 def _call_llm(system_prompt, user_message):
-    """Call primary model, fall back to mistral-nemo on failure."""
+    """Call Mistral Nemo for incident description generation."""
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user",   "content": user_message},
     ]
-    try:
-        return llm_client.chat.completions.create(
-            model="deepseek/deepseek-v4-flash:free", messages=messages
-        )
-    except Exception as e:
-        safe_print(f"Primary model failed: {e}. Falling back to mistralai/mistral-nemo")
-        return llm_client.chat.completions.create(
-            model="mistralai/mistral-nemo", messages=messages
-        )
+    return llm_client.chat.completions.create(
+        model="mistralai/mistral-nemo", messages=messages
+    )
 
 
 def _parse_response(response, is_sig_alert):
