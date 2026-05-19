@@ -1,5 +1,5 @@
 <script>
-  import { onMount, onDestroy } from "svelte";
+  import { onMount } from "svelte";
   import { fade, slide } from "svelte/transition";
 
   // Import components
@@ -28,7 +28,98 @@
   // Import stores
   import { addToast } from "./stores/appStore.js";
 
+  /**
+   * @typedef {Object} PostComment
+   * @property {string} [id]
+   * @property {string} username
+   * @property {string} comment
+   * @property {string} timestamp
+   */
+
+  /**
+   * @typedef {Object} Incident
+   * @property {string} [incident_no]
+   * @property {string} [timestamp]
+   * @property {string[]} [Details]
+   * @property {string} [description]
+   * @property {string} [location]
+   * @property {string} [neighborhood]
+   * @property {number | null} [latitude]
+   * @property {number | null} [longitude]
+   * @property {string} [map_filename]
+   * @property {number} [likes]
+   * @property {PostComment[]} [comments]
+   * @property {string} [type]
+   * @property {boolean} [active]
+   * @property {number | null} [severity]
+   * @property {boolean} [liked_by_user]
+   * @property {string} [compositeId]
+   */
+
+  /**
+   * @typedef {Object} Post
+   * @property {string} id
+   * @property {string} compositeId
+   * @property {string[]} details
+   * @property {string} timestamp
+   * @property {string} time
+   * @property {string} description
+   * @property {boolean} showFullDescription
+   * @property {string} location
+   * @property {string} neighborhood
+   * @property {number | null} latitude
+   * @property {number | null} longitude
+   * @property {string} image
+   * @property {number} likes
+   * @property {PostComment[]} comments
+   * @property {string} newComment
+   * @property {boolean} showComments
+   * @property {string} type
+   * @property {string} likeError
+   * @property {string} commentError
+   * @property {boolean} likeErrorAnimation
+   * @property {boolean} active
+   * @property {boolean} liking
+   * @property {number | null} severity
+   * @property {boolean} likedByUser
+   */
+
+  /**
+   * @typedef {Object} IncidentStatsResponse
+   * @property {number} eventsToday
+   * @property {number} eventsLastHour
+   * @property {number} eventsActive
+   * @property {number} totalIncidents
+   * @property {Record<string, number>} incidentsByType
+   * @property {Record<string, number>} topLocations
+   * @property {number[]} [hourlyData]
+   * @property {number} [historicalCurrentHourAverage]
+   */
+
+  /**
+   * @typedef {Object} StatsCacheEntry
+   * @property {IncidentStatsResponse} data
+   * @property {number} timestamp
+   */
+
+  /**
+   * @typedef {Object} LikeResponse
+   * @property {number} likes
+   * @property {boolean} liked_by_user
+   */
+
+  /**
+   * @typedef {Object} CommentResponse
+   * @property {PostComment[]} comments
+   */
+
+  /** @typedef {CustomEvent<{ postId: string }>} PostIdEvent */
+  /** @typedef {CustomEvent<{ post: Post }>} PostShareEvent */
+  /** @typedef {CustomEvent<{ postId: string, comment: string }>} PostCommentEvent */
+  /** @typedef {CustomEvent<string>} StringDetailEvent */
+
   // State variables
+  /** @type {Post[]} */
   let posts = [];
   let loading = true;
   let darkMode = true;
@@ -38,26 +129,40 @@
   let currentPage = 1;
   let loadingMore = false;
   let allPostsLoaded = false;
-  let scrollContainer;
+  /** @type {HTMLDivElement | null} */
+  let scrollContainer = null;
+  /** @type {string | null} */
   let lastCursor = null;
+  /** @type {Set<string>} */
   let selectedTypes = new Set();
+  /** @type {Set<string>} */
   let selectedLocations = new Set();
   let condensedView = false;
+  /** @type {string | null} */
   let expandedPostId = null;
   let eventsToday = 0;
   let eventsLastHour = 0;
   let eventsActive = 0;
   let totalIncidents = 0;
+  /** @type {Record<string, number>} */
   let incidentsByType = {};
+  /** @type {Record<string, number>} */
   let topLocations = {};
   let showEventCounters = false;
   let showActiveOnly = false;
   let timeFilter = "day";
   let searchQuery = "";
+  /** @type {Set<string>} */
   let seenCompositeKeys = new Set();
+  /** @type {typeof import("./components/MapTab.svelte").default | null} */
   let MapTabComponent = null;
+  /** @type {Promise<typeof import("./components/MapTab.svelte").default> | null} */
   let mapTabLoadPromise = null;
 
+  /**
+   * @param {string} query
+   * @param {string} text
+   */
   function fuzzyMatch(query, text) {
       if (!query) return true;
       if (!text) return false;
@@ -66,9 +171,14 @@
       if (t.includes(q)) return true;
       
       const words = q.split(/\s+/).filter(Boolean);
-      return words.every(word => t.includes(word));
+      return words.every((word) => t.includes(word));
   }
 
+  /**
+   * @param {Incident} incident
+   * @param {Partial<Post>} [existingPost={}]
+   * @returns {Post}
+   */
   function buildPostFromIncident(incident, existingPost = {}) {
     const timestamp = incident.timestamp || existingPost.timestamp || "";
     const date = timestamp ? new Date(timestamp).toLocaleDateString() : "";
@@ -109,19 +219,25 @@
     };
   }
 
+  /** @type {Post[]} */
+  let displayPosts = [];
   $: displayPosts = searchQuery
-      ? posts.filter(p => {
-          const searchSpace = `${p.description} ${p.location} ${p.type || ''} ${p.neighborhood || ''} ${p.id}`;
+      ? posts.filter((p) => {
+          const searchSpace = `${p.description} ${p.location} ${p.type || ""} ${p.neighborhood || ""} ${p.id}`;
           return fuzzyMatch(searchQuery, searchSpace);
       })
       : posts;
 
+  /** @type {number[]} */
   let hourlyData = [];
   let historicalCurrentHourAverage = 0;
 
   // Data Source Management
   let activeSource = "all"; // 'all', 'CHP', 'SDPD', 'SDFD'
 
+  /**
+   * @param {string} source
+   */
   function setSourceFilter(source) {
     if (activeSource === source) return;
     activeSource = source;
@@ -172,9 +288,13 @@
   }
 
   // Caching and cancellation
+  /** @type {Map<string, Incident[]>} */
   let apiCache = new Map();
+  /** @type {AbortController | null} */
   let currentController = null;
+  /** @type {Record<string, StatsCacheEntry>} */
   let statsCache = {};
+  /** @type {AbortController | null} */
   let statsController = null;
   let currentRequestId = 0;
   let currentStatsRequestId = 0;
@@ -189,6 +309,8 @@
   let swipeDirection = "";
   let swipeThreshold = 80;
   let verticalThreshold = 50;
+  let suppressAutoLoadUntilScroll = false;
+  let autoLoadUnlockScrollTop = 0;
 
   // Pull-to-refresh
   let pullStartY = 0;
@@ -196,6 +318,27 @@
   let isPulling = false;
   let pullThreshold = 100;
   let refreshing = false;
+
+  function preventCancelableDefault(event) {
+    if (event.cancelable) {
+      event.preventDefault();
+    }
+  }
+
+  function pauseAutoLoadUntilUserScroll() {
+    suppressAutoLoadUntilScroll = true;
+    autoLoadUnlockScrollTop =
+      window.scrollY || document.documentElement.scrollTop || 0;
+  }
+
+  function setCondensedView(nextView) {
+    if (condensedView === nextView) return;
+    condensedView = nextView;
+    pauseAutoLoadUntilUserScroll();
+    if (showEventCounters) {
+      showEventCounters = false;
+    }
+  }
 
   function toggleDarkMode() {
     darkMode = !darkMode;
@@ -213,6 +356,9 @@
     fetchIncidents();
   }
 
+  /**
+   * @param {string} newFilter
+   */
   function setTimeFilter(newFilter) {
     timeFilter = newFilter;
     // Don't destroy chart here to prevent flashing
@@ -220,6 +366,9 @@
     fetchIncidentStats();
   }
 
+  /**
+   * @param {string} type
+   */
   function filterByType(type) {
     if (selectedTypes.has(type)) {
       selectedTypes.delete(type);
@@ -231,6 +380,9 @@
     fetchIncidents();
   }
 
+  /**
+   * @param {string} location
+   */
   function filterByLocation(location) {
     if (selectedLocations.has(location)) {
       selectedLocations.delete(location);
@@ -298,7 +450,7 @@
       const cacheKey = url;
       if (apiCache.has(cacheKey)) {
         const cachedData = apiCache.get(cacheKey);
-        if (requestId === currentRequestId) {
+        if (requestId === currentRequestId && cachedData) {
           processIncidents(cachedData);
         }
         return;
@@ -314,6 +466,7 @@
         return await res.json();
       };
 
+      /** @type {Incident[]} */
       const incidents = await retryWithBackoff(fetchFn, 3, 1000);
 
       if (requestId !== currentRequestId) {
@@ -323,7 +476,7 @@
       apiCache.set(cacheKey, incidents);
       processIncidents(incidents);
     } catch (err) {
-      if (err.name !== "AbortError") {
+      if (!(err instanceof Error) || err.name !== "AbortError") {
         console.error("Error fetching incidents:", err);
         addToast(
           "Failed to load incidents. Please check your connection and try again.",
@@ -337,7 +490,11 @@
               timestamp: new Date().toISOString(),
               time: "Error",
               description: "Unable to load incidents at this time.",
+              showFullDescription: false,
               location: "N/A",
+              neighborhood: "",
+              latitude: null,
+              longitude: null,
               image: "",
               likes: 0,
               comments: [],
@@ -348,6 +505,9 @@
               commentError: "",
               likeErrorAnimation: false,
               active: false,
+              liking: false,
+              severity: null,
+              likedByUser: false,
             },
           ];
         }
@@ -366,6 +526,9 @@
     }
   }
 
+  /**
+   * @param {Incident[]} incidents
+   */
   function processIncidents(incidents) {
     if (!Array.isArray(incidents)) {
       console.error("Invalid incidents data: expected array");
@@ -439,6 +602,13 @@
     const clientHeight = window.innerHeight;
     const scrollBottom = scrollHeight - scrollTop - clientHeight;
 
+    if (suppressAutoLoadUntilScroll) {
+      if (Math.abs(scrollTop - autoLoadUnlockScrollTop) <= 24) {
+        return;
+      }
+      suppressAutoLoadUntilScroll = false;
+    }
+
     if (scrollBottom < 600 && !loadingMore && !allPostsLoaded) {
       loadMorePosts();
     }
@@ -505,6 +675,7 @@
         return await res.json();
       };
 
+      /** @type {IncidentStatsResponse} */
       const stats = await retryWithBackoff(fetchFn, 3, 1000);
 
       if (requestId !== currentStatsRequestId) {
@@ -527,7 +698,7 @@
         Object.entries(stats.topLocations).sort(([, a], [, b]) => b - a),
       );
     } catch (err) {
-      if (err.name !== "AbortError") {
+      if (!(err instanceof Error) || err.name !== "AbortError") {
         console.error("Error fetching incident stats:", err);
         addToast("Failed to load incident statistics.", "error");
       }
@@ -538,6 +709,9 @@
     }
   }
 
+  /**
+   * @param {string} postId
+   */
   async function likePost(postId) {
     const post = posts.find((p) => p.id === postId);
     if (!post || post.liking) return;
@@ -570,6 +744,7 @@
         return await res.json();
       };
 
+      /** @type {LikeResponse} */
       const data = await retryWithBackoff(fetchFn, 2, 500);
       posts = posts.map((p) =>
         p.id === postId
@@ -601,6 +776,9 @@
     }
   }
 
+  /**
+   * @param {string} postId
+   */
   function toggleComments(postId) {
     const now = Date.now();
     if (now - lastToggleTime < 200) return;
@@ -610,6 +788,9 @@
     );
   }
 
+  /**
+   * @param {Post} post
+   */
   function sharePost(post) {
     const text = `${post.description} - Location: ${post.location}. Check out more traffic incidents at San Diego Traffic Watch!`;
     const url = window.location.origin;
@@ -622,6 +803,10 @@
     }
   }
 
+  /**
+   * @param {string} postId
+   * @param {string | null} [commentContent=null]
+   */
   async function submitComment(postId, commentContent = null) {
     const post = posts.find((p) => p.id === postId);
     const commentText =
@@ -671,6 +856,7 @@
         return await res.json();
       };
 
+      /** @type {CommentResponse} */
       const data = await retryWithBackoff(fetchFn, 2, 500);
       posts = posts.map((p) =>
         p.id === postId
@@ -694,6 +880,9 @@
     }
   }
 
+  /**
+   * @param {string} postId
+   */
   function toggleDescription(postId) {
     posts = posts.map((post) =>
       post.id === postId
@@ -702,19 +891,30 @@
     );
   }
 
+  /**
+   * @param {string} postId
+   */
   function toggleExpand(postId) {
     expandedPostId = expandedPostId === postId ? null : postId;
   }
 
+  /**
+   * @param {TouchEvent} e
+   */
   function handleTouchStart(e) {
     if (activeSource === "map") return;
     touchStartX = e.touches[0].clientX;
     touchStartY = e.touches[0].clientY;
+    touchEndX = touchStartX;
+    touchEndY = touchStartY;
     pullStartY = e.touches[0].clientY;
     swipeInProgress = true;
     isPulling = false;
   }
 
+  /**
+   * @param {TouchEvent} e
+   */
   function handleTouchMove(e) {
     if (activeSource === "map") return;
     if (!swipeInProgress) return;
@@ -728,13 +928,13 @@
     if (diffY > 0 && window.scrollY === 0 && !isPulling) {
       isPulling = true;
       pullDistance = Math.min(diffY * 0.5, 120);
-      e.preventDefault();
+      preventCancelableDefault(e);
       return;
     }
 
     if (isPulling) {
       pullDistance = Math.min(diffY * 0.5, 120);
-      e.preventDefault();
+      preventCancelableDefault(e);
       return;
     }
 
@@ -742,13 +942,16 @@
       swipeIndicator = true;
       swipeDirection = diffX > 0 ? "left" : "right";
       if (Math.abs(diffX) > 40) {
-        e.preventDefault();
+        preventCancelableDefault(e);
       }
     } else {
       swipeIndicator = false;
     }
   }
 
+  /**
+   * @param {TouchEvent} e
+   */
   function handleTouchEnd(e) {
     if (activeSource === "map") return;
     if (!swipeInProgress) return;
@@ -769,10 +972,10 @@
 
     if (Math.abs(diffX) > swipeThreshold && diffY < verticalThreshold) {
       if (diffX > 0) {
-        if (!condensedView) condensedView = true;
+        setCondensedView(true);
         if (navigator.vibrate) navigator.vibrate(50);
       } else {
-        if (condensedView) condensedView = false;
+        setCondensedView(false);
         if (navigator.vibrate) navigator.vibrate(50);
       }
     }
@@ -784,37 +987,55 @@
   }
 
   function toggleView() {
-    condensedView = !condensedView;
-    if (showEventCounters) {
-      showEventCounters = false;
-    }
+    setCondensedView(!condensedView);
   }
 
   // Event handlers for components
+  /**
+   * @param {PostIdEvent} event
+   */
   function handlePostLike(event) {
     likePost(event.detail.postId);
   }
 
+  /**
+   * @param {PostIdEvent} event
+   */
   function handlePostToggleComments(event) {
     toggleComments(event.detail.postId);
   }
 
+  /**
+   * @param {PostShareEvent} event
+   */
   function handlePostShare(event) {
     sharePost(event.detail.post);
   }
 
+  /**
+   * @param {PostIdEvent} event
+   */
   function handlePostToggleDescription(event) {
     toggleDescription(event.detail.postId);
   }
 
+  /**
+   * @param {PostCommentEvent} event
+   */
   function handlePostSubmitComment(event) {
     submitComment(event.detail.postId, event.detail.comment);
   }
 
+  /**
+   * @param {PostIdEvent} event
+   */
   function handleTableToggleExpand(event) {
     toggleExpand(event.detail.postId);
   }
 
+  /**
+   * @param {PostIdEvent} event
+   */
   function handleTableCloseComments(event) {
     const post = posts.find((p) => p.id === event.detail.postId);
     if (post && post.showComments) {
@@ -878,6 +1099,43 @@
     };
   });
 
+  /**
+   * @param {StringDetailEvent} event
+   */
+  function handleSourceChange(event) {
+    setSourceFilter(event.detail);
+  }
+
+  /**
+   * @param {StringDetailEvent} event
+   */
+  function handleStatsTimeFilter(event) {
+    setTimeFilter(event.detail);
+  }
+
+  /**
+   * @param {StringDetailEvent} event
+   */
+  function handleStatsTypeFilter(event) {
+    filterByType(event.detail);
+  }
+
+  /**
+   * @param {StringDetailEvent} event
+   */
+  function handleStatsLocationFilter(event) {
+    filterByLocation(event.detail);
+  }
+
+  /**
+   * @param {KeyboardEvent} event
+   */
+  function handleLoadMoreKeydown(event) {
+    if (event.key === "Enter") {
+      forceLoadMore();
+    }
+  }
+
   async function checkForUpdates() {
     try {
       let url = `/api/incidents?limit=${postsPerPage}`;
@@ -900,6 +1158,7 @@
 
       const res = await fetch(url);
       if (!res.ok) return;
+      /** @type {Incident[]} */
       const newIncidents = await res.json();
 
       if (!Array.isArray(newIncidents)) return;
@@ -968,7 +1227,7 @@
     <div class="tabs-container">
       <SourceTabs
         {activeSource}
-        on:changeSource={(e) => setSourceFilter(e.detail)}
+        on:changeSource={handleSourceChange}
       />
     </div>
     {#if activeSource !== "map"}
@@ -1003,9 +1262,9 @@
         {topLocations}
         {selectedTypes}
         {selectedLocations}
-        on:filterTime={(e) => setTimeFilter(e.detail)}
-        on:filterType={(e) => filterByType(e.detail)}
-        on:filterLocation={(e) => filterByLocation(e.detail)}
+        on:filterTime={handleStatsTimeFilter}
+        on:filterType={handleStatsTypeFilter}
+        on:filterLocation={handleStatsLocationFilter}
         on:resetTypeFilters={resetTypeFilters}
         on:resetLocationFilters={resetLocationFilters}
       />
@@ -1076,7 +1335,7 @@
         on:click={forceLoadMore}
         role="button"
         tabindex="0"
-        on:keydown={(e) => e.key === "Enter" && forceLoadMore()}
+        on:keydown={handleLoadMoreKeydown}
       >
         <div class="scroll-dots">
           <span class="dot"></span>
