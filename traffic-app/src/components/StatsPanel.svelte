@@ -40,10 +40,6 @@
     $: maxValue = chartData && chartData.length ? Math.max(...chartData) : 0;
     $: yMax = Math.max(maxValue * 1.15, 10);
 
-    $: average =
-        chartData && chartData.length
-            ? chartData.reduce((a, b) => a + b, 0) / chartData.length
-            : 0;
     // Define spike relative to historical average for THIS exact hour/day-of-week
     // Using a floor of 2 to avoid dividing zeroes into infinity
     $: spikeThreshold = Math.max(historicalCurrentHourAverage * 1.5, 2);

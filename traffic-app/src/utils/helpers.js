@@ -163,25 +163,6 @@ export function getIconForIncidentType(type) {
     return types[type] || "siren";
 }
 
-// Calculate nice step size for chart Y axis
-export function calculateNiceStepSize(data) {
-    if (!data || data.length === 0) return 1;
-    const max = Math.max(...data.filter(n => n > 0));
-    if (max === 0) return 1;
-
-    const roughStep = max / 5;
-    const magnitude = Math.pow(10, Math.floor(Math.log10(roughStep)));
-    const normalized = roughStep / magnitude;
-
-    let niceStep;
-    if (normalized <= 1) niceStep = 1;
-    else if (normalized <= 2) niceStep = 2;
-    else if (normalized <= 5) niceStep = 5;
-    else niceStep = 10;
-
-    return niceStep * magnitude;
-}
-
 // Highlight matched search queries
 export function highlightFuzzy(text, query) {
     if (!text) return "";

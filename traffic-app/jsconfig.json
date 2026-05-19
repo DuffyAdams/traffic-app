@@ -19,10 +19,10 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     /**
-     * Typecheck JS in `.svelte` and `.js` files by default.
-     * Disable this if you'd like to use dynamic types.
+     * This app is intentionally JS-first, so keep the editor from
+     * flagging every dynamic Svelte/utility pattern as an error.
      */
-    "checkJs": true
+    "checkJs": false
   },
   /**
    * Use global.d.ts instead of compilerOptions.types

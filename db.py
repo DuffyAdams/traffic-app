@@ -82,6 +82,12 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_timestamp ON incidents(timestamp)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_active    ON incidents(active)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_date      ON incidents(date)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_source_timestamp ON incidents(source, timestamp)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_source_active    ON incidents(source, active)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_source_date      ON incidents(source, date)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_pagination       ON incidents(timestamp DESC, incident_no DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_comments_incident_time     ON comments(incident_no, timestamp)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_likes_incident_device      ON likes(incident_no, device_uuid)")
 
         conn.commit()
 
@@ -208,6 +214,25 @@ def _attach_user_like_state(cur, incidents, device_uuid):
 
     for inc in incidents:
         inc["liked_by_user"] = inc["incident_no"] in liked_incidents
+
+
+def with_user_like_state(incidents, device_uuid):
+    """Return incident copies annotated with whether this device liked each one."""
+    incident_copies = []
+    for incident in incidents:
+        copied = dict(incident)
+        if isinstance(copied.get("comments"), list):
+            copied["comments"] = [dict(comment) for comment in copied["comments"]]
+        incident_copies.append(copied)
+
+    if not incident_copies:
+        return incident_copies
+
+    with sqlite3.connect(DB_FILE, timeout=30) as conn:
+        cur = conn.cursor()
+        _attach_user_like_state(cur, incident_copies, device_uuid)
+
+    return incident_copies
 
 
 def incident_exists(incident_no, date):

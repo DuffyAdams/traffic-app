@@ -2,8 +2,6 @@
     import { createEventDispatcher } from "svelte";
     import { slide } from "svelte/transition";
     import {
-        getIconForIncidentType,
-        formatTimestamp,
         formatTimeOnly,
         truncateDescription,
         formatCommentTimestamp,

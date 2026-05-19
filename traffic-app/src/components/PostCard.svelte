@@ -3,8 +3,6 @@
     import { slide, fly } from "svelte/transition";
     import CommentOverlay from "./CommentOverlay.svelte";
     import {
-        getIconForIncidentType,
-        formatTimestamp,
         truncateDescription,
         highlightFuzzy,
     } from "../utils/helpers.js";
@@ -26,6 +24,7 @@
     export let index = 0;
     export let postsPerPage = 30;
     export let searchQuery = "";
+    export let suspendMiniMaps = false;
 
     const dispatch = createEventDispatcher();
 
@@ -175,6 +174,7 @@
                         longitude={post.longitude}
                         type={post.type}
                         active={post.active}
+                        deferActivation={suspendMiniMaps}
                     />
                 {:else if post.image && post.image !== "/maps/"}
                     <LazyImage

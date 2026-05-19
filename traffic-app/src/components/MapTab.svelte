@@ -51,6 +51,15 @@
     const INCIDENT_FOCUS_MIN_ZOOM = 12.5;
     const INCIDENT_FOCUS_ZOOM = 14;
 
+    function getIncidentRenderKey(incident) {
+        return [
+            incident.incident_no ?? incident.id ?? "",
+            incident.timestamp ?? "",
+            incident.location ?? "",
+            incident.source ?? "",
+        ].join("|");
+    }
+
     function clamp(value, min, max) {
         return Math.min(max, Math.max(min, value));
     }
@@ -140,6 +149,7 @@
                 .filter((inc) => inc && inc.incident_no && inc.timestamp)
                 .map((inc) => ({
                     id: inc.incident_no,
+                    renderKey: getIncidentRenderKey(inc),
                     timestamp: inc.timestamp,
                     time: formatTimestamp(inc.timestamp),
                     description: inc.description || "No description available",
@@ -809,7 +819,7 @@
     function updateMarkers(incidentsToRender) {
         if (!map || !incidentsToRender) return;
 
-        const activeIds = new Set(incidentsToRender.map((i) => i.id));
+        const activeIds = new Set(incidentsToRender.map((i) => i.renderKey));
 
         // Remove old markers that are no longer active
         for (const [id, markerObj] of Object.entries(markers)) {
@@ -822,7 +832,7 @@
 
         // Add or update markers
         incidentsToRender.forEach((inc) => {
-            if (!markers[inc.id]) {
+            if (!markers[inc.renderKey]) {
                 // Create a container element for the Svelte component
                 const el = document.createElement("div");
 
@@ -837,10 +847,10 @@
                     .setLngLat([inc.longitude, inc.latitude])
                     .addTo(map);
 
-                markers[inc.id] = { marker, component, element: el };
+                markers[inc.renderKey] = { marker, component, element: el };
             } else {
                 // For Svelte 5: re-mount with updated props
-                const existing = markers[inc.id];
+                const existing = markers[inc.renderKey];
                 existing.marker.setLngLat([inc.longitude, inc.latitude]);
                 // Unmount old, mount new with updated data
                 unmount(existing.component);
@@ -861,7 +871,7 @@
                 essential: true,
                 duration: 1200,
             });
-            $activeMarkerId = incident.id;
+            $activeMarkerId = incident.renderKey;
         }
     }
 
@@ -919,12 +929,12 @@
             <h3>INCIDENT LOG ({activeIncidents.length})</h3>
         </div>
         <div class="log-list">
-            {#each activeIncidents as incident (incident.id)}
+            {#each activeIncidents as incident (incident.renderKey)}
                 <!-- svelte-ignore a11y_click_events_have_key_events -->
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
                 <div
                     class="log-item"
-                    class:selected={$activeMarkerId === incident.id}
+                    class:selected={$activeMarkerId === incident.id || $activeMarkerId === incident.renderKey}
                     class:inactive={!incident.active}
                     on:click={() => panToIncident(incident)}
                     in:fade={{ duration: 200 }}

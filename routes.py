@@ -18,7 +18,7 @@ from config import (
     app, DB_FILE, TARGET_DIR, COOKIE_NAME, COOKIE_MAX_AGE, db_lock,
     API_READ_RATE_LIMIT, API_WRITE_RATE_LIMIT, TRUST_PROXY_HEADERS,
 )
-from db import read_incidents
+from db import read_incidents, with_user_like_state
 from logger import safe_print
 
 
@@ -196,16 +196,17 @@ def get_incidents():
     active_only   = request.args.get("active_only", "false").lower() == "true"
     date_filter   = _get_date_filter()
 
-    cache_key = _cache_key("incidents", device_uuid)
+    cache_key = _cache_key("incidents")
     incidents = _get_cached_response(cache_key)
     if incidents is None:
         incidents = read_incidents(
             limit=limit, cursor=cursor, incident_types=incident_types,
             locations=locations, sources=sources, active_only=active_only,
-            date_filter=date_filter, device_uuid=device_uuid,
+            date_filter=date_filter, device_uuid=None,
         )
         _set_cached_response(cache_key, incidents, READ_CACHE_TTL)
 
+    incidents = with_user_like_state(incidents, device_uuid)
 
     response = jsonify(incidents)
     return _set_uuid_cookie(response, device_uuid)
@@ -304,58 +305,74 @@ def _count_with_source(cur, sources, extra_cond, extra_params):
     return cur.fetchone()[0]
 
 
-def _range_count(cur, sources, start_str, end_str):
-    clauses = [f"source IN ({','.join('?' for _ in sources)})"] if sources else []
-    params  = list(sources) if sources else []
+def _source_clause(sources):
+    if not sources:
+        return [], []
+    return [f"source IN ({','.join('?' for _ in sources)})"], list(sources)
+
+
+def _bucket_counts(cur, sources, start_dt, end_dt, bucket_format):
+    clauses, params = _source_clause(sources)
     clauses += ["timestamp >= ?", "timestamp < ?"]
-    params  += [start_str, end_str]
+    params += [
+        start_dt.strftime("%Y-%m-%d %H:%M:%S"),
+        end_dt.strftime("%Y-%m-%d %H:%M:%S"),
+    ]
+
     cur.execute(
-        f"SELECT COUNT(*) FROM incidents WHERE {' AND '.join(clauses)}", params
+        f"""
+        SELECT strftime(?, timestamp) AS bucket, COUNT(*) AS count
+        FROM incidents
+        WHERE {' AND '.join(clauses)}
+        GROUP BY bucket
+        """,
+        [bucket_format, *params],
     )
-    return cur.fetchone()[0]
+    return {row[0]: row[1] for row in cur.fetchall()}
+
+
+def _hour_offset_counts(cur, sources, start_dt, end_dt):
+    clauses, params = _source_clause(sources)
+    clauses += ["timestamp >= ?", "timestamp < ?"]
+    params += [
+        start_dt.strftime("%Y-%m-%d %H:%M:%S"),
+        end_dt.strftime("%Y-%m-%d %H:%M:%S"),
+    ]
+
+    cur.execute(
+        f"""
+        SELECT CAST((strftime('%s', timestamp) - strftime('%s', ?)) / 3600 AS INTEGER) AS bucket,
+               COUNT(*) AS count
+        FROM incidents
+        WHERE {' AND '.join(clauses)}
+        GROUP BY bucket
+        """,
+        [start_dt.strftime("%Y-%m-%d %H:%M:%S"), *params],
+    )
+    return {row[0]: row[1] for row in cur.fetchall() if row[0] is not None}
 
 
 def _build_chart_data(cur, sources, date_filter):
     now = datetime.now()
     if date_filter == "year":
-        return [
-            _range_count(
-                cur, sources,
-                (now.replace(day=1, hour=0, minute=0, second=0, microsecond=0) - relativedelta(months=11 - i)).strftime("%Y-%m-%d %H:%M:%S"),
-                (now.replace(day=1, hour=0, minute=0, second=0, microsecond=0) - relativedelta(months=10 - i)).strftime("%Y-%m-%d %H:%M:%S"),
-            )
-            for i in range(12)
-        ]
+        base = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        starts = [base - relativedelta(months=11 - i) for i in range(12)]
+        counts = _bucket_counts(cur, sources, starts[0], base + relativedelta(months=1), "%Y-%m")
+        return [counts.get(start.strftime("%Y-%m"), 0) for start in starts]
     elif date_filter == "month":
         base = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        return [
-            _range_count(
-                cur, sources,
-                (base - timedelta(days=29 - i)).strftime("%Y-%m-%d %H:%M:%S"),
-                (base - timedelta(days=28 - i)).strftime("%Y-%m-%d %H:%M:%S"),
-            )
-            for i in range(30)
-        ]
+        starts = [base - timedelta(days=29 - i) for i in range(30)]
+        counts = _bucket_counts(cur, sources, starts[0], base + timedelta(days=1), "%Y-%m-%d")
+        return [counts.get(start.strftime("%Y-%m-%d"), 0) for start in starts]
     elif date_filter == "week":
         base = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        return [
-            _range_count(
-                cur, sources,
-                (base - timedelta(days=6 - i)).strftime("%Y-%m-%d %H:%M:%S"),
-                (base - timedelta(days=5 - i)).strftime("%Y-%m-%d %H:%M:%S"),
-            )
-            for i in range(7)
-        ]
+        starts = [base - timedelta(days=6 - i) for i in range(7)]
+        counts = _bucket_counts(cur, sources, starts[0], base + timedelta(days=1), "%Y-%m-%d")
+        return [counts.get(start.strftime("%Y-%m-%d"), 0) for start in starts]
     else:  # default: last 24h by hour
         start24 = now - timedelta(hours=24)
-        return [
-            _range_count(
-                cur, sources,
-                (start24 + timedelta(hours=i)).strftime("%Y-%m-%d %H:%M:%S"),
-                min(start24 + timedelta(hours=i + 1), now).strftime("%Y-%m-%d %H:%M:%S"),
-            )
-            for i in range(24)
-        ]
+        counts = _hour_offset_counts(cur, sources, start24, now)
+        return [counts.get(i, 0) for i in range(24)]
 
 
 def _historical_hour_average(cur, sources):

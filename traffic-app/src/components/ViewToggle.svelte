@@ -149,25 +149,6 @@
         }
     }
 
-    .pull-refresh-indicator {
-        position: fixed;
-        top: 0;
-        left: 50%;
-        background-color: #1e3a5f;
-        color: white;
-        padding: 0.75rem 1.5rem;
-        border-radius: 0 0 6px 6px;
-        font-weight: 600;
-        font-size: 0.9rem;
-        z-index: 100;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-        transition: transform 0.1s ease-out;
-    }
-
-    .pull-refresh-indicator.refreshing {
-        animation: pulse 1s infinite;
-    }
-
     .side-toggle {
         position: fixed;
         right: -5px;
@@ -227,16 +208,6 @@
         to {
             opacity: 0.95;
             transform: translate(0, -50%) scale(1);
-        }
-    }
-
-    @keyframes pulse {
-        0%,
-        100% {
-            opacity: 1;
-        }
-        50% {
-            opacity: 0.7;
         }
     }
 

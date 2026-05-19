@@ -7,11 +7,9 @@
   import HeadlineTicker from "./components/HeadlineTicker.svelte";
   import SkeletonCard from "./components/SkeletonCard.svelte";
   import PostCard from "./components/PostCard.svelte";
-  import PostTable from "./components/PostTable.svelte";
   import ToastContainer from "./components/ToastContainer.svelte";
   import ViewToggle from "./components/ViewToggle.svelte";
   import SourceTabs from "./components/SourceTabs.svelte";
-  import StatsPanel from "./components/StatsPanel.svelte";
   import SearchBar from "./components/SearchBar.svelte";
 
   // Import utilities
@@ -20,8 +18,6 @@
     debounce,
     retryWithBackoff,
     formatTimestamp,
-    getIconForIncidentType,
-    calculateNiceStepSize,
     buildIncidentImagePath,
   } from "./utils/helpers.js";
 
@@ -103,6 +99,12 @@
    */
 
   /**
+   * @typedef {Object} ApiCacheEntry
+   * @property {Incident[]} data
+   * @property {number} timestamp
+   */
+
+  /**
    * @typedef {Object} LikeResponse
    * @property {number} likes
    * @property {boolean} liked_by_user
@@ -152,12 +154,22 @@
   let showActiveOnly = false;
   let timeFilter = "day";
   let searchQuery = "";
+  let suspendFeedMiniMaps = false;
+  let miniMapSuspendScrollTop = 0;
   /** @type {Set<string>} */
   let seenCompositeKeys = new Set();
   /** @type {typeof import("./components/MapTab.svelte").default | null} */
   let MapTabComponent = null;
   /** @type {Promise<typeof import("./components/MapTab.svelte").default> | null} */
   let mapTabLoadPromise = null;
+  /** @type {typeof import("./components/StatsPanel.svelte").default | null} */
+  let StatsPanelComponent = null;
+  /** @type {Promise<typeof import("./components/StatsPanel.svelte").default> | null} */
+  let statsPanelLoadPromise = null;
+  /** @type {typeof import("./components/PostTable.svelte").default | null} */
+  let PostTableComponent = null;
+  /** @type {Promise<typeof import("./components/PostTable.svelte").default> | null} */
+  let postTableLoadPromise = null;
 
   /**
    * @param {string} query
@@ -242,6 +254,7 @@
     if (activeSource === source) return;
     activeSource = source;
     if (source === "map") {
+      stopStatsRequest();
       void ensureMapTabLoaded();
       return;
     }
@@ -250,7 +263,7 @@
     // selectedTypes = new Set();
     // selectedLocations = new Set();
     fetchIncidents();
-    fetchIncidentStats();
+    if (shouldFetchStats()) fetchIncidentStats();
   }
 
   async function ensureMapTabLoaded() {
@@ -264,6 +277,32 @@
       );
     }
     return mapTabLoadPromise;
+  }
+
+  async function ensureStatsPanelLoaded() {
+    if (StatsPanelComponent) return StatsPanelComponent;
+    if (!statsPanelLoadPromise) {
+      statsPanelLoadPromise = import("./components/StatsPanel.svelte").then(
+        (module) => {
+          StatsPanelComponent = module.default;
+          return StatsPanelComponent;
+        },
+      );
+    }
+    return statsPanelLoadPromise;
+  }
+
+  async function ensurePostTableLoaded() {
+    if (PostTableComponent) return PostTableComponent;
+    if (!postTableLoadPromise) {
+      postTableLoadPromise = import("./components/PostTable.svelte").then(
+        (module) => {
+          PostTableComponent = module.default;
+          return PostTableComponent;
+        },
+      );
+    }
+    return postTableLoadPromise;
   }
 
   // Network status
@@ -282,22 +321,88 @@
         addToast("Connection restored.", "success");
       }
       if (posts.length === 0) fetchIncidents();
-      fetchIncidentStats();
+      if (shouldFetchStats()) fetchIncidentStats();
     }
     isFirstCheck = false;
   }
 
   // Caching and cancellation
-  /** @type {Map<string, Incident[]>} */
+  const API_CACHE_TTL_MS = 15000;
+  const STATS_CACHE_TTL_MS = 30000;
+  const MAX_API_CACHE_ENTRIES = 30;
+  const MAX_STATS_CACHE_ENTRIES = 12;
+
+  /** @type {Map<string, ApiCacheEntry>} */
   let apiCache = new Map();
   /** @type {AbortController | null} */
   let currentController = null;
-  /** @type {Record<string, StatsCacheEntry>} */
-  let statsCache = {};
+  /** @type {Map<string, StatsCacheEntry>} */
+  let statsCache = new Map();
   /** @type {AbortController | null} */
   let statsController = null;
   let currentRequestId = 0;
   let currentStatsRequestId = 0;
+
+  /**
+   * @template T
+   * @param {Map<string, { data: T, timestamp: number }>} cache
+   * @param {string} key
+   * @param {number} ttl
+   * @returns {T | null}
+   */
+  function getCachedEntry(cache, key, ttl) {
+    const entry = cache.get(key);
+    if (!entry) return null;
+    if (Date.now() - entry.timestamp > ttl) {
+      cache.delete(key);
+      return null;
+    }
+    cache.delete(key);
+    cache.set(key, entry);
+    return entry.data;
+  }
+
+  /**
+   * @template T
+   * @param {Map<string, { data: T, timestamp: number }>} cache
+   * @param {string} key
+   * @param {T} data
+   * @param {number} maxEntries
+   */
+  function setCachedEntry(cache, key, data, maxEntries) {
+    cache.delete(key);
+    cache.set(key, { data, timestamp: Date.now() });
+    while (cache.size > maxEntries) {
+      const oldestKey = cache.keys().next().value;
+      if (oldestKey === undefined) break;
+      cache.delete(oldestKey);
+    }
+  }
+
+  function clearIncidentCaches() {
+    apiCache.clear();
+  }
+
+  function clearAllClientCaches() {
+    apiCache.clear();
+    statsCache.clear();
+  }
+
+  function shouldFetchStats() {
+    return showEventCounters && activeSource !== "map";
+  }
+
+  function stopStatsRequest() {
+    if (!statsController) return;
+    statsController.abort();
+    statsController = null;
+  }
+
+  function suspendMiniMapsUntilScroll() {
+    suspendFeedMiniMaps = true;
+    miniMapSuspendScrollTop =
+      window.scrollY || document.documentElement.scrollTop || 0;
+  }
 
   // Touch/swipe handling
   let touchStartX = 0;
@@ -312,19 +417,6 @@
   let suppressAutoLoadUntilScroll = false;
   let autoLoadUnlockScrollTop = 0;
 
-  // Pull-to-refresh
-  let pullStartY = 0;
-  let pullDistance = 0;
-  let isPulling = false;
-  let pullThreshold = 100;
-  let refreshing = false;
-
-  function preventCancelableDefault(event) {
-    if (event.cancelable) {
-      event.preventDefault();
-    }
-  }
-
   function pauseAutoLoadUntilUserScroll() {
     suppressAutoLoadUntilScroll = true;
     autoLoadUnlockScrollTop =
@@ -334,9 +426,12 @@
   function setCondensedView(nextView) {
     if (condensedView === nextView) return;
     condensedView = nextView;
+    if (nextView) void ensurePostTableLoaded();
     pauseAutoLoadUntilUserScroll();
     if (showEventCounters) {
       showEventCounters = false;
+      stopStatsRequest();
+      suspendMiniMapsUntilScroll();
     }
   }
 
@@ -347,7 +442,17 @@
   }
 
   function toggleEventCounters() {
+    const willShowDiagnostics = !showEventCounters;
     showEventCounters = !showEventCounters;
+    if (shouldFetchStats()) {
+      void ensureStatsPanelLoaded();
+      fetchIncidentStats();
+    } else {
+      stopStatsRequest();
+      if (!willShowDiagnostics) {
+        suspendMiniMapsUntilScroll();
+      }
+    }
   }
 
   function toggleActiveOnly() {
@@ -448,11 +553,9 @@
       }
 
       const cacheKey = url;
-      if (apiCache.has(cacheKey)) {
-        const cachedData = apiCache.get(cacheKey);
-        if (requestId === currentRequestId && cachedData) {
-          processIncidents(cachedData);
-        }
+      const cachedData = getCachedEntry(apiCache, cacheKey, API_CACHE_TTL_MS);
+      if (cachedData) {
+        if (requestId === currentRequestId) processIncidents(cachedData);
         return;
       }
 
@@ -473,7 +576,7 @@
         return;
       }
 
-      apiCache.set(cacheKey, incidents);
+      setCachedEntry(apiCache, cacheKey, incidents, MAX_API_CACHE_ENTRIES);
       processIncidents(incidents);
     } catch (err) {
       if (!(err instanceof Error) || err.name !== "AbortError") {
@@ -609,6 +712,13 @@
       suppressAutoLoadUntilScroll = false;
     }
 
+    if (
+      suspendFeedMiniMaps &&
+      Math.abs(scrollTop - miniMapSuspendScrollTop) > 24
+    ) {
+      suspendFeedMiniMaps = false;
+    }
+
     if (scrollBottom < 600 && !loadingMore && !allPostsLoaded) {
       loadMorePosts();
     }
@@ -637,11 +747,12 @@
       }
 
       const cacheKey = url;
-      if (
-        statsCache[cacheKey] &&
-        Date.now() - statsCache[cacheKey].timestamp < 30000
-      ) {
-        const cachedStats = statsCache[cacheKey].data;
+      const cachedStats = getCachedEntry(
+        statsCache,
+        cacheKey,
+        STATS_CACHE_TTL_MS,
+      );
+      if (cachedStats) {
         if (requestId !== currentStatsRequestId) return;
         eventsToday = cachedStats.eventsToday;
         eventsLastHour = cachedStats.eventsLastHour;
@@ -682,7 +793,7 @@
         return;
       }
 
-      statsCache[cacheKey] = { data: stats, timestamp: Date.now() };
+      setCachedEntry(statsCache, cacheKey, stats, MAX_STATS_CACHE_ENTRIES);
 
       eventsToday = stats.eventsToday;
       eventsLastHour = stats.eventsLastHour;
@@ -746,6 +857,7 @@
 
       /** @type {LikeResponse} */
       const data = await retryWithBackoff(fetchFn, 2, 500);
+      clearIncidentCaches();
       posts = posts.map((p) =>
         p.id === postId
           ? {
@@ -858,6 +970,7 @@
 
       /** @type {CommentResponse} */
       const data = await retryWithBackoff(fetchFn, 2, 500);
+      clearIncidentCaches();
       posts = posts.map((p) =>
         p.id === postId
           ? { ...p, comments: data.comments, newComment: "", commentError: "" }
@@ -907,9 +1020,7 @@
     touchStartY = e.touches[0].clientY;
     touchEndX = touchStartX;
     touchEndY = touchStartY;
-    pullStartY = e.touches[0].clientY;
     swipeInProgress = true;
-    isPulling = false;
   }
 
   /**
@@ -925,27 +1036,12 @@
     const diffX = touchStartX - touchEndX;
     const diffY = touchEndY - touchStartY;
 
-    if (diffY > 0 && window.scrollY === 0 && !isPulling) {
-      isPulling = true;
-      pullDistance = Math.min(diffY * 0.5, 120);
-      preventCancelableDefault(e);
-      return;
-    }
-
-    if (isPulling) {
-      pullDistance = Math.min(diffY * 0.5, 120);
-      preventCancelableDefault(e);
-      return;
-    }
-
     if (Math.abs(diffX) > 20 && Math.abs(diffY) < verticalThreshold) {
-      swipeIndicator = true;
-      swipeDirection = diffX > 0 ? "left" : "right";
-      if (Math.abs(diffX) > 40) {
-        preventCancelableDefault(e);
-      }
+      const nextDirection = diffX > 0 ? "left" : "right";
+      if (!swipeIndicator) swipeIndicator = true;
+      if (swipeDirection !== nextDirection) swipeDirection = nextDirection;
     } else {
-      swipeIndicator = false;
+      if (swipeIndicator) swipeIndicator = false;
     }
   }
 
@@ -955,17 +1051,6 @@
   function handleTouchEnd(e) {
     if (activeSource === "map") return;
     if (!swipeInProgress) return;
-
-    if (isPulling && pullDistance >= pullThreshold && !refreshing) {
-      refreshing = true;
-      addToast("Refreshing...", "info");
-      fetchIncidents();
-      fetchIncidentStats();
-      setTimeout(() => {
-        refreshing = false;
-        addToast("Refreshed!", "success");
-      }, 1000);
-    }
 
     const diffX = touchStartX - touchEndX;
     const diffY = Math.abs(touchStartY - touchEndY);
@@ -982,13 +1067,14 @@
 
     swipeInProgress = false;
     swipeIndicator = false;
-    isPulling = false;
-    pullDistance = 0;
   }
 
   function toggleView() {
     setCondensedView(!condensedView);
   }
+
+  $: if (showEventCounters && !StatsPanelComponent) void ensureStatsPanelLoaded();
+  $: if (condensedView && !PostTableComponent) void ensurePostTableLoaded();
 
   // Event handlers for components
   /**
@@ -1065,14 +1151,14 @@
 
     // Removed 60s fetchIncidents interval to prevent screen wiping
 
-    window.addEventListener("scroll", debouncedHandleScroll);
+    window.addEventListener("scroll", debouncedHandleScroll, { passive: true });
 
     if (scrollContainer) {
       scrollContainer.addEventListener("touchstart", handleTouchStart, {
         passive: true,
       });
       scrollContainer.addEventListener("touchmove", handleTouchMove, {
-        passive: false,
+        passive: true,
       });
       scrollContainer.addEventListener("touchend", handleTouchEnd, {
         passive: true,
@@ -1082,7 +1168,7 @@
     const updateInterval = setInterval(() => {
       if (isOnline && !loading && !loadingMore) {
         checkForUpdates();
-        fetchIncidentStats();
+        if (shouldFetchStats()) fetchIncidentStats();
       }
     }, 10000);
 
@@ -1191,6 +1277,7 @@
 
       // Update posts optimally
       if (newPostsCount > 0) {
+        clearAllClientCaches();
         posts = updatedPosts;
         addToast(`${newPostsCount} new incident(s)`, "info");
       } else {
@@ -1250,24 +1337,27 @@
 
   {#if activeSource !== "map"}
     {#if showEventCounters}
-      <StatsPanel
-        {eventsToday}
-        {eventsLastHour}
-        {eventsActive}
-        {totalIncidents}
-        {timeFilter}
-        {hourlyData}
-        {historicalCurrentHourAverage}
-        {incidentsByType}
-        {topLocations}
-        {selectedTypes}
-        {selectedLocations}
-        on:filterTime={handleStatsTimeFilter}
-        on:filterType={handleStatsTypeFilter}
-        on:filterLocation={handleStatsLocationFilter}
-        on:resetTypeFilters={resetTypeFilters}
-        on:resetLocationFilters={resetLocationFilters}
-      />
+      {#if StatsPanelComponent}
+        <svelte:component
+          this={StatsPanelComponent}
+          {eventsToday}
+          {eventsLastHour}
+          {eventsActive}
+          {totalIncidents}
+          {timeFilter}
+          {hourlyData}
+          {historicalCurrentHourAverage}
+          {incidentsByType}
+          {topLocations}
+          {selectedTypes}
+          {selectedLocations}
+          on:filterTime={handleStatsTimeFilter}
+          on:filterType={handleStatsTypeFilter}
+          on:filterLocation={handleStatsLocationFilter}
+          on:resetTypeFilters={resetTypeFilters}
+          on:resetLocationFilters={resetLocationFilters}
+        />
+      {/if}
     {/if}
 
     <ViewToggle
@@ -1296,19 +1386,22 @@
         <p>Try adjusting your query or loading more posts.</p>
       </div>
     {:else if condensedView}
-      <PostTable
-        posts={displayPosts}
-        {searchQuery}
-        {expandedPostId}
-        on:toggleExpand={handleTableToggleExpand}
-        on:closeComments={handleTableCloseComments}
-        on:like={handlePostLike}
-        on:toggleComments={handlePostToggleComments}
-        on:share={handlePostShare}
-        on:toggleDescription={handlePostToggleDescription}
-        on:submitComment={handlePostSubmitComment}
-        on:goToMap={() => setSourceFilter("map")}
-      />
+      {#if PostTableComponent}
+        <svelte:component
+          this={PostTableComponent}
+          posts={displayPosts}
+          {searchQuery}
+          {expandedPostId}
+          on:toggleExpand={handleTableToggleExpand}
+          on:closeComments={handleTableCloseComments}
+          on:like={handlePostLike}
+          on:toggleComments={handlePostToggleComments}
+          on:share={handlePostShare}
+          on:toggleDescription={handlePostToggleDescription}
+          on:submitComment={handlePostSubmitComment}
+          on:goToMap={() => setSourceFilter("map")}
+        />
+      {/if}
     {:else}
       <div class="feed" in:fade={{ duration: 200 }}>
         {#each displayPosts as post, i (post.compositeId)}
@@ -1317,6 +1410,7 @@
             index={i}
             {postsPerPage}
             {searchQuery}
+            suspendMiniMaps={suspendFeedMiniMaps}
             on:like={handlePostLike}
             on:toggleComments={handlePostToggleComments}
             on:share={handlePostShare}
@@ -1457,6 +1551,7 @@
     box-sizing: border-box;
     width: 100%;
     position: relative;
+    touch-action: pan-y;
   }
 
   .loading-container {

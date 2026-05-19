@@ -35,18 +35,10 @@
 
         while (activeMiniMaps.length > MAX_ACTIVE_MINI_MAPS) {
             const evictionIndex = activeMiniMaps.findIndex(
-                (item) =>
-                    item !== instance &&
-                    (!item.isNearViewport() || !item.isMapReady()),
+                (item) => item !== instance && !item.isNearViewport(),
             );
 
-            if (evictionIndex === -1) {
-                // Keep already-visible ready maps alive even if we temporarily
-                // exceed the soft cap, otherwise live cards blur when new
-                // incidents mount above them.
-                break;
-            }
-
+            if (evictionIndex === -1) break;
             const [evicted] = activeMiniMaps.splice(evictionIndex, 1);
             evicted?.deactivate();
         }
@@ -65,14 +57,18 @@
     export let longitude = null;
     export let type = "Incident";
     export let active = false;
+    export let deferActivation = false;
 
     const PMTILES_URL = "/map_tiles/sandiego.pmtiles";
     const MINI_MAP_ZOOM = 12.1;
+    const ACTIVATION_DELAY_MS = 250;
     let shell;
     let mapContainer;
     let map;
     let observer;
     let resizeObserver;
+    let resizeFrame = 0;
+    let activationTimer = 0;
     let isNearViewport = false;
     let canRenderMap = false;
     let mapReady = false;
@@ -140,20 +136,42 @@
         },
     };
 
+    function canActivateMap() {
+        return isNearViewport && (!deferActivation || hasRenderedOnce);
+    }
+
     function requestMapSlot() {
-        if (!isNearViewport) return;
+        if (!canActivateMap()) return;
         mapUnavailable = false;
         claimMiniMapSlot(miniMapInstance);
         canRenderMap = true;
+    }
+
+    function scheduleMapActivation() {
+        if (!canActivateMap() || canRenderMap || mapUnavailable || activationTimer) return;
+
+        activationTimer = window.setTimeout(() => {
+            activationTimer = 0;
+            requestMapSlot();
+        }, ACTIVATION_DELAY_MS);
+    }
+
+    function cancelMapActivation() {
+        if (!activationTimer) return;
+        window.clearTimeout(activationTimer);
+        activationTimer = 0;
     }
 
     function startResizeObserver() {
         if (resizeObserver || !("ResizeObserver" in window) || !shell) return;
 
         resizeObserver = new ResizeObserver(() => {
-            if (map) {
+            if (!map || resizeFrame) return;
+            resizeFrame = requestAnimationFrame(() => {
+                resizeFrame = 0;
+                if (!map) return;
                 map.resize();
-            }
+            });
         });
 
         resizeObserver.observe(shell);
@@ -166,6 +184,10 @@
         if (!resizeObserver) return;
         resizeObserver.disconnect();
         resizeObserver = null;
+        if (resizeFrame) {
+            cancelAnimationFrame(resizeFrame);
+            resizeFrame = 0;
+        }
     }
 
     async function createMap() {
@@ -476,8 +498,9 @@
             ([entry]) => {
                 isNearViewport = entry.isIntersecting;
                 if (isNearViewport) {
-                    requestMapSlot();
+                    scheduleMapActivation();
                 } else {
+                    cancelMapActivation();
                     canRenderMap = false;
                     initRequestId++;
                     destroyMap();
@@ -492,12 +515,15 @@
     });
 
     $: resetForCoordinateChange();
+    $: if (canActivateMap() && !canRenderMap && !mapUnavailable)
+        scheduleMapActivation();
     $: if (isNearViewport && canRenderMap && mapContainer) void createMap();
     $: updatePosition();
 
     onDestroy(() => {
         isDestroyed = true;
         initRequestId++;
+        cancelMapActivation();
         if (observer) observer.disconnect();
         destroyMap();
     });

@@ -4,22 +4,12 @@
     import Wrench from "lucide-svelte/icons/wrench";
     import Ban from "lucide-svelte/icons/ban";
     import Flame from "lucide-svelte/icons/flame";
-    import HardHat from "lucide-svelte/icons/hard-hat";
     import Cone from "lucide-svelte/icons/cone";
     import Skull from "lucide-svelte/icons/skull";
-    import CarFront from "lucide-svelte/icons/car-front";
-    import UserX from "lucide-svelte/icons/user-x";
-    import Hammer from "lucide-svelte/icons/hammer";
-    import Box from "lucide-svelte/icons/box";
     import ShieldAlert from "lucide-svelte/icons/shield-alert";
-    import PhoneCall from "lucide-svelte/icons/phone-call";
-    import Signpost from "lucide-svelte/icons/signpost";
     import Megaphone from "lucide-svelte/icons/megaphone";
-    import RotateCcw from "lucide-svelte/icons/rotate-ccw";
-    import Hand from "lucide-svelte/icons/hand";
     import Car from "lucide-svelte/icons/car";
     import TriangleAlert from "lucide-svelte/icons/triangle-alert";
-    import ArrowLeftRight from "lucide-svelte/icons/arrow-left-right";
     import Siren from "lucide-svelte/icons/siren";
     import Heart from "lucide-svelte/icons/heart";
 
@@ -34,34 +24,34 @@
         "Assist CT with Maintenance": Wrench,
         "Road Closure": Ban,
         "Car Fire": Flame,
-        Construction: HardHat,
+        Construction: Cone,
         "Defective Traffic Signals": Cone,
         Fatality: Skull,
-        "Hit and Run No Injuries": CarFront,
-        JUMPER: UserX,
+        "Hit and Run No Injuries": Car,
+        JUMPER: TriangleAlert,
         "Live or Dead Animal": PawPrint,
-        Maintenance: Hammer,
-        "Debris From Vehicle": Box,
+        Maintenance: Wrench,
+        "Debris From Vehicle": TriangleAlert,
         "Provide Traffic Control": ShieldAlert,
         "Report of Fire": Flame,
-        "Request CalTrans Notify": PhoneCall,
-        "Road Conditions": Signpost,
+        "Request CalTrans Notify": ShieldAlert,
+        "Road Conditions": TriangleAlert,
         "SIG Alert": Megaphone,
-        SPINOUT: RotateCcw,
-        "Traffic Break": Hand,
+        SPINOUT: Car,
+        "Traffic Break": ShieldAlert,
         "Traffic Collision": Car,
         "Traffic Hazard": TriangleAlert,
-        "Wrong Way Driver": ArrowLeftRight,
+        "Wrong Way Driver": TriangleAlert,
         // Police
         "AUTO THEFT": Car,
-        "MISD HIT/RUN": CarFront,
+        "MISD HIT/RUN": Car,
         VANDALISM: TriangleAlert,
         ROBBERY: TriangleAlert,
-        "SUICIDE-THREATS": UserX,
+        "SUICIDE-THREATS": TriangleAlert,
         "DISTURBING PEACE": Megaphone,
         "REPORT OF DEATH": Skull,
-        "PRISONER IN CUSTODY": UserX,
-        "MENTAL CASE": UserX,
+        "PRISONER IN CUSTODY": ShieldAlert,
+        "MENTAL CASE": TriangleAlert,
         // Fire
         MEDICAL: Heart,
         "STRUCTURE FIRE": Flame,
