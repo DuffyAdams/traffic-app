@@ -82,6 +82,7 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_timestamp ON incidents(timestamp)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_active    ON incidents(active)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_date      ON incidents(date)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_no_date   ON incidents(incident_no, date)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_source_timestamp ON incidents(source, timestamp)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_source_active    ON incidents(source, active)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_source_date      ON incidents(source, date)")
@@ -246,19 +247,57 @@ def incident_exists(incident_no, date):
         return cur.fetchone() is not None
 
 
+def fetch_existing_incidents(keys):
+    """Fetch existing incidents for (incident_no, date) keys into a dict."""
+    normalized_keys = [
+        (str(incident_no), date)
+        for incident_no, date in keys
+        if incident_no and date
+    ]
+    if not normalized_keys:
+        return {}
+
+    existing = {}
+    with db_lock:
+        with sqlite3.connect(DB_FILE, timeout=30) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+
+            # Keep comfortably under SQLite's common 999-parameter limit.
+            chunk_size = 400
+            for start in range(0, len(normalized_keys), chunk_size):
+                chunk = normalized_keys[start : start + chunk_size]
+                placeholders = ",".join(["(?, ?)"] * len(chunk))
+                params = [value for key in chunk for value in key]
+                cur.execute(
+                    f"SELECT * FROM incidents WHERE (incident_no, date) IN ({placeholders})",
+                    tuple(params),
+                )
+                for row in cur.fetchall():
+                    record = dict(row)
+                    existing[(record["incident_no"], record["date"])] = record
+
+    return existing
+
+
 # ---------------------------------------------------------------------------
 # Write
 # ---------------------------------------------------------------------------
 
-def save_or_update_incident(data):
-    """Insert a new incident or update an existing one. Returns True if a change was made."""
+def save_or_update_incident(data, existing_record=None, log_unchanged=False, return_status=False):
+    """Insert or update an incident.
+
+    By default this preserves the historical bool return value. Callers that
+    need accounting can pass return_status=True to receive inserted, updated,
+    unchanged, or invalid.
+    """
     if not data:
-        return False
+        return "invalid" if return_status else False
 
     incident_no = data.get("No.") or data.get("Incident No.")
     if not incident_no:
         safe_print("No incident number found in data.")
-        return False
+        return "invalid" if return_status else False
 
     date            = data.get("Date",      datetime.now().strftime("%Y-%m-%d"))
     new_timestamp   = data.get("Timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
@@ -295,37 +334,37 @@ def save_or_update_incident(data):
         new_details = [new_details]
     details_json = json.dumps(new_details)
 
-    # ── Fetch existing record (outside db_lock – read-only) ────────────────
-    with db_lock:
-        with sqlite3.connect(DB_FILE, timeout=30) as conn:
-            conn.row_factory = sqlite3.Row
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT details, description, severity FROM incidents WHERE incident_no = ? AND date = ?",
-                (str(incident_no), date),
-            )
-            existing = cur.fetchone()
+    if existing_record is not None and not isinstance(existing_record, dict):
+        existing_record = dict(existing_record)
+
+    # ── Fetch existing record only when a caller did not prefetch it ───────
+    if existing_record is None:
+        with db_lock:
+            with sqlite3.connect(DB_FILE, timeout=30) as conn:
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT * FROM incidents WHERE incident_no = ? AND date = ?",
+                    (str(incident_no), date),
+                )
+                row = cur.fetchone()
+                existing_record = dict(row) if row else None
 
     # ── Generate LLM description outside the lock (slow network call) ──────
-    if not existing:
+    if not existing_record:
         new_description, new_severity = generate_description(data)
     else:
-        new_description = existing["description"]
-        new_severity    = existing["severity"]
+        new_description = existing_record.get("description")
+        new_severity    = existing_record.get("severity")
 
     # ── Apply DB update/insert ─────────────────────────────────────────────
     with db_lock:
         with sqlite3.connect(DB_FILE, timeout=30) as conn:
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
-            cur.execute(
-                "SELECT * FROM incidents WHERE incident_no = ? AND date = ?",
-                (str(incident_no), date),
-            )
-            existing_record = cur.fetchone()
 
             if existing_record:
-                existing_data = dict(existing_record)
+                existing_data = existing_record
                 updates, params = [], []
 
                 if details_json != existing_data.get("details", ""):
@@ -343,18 +382,21 @@ def save_or_update_incident(data):
                 if new_map_filename and new_map_filename != existing_data.get("map_filename"):
                     updates.append("map_filename = ?")
                     params.append(new_map_filename)
+                if active_status != existing_data.get("active"):
+                    updates.append("active = ?")
+                    params.append(active_status)
 
                 if updates:
-                    updates.append("active = ?")
                     query = f"UPDATE incidents SET {', '.join(updates)} WHERE incident_no = ? AND date = ?"
-                    params.extend([active_status, str(incident_no), date])
+                    params.extend([str(incident_no), date])
                     cur.execute(query, tuple(params))
                     conn.commit()
                     safe_print(f"Incident {incident_no} updated.")
-                    return True
+                    return "updated" if return_status else True
                 else:
-                    safe_print(f"No changes for incident {incident_no}.")
-                    return False
+                    if log_unchanged:
+                        safe_print(f"No changes for incident {incident_no}.")
+                    return "unchanged" if return_status else False
             else:
                 cur.execute(
                     """
@@ -373,4 +415,4 @@ def save_or_update_incident(data):
                 )
                 conn.commit()
                 safe_print(f"Incident {incident_no} inserted.")
-                return True
+                return "inserted" if return_status else True

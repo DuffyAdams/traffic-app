@@ -1,6 +1,6 @@
 <script>
   import { onMount } from "svelte";
-  import { fade, slide } from "svelte/transition";
+  import { fade } from "svelte/transition";
 
   // Import components
   import Header from "./components/Header.svelte";
@@ -441,11 +441,13 @@
     localStorage.setItem("darkMode", darkMode.toString());
   }
 
-  function toggleEventCounters() {
+  async function toggleEventCounters() {
     const willShowDiagnostics = !showEventCounters;
-    showEventCounters = !showEventCounters;
+    if (willShowDiagnostics) {
+      await ensureStatsPanelLoaded();
+    }
+    showEventCounters = willShowDiagnostics;
     if (shouldFetchStats()) {
-      void ensureStatsPanelLoaded();
       fetchIncidentStats();
     } else {
       stopStatsRequest();
@@ -1153,6 +1155,11 @@
 
     window.addEventListener("scroll", debouncedHandleScroll, { passive: true });
 
+    const preloadStatsPanel =
+      "requestIdleCallback" in window
+        ? window.requestIdleCallback(() => void ensureStatsPanelLoaded())
+        : window.setTimeout(() => void ensureStatsPanelLoaded(), 1200);
+
     if (scrollContainer) {
       scrollContainer.addEventListener("touchstart", handleTouchStart, {
         passive: true,
@@ -1174,6 +1181,11 @@
 
     return () => {
       clearInterval(updateInterval);
+      if ("cancelIdleCallback" in window) {
+        window.cancelIdleCallback(preloadStatsPanel);
+      } else {
+        window.clearTimeout(preloadStatsPanel);
+      }
       window.removeEventListener("online", updateOnlineStatus);
       window.removeEventListener("offline", updateOnlineStatus);
       window.removeEventListener("scroll", debouncedHandleScroll);
@@ -1336,28 +1348,34 @@
   {/if}
 
   {#if activeSource !== "map"}
-    {#if showEventCounters}
-      {#if StatsPanelComponent}
-        <svelte:component
-          this={StatsPanelComponent}
-          {eventsToday}
-          {eventsLastHour}
-          {eventsActive}
-          {totalIncidents}
-          {timeFilter}
-          {hourlyData}
-          {historicalCurrentHourAverage}
-          {incidentsByType}
-          {topLocations}
-          {selectedTypes}
-          {selectedLocations}
-          on:filterTime={handleStatsTimeFilter}
-          on:filterType={handleStatsTypeFilter}
-          on:filterLocation={handleStatsLocationFilter}
-          on:resetTypeFilters={resetTypeFilters}
-          on:resetLocationFilters={resetLocationFilters}
-        />
-      {/if}
+    {#if StatsPanelComponent}
+      <div
+        class="diagnostics-shell"
+        class:open={showEventCounters}
+        aria-hidden={!showEventCounters}
+      >
+        <div class="diagnostics-shell-inner">
+          <svelte:component
+            this={StatsPanelComponent}
+            {eventsToday}
+            {eventsLastHour}
+            {eventsActive}
+            {totalIncidents}
+            {timeFilter}
+            {hourlyData}
+            {historicalCurrentHourAverage}
+            {incidentsByType}
+            {topLocations}
+            {selectedTypes}
+            {selectedLocations}
+            on:filterTime={handleStatsTimeFilter}
+            on:filterType={handleStatsTypeFilter}
+            on:filterLocation={handleStatsLocationFilter}
+            on:resetTypeFilters={resetTypeFilters}
+            on:resetLocationFilters={resetLocationFilters}
+          />
+        </div>
+      </div>
     {/if}
 
     <ViewToggle
@@ -1582,6 +1600,32 @@
     font-size: 3.5rem;
     margin-bottom: 1.5rem;
     opacity: 0.8;
+  }
+
+  .diagnostics-shell {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transform: translateY(-8px);
+    transition:
+      grid-template-rows 360ms cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 220ms ease,
+      transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
+    overflow: hidden;
+    pointer-events: none;
+    will-change: grid-template-rows, opacity, transform;
+  }
+
+  .diagnostics-shell.open {
+    grid-template-rows: 1fr;
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+
+  .diagnostics-shell-inner {
+    min-height: 0;
+    overflow: hidden;
   }
 
   /* Scroll indicator */

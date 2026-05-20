@@ -9,6 +9,7 @@ import os
 import sqlite3
 import subprocess
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
@@ -16,10 +17,11 @@ import pytz
 import requests
 
 from config import (
-    DB_FILE, MAP_GENERATOR, TARGET_DIR, TESTMODE, HEALTHCHECK_URL, db_lock
+    DB_FILE, MAP_GENERATOR, TARGET_DIR, TESTMODE, HEALTHCHECK_URL, db_lock,
+    INCIDENT_PROCESS_WORKERS, MONITOR_INTERVAL_SECONDS,
 )
 from logger import safe_print
-from db import incident_exists, save_or_update_incident
+from db import fetch_existing_incidents, save_or_update_incident
 from llm import generate_description
 from geocoding import geocode_location as geo_geocode_location
 from config import geo_cache
@@ -62,40 +64,41 @@ def run_map_generator(incident):
 # Per-incident processing
 # ---------------------------------------------------------------------------
 
-def process_and_save_incident(incident):
-    """Geocode, generate map, and persist one incident. Returns incident_no or None."""
+def _incident_key(incident):
+    incident_no = incident.get("No.") or incident.get("Incident No.")
+    date = incident.get("Date", datetime.now().strftime("%Y-%m-%d"))
+    return (str(incident_no), date) if incident_no else None
+
+
+def process_and_save_incident(incident, existing_record=None):
+    """Geocode, generate map, and persist one incident. Returns (incident_no, status)."""
     try:
         incident_no = incident.get("No.") or incident.get("Incident No.")
         if not incident_no:
             safe_print("WARNING: No incident number found. Skipping.")
-            return None
+            return None, "invalid"
 
-        inc_exists  = incident_exists(incident_no, incident.get("Date", datetime.now().strftime("%Y-%m-%d")))
-        needs_geocoding = not inc_exists
-
-        if not needs_geocoding:
-            with sqlite3.connect(DB_FILE, timeout=30) as conn:
-                cur = conn.cursor()
-                cur.execute(
-                    "SELECT latitude, map_filename FROM incidents WHERE incident_no = ?",
-                    (str(incident_no),),
-                )
-                row = cur.fetchone()
-                if row and (row[0] is None or not row[1]):
-                    safe_print(f"Incident {incident_no} missing coords/map — will geocode.")
-                    needs_geocoding = True
+        needs_geocoding = not existing_record
+        if existing_record and (existing_record.get("latitude") is None or not existing_record.get("map_filename")):
+            safe_print(f"Incident {incident_no} missing coords/map - will geocode.")
+            needs_geocoding = True
 
         if needs_geocoding:
             _geocode_incident(incident)
             if "Latitude" in incident and "Longitude" in incident:
                 run_map_generator(incident)
 
-        save_or_update_incident(incident)
-        return str(incident_no)
+        status = save_or_update_incident(
+            incident,
+            existing_record=existing_record,
+            log_unchanged=False,
+            return_status=True,
+        )
+        return str(incident_no), status
     except Exception as e:
         inc_id = incident.get("No.", "unknown") if isinstance(incident, dict) else "unknown"
         safe_print(f"Error processing incident {inc_id}: {e}")
-        return None
+        return None, "error"
 
 
 def _geocode_incident(incident):
@@ -134,7 +137,7 @@ def _geocode_incident(incident):
 # Monitoring loop
 # ---------------------------------------------------------------------------
 
-def monitor_traffic_data(interval=15):
+def monitor_traffic_data(interval=None, process_workers=None):
     """Continuously scrape all sources, process incidents, and manage active status."""
     # Import here to avoid circular dependency at module level
     from scrapers.chp  import scrape_chp_incidents
@@ -142,13 +145,21 @@ def monitor_traffic_data(interval=15):
     from scrapers.sdfd import scrape_sdfd_incidents
     from scrapers.sdso import scrape_sdso_incidents
 
+    interval = max(1, MONITOR_INTERVAL_SECONDS if interval is None else int(interval))
+    process_workers = max(1, INCIDENT_PROCESS_WORKERS if process_workers is None else int(process_workers))
+
     safe_print("Starting continuous traffic monitoring...")
     safe_print(f"DB: {DB_FILE}")
     safe_print(f"Maps: {TARGET_DIR}")
+    safe_print(f"Monitor interval: {interval}s; incident workers: {process_workers}")
     safe_print("Press Ctrl+C to stop.")
 
     try:
         while True:
+            cycle_start = time.perf_counter()
+            scrape_seconds = 0.0
+            process_seconds = 0.0
+            status_counts = {"inserted": 0, "updated": 0, "unchanged": 0, "invalid": 0, "error": 0}
             try:
                 safe_print(f"Checking updates... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
@@ -160,6 +171,7 @@ def monitor_traffic_data(interval=15):
                     "SDFD": scrape_sdfd_incidents,
                     "SDSO": scrape_sdso_incidents,
                 }
+                scrape_start = time.perf_counter()
                 with ThreadPoolExecutor(max_workers=4) as executor:
                     futures = {executor.submit(fn): name for name, fn in scrapers.items()}
                     for future in as_completed(futures):
@@ -170,18 +182,32 @@ def monitor_traffic_data(interval=15):
                             safe_print(f"{name}: {len(results)} incidents fetched")
                         except Exception as e:
                             safe_print(f"Error scraping {name}: {e}")
+                scrape_seconds = time.perf_counter() - scrape_start
 
                 # ── Parallel processing ────────────────────────────────────
                 active_ids = set()
                 if all_incidents:
+                    process_start = time.perf_counter()
+                    keys = {_incident_key(inc) for inc in all_incidents}
+                    existing_by_key = fetch_existing_incidents(key for key in keys if key)
+
                     # CHP first (already has coords — faster to process)
                     all_incidents.sort(key=lambda x: 0 if x.get("Source") == "CHP" else 1)
-                    with ThreadPoolExecutor(max_workers=10) as executor:
-                        futures = [executor.submit(process_and_save_incident, inc) for inc in all_incidents]
+                    with ThreadPoolExecutor(max_workers=process_workers) as executor:
+                        futures = [
+                            executor.submit(
+                                process_and_save_incident,
+                                inc,
+                                existing_by_key.get(_incident_key(inc)),
+                            )
+                            for inc in all_incidents
+                        ]
                         for f in as_completed(futures):
-                            inc_id = f.result()
+                            inc_id, status = f.result()
                             if inc_id:
                                 active_ids.add(inc_id)
+                            status_counts[status if status in status_counts else "error"] += 1
+                    process_seconds = time.perf_counter() - process_start
                 else:
                     safe_print("No data retrieved from any source.")
 
@@ -198,7 +224,17 @@ def monitor_traffic_data(interval=15):
                 safe_print(f"Error in monitoring loop: {e}")
                 _ping_healthcheck(success=False)
 
-            import time
+            total_seconds = time.perf_counter() - cycle_start
+            safe_print(
+                "Monitor cycle complete: "
+                f"scrape={scrape_seconds:.2f}s, "
+                f"process={process_seconds:.2f}s, "
+                f"incidents={sum(status_counts.values())}, "
+                f"inserted={status_counts['inserted']}, "
+                f"updated={status_counts['updated']}, "
+                f"unchanged={status_counts['unchanged']}, "
+                f"total={total_seconds:.2f}s"
+            )
             time.sleep(interval)
 
     except KeyboardInterrupt:

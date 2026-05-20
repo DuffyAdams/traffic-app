@@ -186,7 +186,7 @@
     }
 </script>
 
-<div class="event-counters" transition:slide>
+<div class="event-counters">
     <div class="top-row">
         <div class="stats-grid">
             <div class="stat-card">

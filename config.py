@@ -28,6 +28,19 @@ os.makedirs(TARGET_DIR, exist_ok=True)
 # ── Feature flags ────────────────────────────────────────────────────────────
 TESTMODE = os.environ.get("TESTMODE", "False").lower() == "true"
 
+
+def _env_int(name, default, minimum=1):
+    """Read a positive integer from the environment with a safe fallback."""
+    try:
+        value = int(os.environ.get(name, default))
+        return max(minimum, value)
+    except (TypeError, ValueError):
+        return default
+
+
+MONITOR_INTERVAL_SECONDS = _env_int("MONITOR_INTERVAL_SECONDS", 60)
+INCIDENT_PROCESS_WORKERS = _env_int("INCIDENT_PROCESS_WORKERS", 3)
+
 # ── External API URLs ────────────────────────────────────────────────────────
 CHP_SCRAPE_URL  = "https://cad.chp.ca.gov/traffic.aspx?__EVENTTARGET=ddlComCenter&ddlComCenter=BCCC"
 SDPD_SCRAPE_URL = "https://webapps.sandiego.gov/sdpdonline"
