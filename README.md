@@ -69,7 +69,31 @@ MAP_ACCESS_TOKEN=your_mapbox_access_token
 # (Optional) Add your Twitter/X Developer credentials for the RoadAlerts auto-poster
 ```
 
-### 3. Frontend Setup
+### 3. Database Backups
+
+A monthly cron job keeps a SQLite backup in `backups/` and retains only the newest three copies.
+
+Backup script:
+
+```bash
+python scripts/backup_db.py
+```
+
+Restore the newest backup:
+
+```bash
+python scripts/restore_db.py
+```
+
+Restore a specific backup:
+
+```bash
+python scripts/restore_db.py backups/traffic_data_YYYY-MM-DD_HHMMSS_UTC.db
+```
+
+Important: stop the backend before restoring so the live SQLite file is not being written while the restore runs.
+
+### 4. Frontend Setup
 
 Install the Node dependencies for the Svelte interface:
 

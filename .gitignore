@@ -20,6 +20,7 @@ __pycache__/
 traffic_data.db
 traffic_data.db-wal
 traffic_data.db-shm
+backups/
 
 # Large binary / map tile files
 
@@ -36,3 +37,5 @@ pmtiles.zip
 llm.md
 system_prompt.txt
 TODO
+venv/
+.venv/

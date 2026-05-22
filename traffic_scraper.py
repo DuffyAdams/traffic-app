@@ -38,9 +38,12 @@ def run_scraper_and_server():
     scraper_thread = threading.Thread(target=monitor_traffic_data, daemon=True)
     scraper_thread.start()
 
+    host = os.environ.get("TRAFFIC_APP_HOST", "0.0.0.0")
+    port = int(os.environ.get("TRAFFIC_APP_PORT", "5002"))
+
     safe_print("Starting Flask server...")
     try:
-        app.run(debug=False, host="127.0.0.1", port=5002, threaded=True)
+        app.run(debug=False, host=host, port=port, threaded=True)
     except Exception as e:
         safe_print(f"Server error: {e}")
         os._exit(1)
