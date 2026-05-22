@@ -380,6 +380,12 @@ def save_or_update_incident(
                 if details_json != existing_data.get("details", ""):
                     updates.append("details = ?, description = ?")
                     params.extend([details_json, new_description])
+                if new_timestamp != existing_data.get("timestamp"):
+                    updates.append("timestamp = ?")
+                    params.append(new_timestamp)
+                if date != existing_data.get("date"):
+                    updates.append("date = ?")
+                    params.append(date)
                 if latitude and latitude != existing_data.get("latitude"):
                     updates.append("latitude = ?")
                     params.append(latitude)
@@ -398,7 +404,7 @@ def save_or_update_incident(
 
                 if updates:
                     query = f"UPDATE incidents SET {', '.join(updates)} WHERE incident_no = ? AND date = ?"
-                    params.extend([str(incident_no), date])
+                    params.extend([str(incident_no), existing_data.get("date", date)])
                     cur.execute(query, tuple(params))
                     conn.commit()
                     safe_print(f"Incident {incident_no} updated.")

@@ -30,7 +30,9 @@ os.makedirs(TARGET_DIR, exist_ok=True)
 TESTMODE = os.environ.get("TESTMODE", "False").lower() == "true"
 
 # San Diego traffic sources use the local Pacific clock, including daylight time.
-PST = pytz.timezone("America/Los_Angeles")
+PACIFIC = pytz.timezone("America/Los_Angeles")
+# Backward-compatible alias for existing imports; now DST-aware.
+PST = PACIFIC
 
 
 def now_pst():
@@ -46,12 +48,12 @@ def ensure_pst(dt):
 
 
 def pst_date_str(dt=None):
-    """Format a datetime as a PST date string."""
+    """Format a datetime as a Pacific time date string."""
     return ensure_pst(dt or now_pst()).strftime("%Y-%m-%d")
 
 
 def pst_timestamp_str(dt=None):
-    """Format a datetime as a PST timestamp string."""
+    """Format a datetime as a Pacific time timestamp string."""
     return ensure_pst(dt or now_pst()).strftime("%Y-%m-%d %H:%M:%S")
 
 # ── External API URLs ────────────────────────────────────────────────────────

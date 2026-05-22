@@ -133,6 +133,9 @@ def _geocode_incident(incident):
         address   = location_str.replace("/", " & ")
         query     = f"{address}, {community}, CA" if community else f"{address}, San Diego County, CA"
 
+    elif source == "CHP":
+        query = f"{location_str}, San Diego County, CA" if location_str else "San Diego County, CA"
+
     else:
         return
 

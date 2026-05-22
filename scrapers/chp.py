@@ -107,12 +107,15 @@ def _extract_traffic_info(response_text):
                 if detail_cell and not any(ex in detail_cell for ex in _EXCLUDED_DETAILS):
                     details.append(f"[{time_cell}] {detail_cell}" if time_cell else detail_cell)
 
+    payload = {"Details": details}
     if matches:
         for match in matches:
             lat_str, lon_str = match.split()
             if len(lat_str.split(".")[-1]) == 6 and len(lon_str.split(".")[-1]) == 6:
-                return {"Latitude": float(lat_str), "Longitude": float(lon_str), "Details": details}
-    return {}
+                payload["Latitude"] = float(lat_str)
+                payload["Longitude"] = float(lon_str)
+                break
+    return payload
 
 
 def _process_row(idx, row, headers, viewstate):
@@ -123,8 +126,7 @@ def _process_row(idx, row, headers, viewstate):
     table_data         = dict(zip(headers, row_data))
     additional_details = _get_incident_details(idx, viewstate)
     if not additional_details:
-        safe_print(f"CHP WARNING: No details for row {idx}. Skipping.")
-        return None
+        safe_print(f"CHP WARNING: No extra details for row {idx}; keeping row without coords.")
 
     merged   = {**table_data, **additional_details}
     chp_time = table_data.get("Time", "")
