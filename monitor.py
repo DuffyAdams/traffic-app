@@ -12,11 +12,11 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
-import pytz
 import requests
 
 from config import (
-    DB_FILE, MAP_GENERATOR, TARGET_DIR, TESTMODE, HEALTHCHECK_URL, db_lock
+    DB_FILE, MAP_GENERATOR, TARGET_DIR, TESTMODE, HEALTHCHECK_URL, db_lock,
+    now_pst, pst_date_str,
 )
 from logger import safe_print
 from db import incident_exists, save_or_update_incident
@@ -46,8 +46,7 @@ def run_map_generator(incident):
     try:
         lon              = incident.get("Longitude")
         lat              = incident.get("Latitude")
-        tz               = pytz.timezone("America/Los_Angeles")
-        ts_str           = datetime.now(tz).strftime("%Y%m%d_%H%M%S_%f")
+        ts_str           = now_pst().strftime("%Y%m%d_%H%M%S_%f")
         filename         = os.path.join(TARGET_DIR, f"map_{incident_no}_{ts_str}.png")
         subprocess.run([sys.executable, MAP_GENERATOR, str(lon), str(lat), filename], check=True)
         safe_print(f"Map generated for {incident_no}.")
@@ -70,7 +69,7 @@ def process_and_save_incident(incident):
             safe_print("WARNING: No incident number found. Skipping.")
             return None
 
-        inc_exists  = incident_exists(incident_no, incident.get("Date", datetime.now().strftime("%Y-%m-%d")))
+        inc_exists  = incident_exists(incident_no, incident.get("Date", pst_date_str()))
         needs_geocoding = not inc_exists
 
         if not needs_geocoding:
@@ -150,7 +149,7 @@ def monitor_traffic_data(interval=15):
     try:
         while True:
             try:
-                safe_print(f"Checking updates... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                safe_print(f"Checking updates... {now_pst().strftime('%Y-%m-%d %H:%M:%S')}")
 
                 # ── Parallel scraping ──────────────────────────────────────
                 all_incidents = []

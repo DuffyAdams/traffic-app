@@ -6,6 +6,7 @@ All other modules import from here to avoid circular dependencies.
 
 import os
 import threading
+from datetime import datetime
 
 import pytz
 from flask import Flask
@@ -27,6 +28,31 @@ os.makedirs(TARGET_DIR, exist_ok=True)
 
 # ── Feature flags ────────────────────────────────────────────────────────────
 TESTMODE = os.environ.get("TESTMODE", "False").lower() == "true"
+
+# Fixed PST clock for all app timestamps.
+PST = pytz.FixedOffset(-480)
+
+
+def now_pst():
+    """Return the current time in fixed PST."""
+    return datetime.now(PST)
+
+
+def ensure_pst(dt):
+    """Attach/convert a datetime to fixed PST."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=PST)
+    return dt.astimezone(PST)
+
+
+def pst_date_str(dt=None):
+    """Format a datetime as a PST date string."""
+    return ensure_pst(dt or now_pst()).strftime("%Y-%m-%d")
+
+
+def pst_timestamp_str(dt=None):
+    """Format a datetime as a PST timestamp string."""
+    return ensure_pst(dt or now_pst()).strftime("%Y-%m-%d %H:%M:%S")
 
 # ── External API URLs ────────────────────────────────────────────────────────
 CHP_SCRAPE_URL  = "https://cad.chp.ca.gov/traffic.aspx?__EVENTTARGET=ddlComCenter&ddlComCenter=BCCC"

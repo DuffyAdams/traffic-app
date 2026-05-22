@@ -22,8 +22,17 @@
     export let selectedTypes = new Set();
     export let selectedLocations = new Set();
     export let historicalCurrentHourAverage = 0;
+    export let referenceTime = "";
 
-    let currentTime = new Date();
+    function parseReferenceTime(value) {
+        const fallback = new Date();
+        if (!value) return fallback;
+
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? fallback : parsed;
+    }
+
+    let currentTime = parseReferenceTime(referenceTime);
     let hoveredIndex = null;
 
     $: expectedBucketCount =
@@ -103,13 +112,17 @@
     // Update currentTime every minute
     onMount(() => {
         const interval = setInterval(() => {
-            currentTime = new Date();
+            currentTime = new Date(currentTime.getTime() + 60000);
         }, 60000);
 
         return () => {
             clearInterval(interval);
         };
     });
+
+    $: if (referenceTime) {
+        currentTime = parseReferenceTime(referenceTime);
+    }
 
     $: sectionTitle =
         timeFilter === "day"

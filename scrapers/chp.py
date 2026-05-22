@@ -12,6 +12,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from config import CHP_SCRAPE_URL, HEADERS, PARAMS
+from config import ensure_pst, now_pst
 from logger import safe_print
 
 # ── Pre-compiled patterns ──────────────────────────────────────────────────
@@ -130,12 +131,13 @@ def _process_row(idx, row, headers, viewstate):
 
     if chp_time:
         try:
-            now       = datetime.now()
+            now       = now_pst()
             today_str = now.strftime("%Y-%m-%d")
             try:
                 dt_obj = datetime.strptime(f"{today_str} {chp_time}", "%Y-%m-%d %I:%M %p")
             except ValueError:
                 dt_obj = datetime.strptime(f"{today_str} {chp_time}", "%Y-%m-%d %H:%M")
+            dt_obj = ensure_pst(dt_obj)
 
             if dt_obj > now + timedelta(minutes=5):
                 dt_obj -= timedelta(days=1)
@@ -144,11 +146,11 @@ def _process_row(idx, row, headers, viewstate):
             merged["Date"]      = dt_obj.strftime("%Y-%m-%d")
         except Exception as e:
             safe_print(f"CHP: Time parse error '{chp_time}': {e}")
-            now = datetime.now()
+            now = now_pst()
             merged["Timestamp"] = now.strftime("%Y-%m-%d %H:%M:%S")
             merged["Date"]      = now.strftime("%Y-%m-%d")
     else:
-        now = datetime.now()
+        now = now_pst()
         merged["Timestamp"] = now.strftime("%Y-%m-%d %H:%M:%S")
         merged["Date"]      = now.strftime("%Y-%m-%d")
 

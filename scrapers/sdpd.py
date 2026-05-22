@@ -8,6 +8,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from config import SDPD_SCRAPE_URL, HEADERS
+from config import ensure_pst, now_pst
 from logger import safe_print
 
 
@@ -79,11 +80,12 @@ def scrape_sdpd_incidents():
 
             try:
                 dt_obj   = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+                dt_obj   = ensure_pst(dt_obj)
                 date_val = dt_obj.strftime("%Y-%m-%d")
                 time_val = dt_obj.strftime("%Y-%m-%d %H:%M:%S")
             except ValueError:
-                date_val = datetime.now().strftime("%Y-%m-%d")
-                time_val = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                date_val = now_pst().strftime("%Y-%m-%d")
+                time_val = now_pst().strftime("%Y-%m-%d %H:%M:%S")
 
             incidents.append({
                 "No.":           incident_id,

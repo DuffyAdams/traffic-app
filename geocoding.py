@@ -12,6 +12,8 @@ import threading
 from typing import Optional, Dict, Tuple
 from geopy.geocoders import Nominatim, ArcGIS
 
+from config import now_pst
+
 # Thread lock for cache operations
 _cache_lock = threading.Lock()
 
@@ -178,9 +180,8 @@ class GeocodingCache:
         """Store a reverse geocoding result in cache."""
         coords_str = f"{lat:.5f},{lon:.5f}"
         chash = hashlib.md5(coords_str.encode()).hexdigest()
-        from datetime import datetime
         import json
-        now = datetime.now().isoformat()
+        now = now_pst().isoformat()
         
         with _cache_lock:
             with sqlite3.connect(self.db_path, timeout=30) as conn:
@@ -197,8 +198,7 @@ class GeocodingCache:
     def set(self, query: str, lat: float, lon: float, precision: str):
         """Store a geocoding result in cache."""
         qhash = _query_hash(query)
-        from datetime import datetime
-        now = datetime.now().isoformat()
+        now = now_pst().isoformat()
         
         with _cache_lock:
             with sqlite3.connect(self.db_path, timeout=30) as conn:

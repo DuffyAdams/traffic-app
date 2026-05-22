@@ -387,5 +387,6 @@ export function buildStats(incidents, query) {
     topLocations,
     hourlyData,
     historicalCurrentHourAverage: 2,
+    generatedAt: new Date().toISOString(),
   };
 }

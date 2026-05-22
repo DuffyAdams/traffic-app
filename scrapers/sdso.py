@@ -7,6 +7,7 @@ from datetime import datetime
 import requests
 
 from config import SDSO_API_URL, HEADERS
+from config import ensure_pst, now_pst
 from logger import safe_print
 
 # ── Module-level cache to throttle SDSO requests (max once per 5 min) ──────
@@ -46,12 +47,13 @@ def scrape_sdso_incidents():
 
             try:
                 dt_obj   = datetime.strptime(dt_str, "%m/%d/%y %H:%M")
+                dt_obj   = ensure_pst(dt_obj)
                 date_val = dt_obj.strftime("%Y-%m-%d")
                 time_val = dt_obj.strftime("%Y-%m-%d %H:%M:%S")
             except Exception as e:
                 safe_print(f"SDSO: Date parse error for '{dt_str}': {e}")
-                date_val = datetime.now().strftime("%Y-%m-%d")
-                time_val = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                date_val = now_pst().strftime("%Y-%m-%d")
+                time_val = now_pst().strftime("%Y-%m-%d %H:%M:%S")
 
             details = []
             if item.get("ServiceArea"):

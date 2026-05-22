@@ -7,6 +7,7 @@ from datetime import datetime
 import requests
 
 from config import SDFD_API_URL, HEADERS
+from config import ensure_pst, now_pst
 from logger import safe_print
 
 
@@ -36,12 +37,13 @@ def scrape_sdfd_incidents():
                     dt_obj = datetime.strptime(dt_str[:19], "%Y-%m-%dT%H:%M:%S")
                 else:
                     dt_obj = datetime.strptime(" ".join(dt_str.split()), "%Y-%m-%d %H:%M")
+                dt_obj = ensure_pst(dt_obj)
                 date_val = dt_obj.strftime("%Y-%m-%d")
                 time_val = dt_obj.strftime("%Y-%m-%d %H:%M:%S")
             except Exception as e:
                 safe_print(f"SDFD: Date parse error for '{dt_str}': {e}")
-                date_val = datetime.now().strftime("%Y-%m-%d")
-                time_val = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                date_val = now_pst().strftime("%Y-%m-%d")
+                time_val = now_pst().strftime("%Y-%m-%d %H:%M:%S")
 
             details = []
             if cross_street:

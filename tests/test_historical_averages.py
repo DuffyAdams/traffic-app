@@ -15,6 +15,8 @@ import traffic_scraper
 traffic_scraper.DB_FILE = TEST_DB_FILE
 traffic_scraper.TESTMODE = True # ensure we don't accidentally do live stuff if applicable
 
+from config import now_pst
+
 class TestHistoricalAverages(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -65,7 +67,7 @@ class TestHistoricalAverages(unittest.TestCase):
         the historical average for the current hour and current day of the week.
         """
         # 1. Determine "Now" as the server will see it
-        now = datetime.now()
+        now = now_pst()
         
         # 2. We will inject data into the 3 previous weeks at THIS EXACT hour.
         # Week 1 ago: 20 incidents

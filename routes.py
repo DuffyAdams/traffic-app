@@ -17,6 +17,7 @@ from flask import abort, jsonify, request, send_from_directory
 from config import (
     app, DB_FILE, TARGET_DIR, COOKIE_NAME, COOKIE_MAX_AGE, db_lock,
     API_READ_RATE_LIMIT, API_WRITE_RATE_LIMIT, TRUST_PROXY_HEADERS,
+    now_pst, pst_timestamp_str,
 )
 from db import read_incidents, with_user_like_state
 from logger import safe_print
@@ -217,6 +218,7 @@ def get_incident_stats():
     _enforce_rate_limit("read", API_READ_RATE_LIMIT)
     date_filter = _get_date_filter()
     sources     = _clean_filter_values("source", ALLOWED_SOURCES)
+    now         = now_pst()
 
     cache_key = _cache_key("incident_stats")
     cached_payload = _get_cached_response(cache_key)
@@ -235,17 +237,17 @@ def get_incident_stats():
 
         if date_filter == "day":
             where_clauses.append("date = ?")
-            query_params.append(datetime.now().strftime("%Y-%m-%d"))
+            query_params.append(now.strftime("%Y-%m-%d"))
         elif date_filter == "week":
             where_clauses.append("timestamp >= ?")
-            query_params.append((datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S"))
+            query_params.append((now - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S"))
         elif date_filter == "month":
             where_clauses.append("timestamp >= ?")
-            query_params.append((datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S"))
+            query_params.append((now - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S"))
         elif date_filter == "year":
             where_clauses.append("timestamp >= ?")
             query_params.append(
-                (datetime.now() - relativedelta(months=12)).strftime("%Y-%m-%d %H:%M:%S")
+                (now - relativedelta(months=12)).strftime("%Y-%m-%d %H:%M:%S")
             )
 
         def make_query(select_part, extra=None):
@@ -257,11 +259,11 @@ def get_incident_stats():
             return f"{select_part}{where}", params
 
         # ── Stat counters ──────────────────────────────────────────────────
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = now.strftime("%Y-%m-%d")
         events_today      = _count_with_source(cur, sources, "date = ?",          [today])
         events_last_hour  = _count_with_source(
             cur, sources, "timestamp >= ?",
-            [(datetime.now() - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")],
+            [(now - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")],
         )
         q, p = make_query("SELECT COUNT(*) FROM incidents", "active = 1")
         cur.execute(q, p); events_active = cur.fetchone()[0]
@@ -279,10 +281,10 @@ def get_incident_stats():
         top_locations = {row[0]: row[1] for row in cur.fetchall()}
 
         # ── Chart data ─────────────────────────────────────────────────────
-        chart_data = _build_chart_data(cur, sources, date_filter)
+        chart_data = _build_chart_data(cur, sources, date_filter, now)
 
         # ── Historical hourly average ──────────────────────────────────────
-        historical_avg = _historical_hour_average(cur, sources)
+        historical_avg = _historical_hour_average(cur, sources, now)
 
     payload = {
         "eventsToday":                 events_today,
@@ -293,6 +295,7 @@ def get_incident_stats():
         "topLocations":                top_locations,
         "hourlyData":                  chart_data,
         "historicalCurrentHourAverage": historical_avg,
+        "generatedAt":                 now.isoformat(),
     }
     _set_cached_response(cache_key, payload, STATS_CACHE_TTL)
     return jsonify(payload)
@@ -352,8 +355,7 @@ def _hour_offset_counts(cur, sources, start_dt, end_dt):
     return {row[0]: row[1] for row in cur.fetchall() if row[0] is not None}
 
 
-def _build_chart_data(cur, sources, date_filter):
-    now = datetime.now()
+def _build_chart_data(cur, sources, date_filter, now):
     if date_filter == "year":
         base = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         starts = [base - relativedelta(months=11 - i) for i in range(12)]
@@ -375,8 +377,7 @@ def _build_chart_data(cur, sources, date_filter):
         return [counts.get(i, 0) for i in range(24)]
 
 
-def _historical_hour_average(cur, sources):
-    now          = datetime.now()
+def _historical_hour_average(cur, sources, now):
     hour_str     = now.strftime("%H")
     dow_str      = now.strftime("%w")
 
@@ -433,7 +434,7 @@ def like_incident(incident_id):
                             (incident_id, device_uuid))
                 if cur.fetchone():
                     return jsonify({"error": "You already liked this post."}), 400
-                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                timestamp = pst_timestamp_str()
                 cur.execute("INSERT INTO likes (incident_no, device_uuid, timestamp) VALUES (?, ?, ?)",
                             (incident_id, device_uuid, timestamp))
                 cur.execute("UPDATE incidents SET likes = likes + 1 WHERE incident_no = ?",
@@ -468,7 +469,7 @@ def comment_incident(incident_id):
     payload      = request.get_json(silent=True) or {}
     new_comment  = str(payload.get("comment", "")).strip()
     username     = str(payload.get("username", "Anonymous")).strip() or "Anonymous"
-    timestamp    = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    timestamp    = pst_timestamp_str()
 
     if not new_comment:
         return jsonify({"error": "Empty comment"}), 400

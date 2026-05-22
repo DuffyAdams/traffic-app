@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 import uuid
 import json
 
+from config import now_pst
+
 # Project root is one directory above scripts/
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_FILE = os.path.join(PROJECT_ROOT, "traffic_data.db")
@@ -13,7 +15,7 @@ def add_mock_data():
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
 
-    now = datetime.now()
+    now = now_pst()
     incident_types = ["Traffic Collision", "Traffic Hazard", "Disabled Vehicle", "Fire", "Medical Emergency"]
     locations = ["1-5 N / 1-8 E", "163 S / FRIARS RD", "I-805 S / SR-94", "I-15 N / MIRA MESA BLVD", "SR-52 E / CONVOY ST"]
     cities = ["San Diego", "Chula Vista", "Oceanside", "Escondido", "Carlsbad"]

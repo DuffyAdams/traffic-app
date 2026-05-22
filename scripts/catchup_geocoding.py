@@ -4,7 +4,6 @@ import sys
 import subprocess
 import threading
 import json
-from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Project root is one directory above scripts/ — needed for imports and paths
@@ -13,6 +12,7 @@ sys.path.insert(0, PROJECT_ROOT)
 
 # Import shared geocoding module (lives at project root)
 from geocoding import GeocodingCache, geocode_location, normalize_street  # noqa: E402
+from config import now_pst
 
 BASE_DIR      = PROJECT_ROOT
 DB_FILE       = os.path.join(BASE_DIR, "traffic_data.db")
@@ -23,7 +23,7 @@ MAP_GENERATOR = os.path.join(BASE_DIR, "generate_map.py")
 geo_cache = GeocodingCache(DB_FILE)
 
 def run_map_generator(incident_no, lat, lon):
-    filename_date_str = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    filename_date_str = now_pst().strftime("%Y%m%d_%H%M%S_%f")
     filename = os.path.join(TARGET_DIR, f"map_{incident_no}_{filename_date_str}.png")
     cmd = [sys.executable, MAP_GENERATOR, str(lon), str(lat), filename]
     try:

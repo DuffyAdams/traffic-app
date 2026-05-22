@@ -90,6 +90,7 @@
    * @property {Record<string, number>} topLocations
    * @property {number[]} [hourlyData]
    * @property {number} [historicalCurrentHourAverage]
+   * @property {string} [generatedAt]
    */
 
   /**
@@ -243,6 +244,7 @@
   /** @type {number[]} */
   let hourlyData = [];
   let historicalCurrentHourAverage = 0;
+  let statsReferenceTime = "";
 
   // Data Source Management
   let activeSource = "all"; // 'all', 'CHP', 'SDPD', 'SDFD'
@@ -773,6 +775,7 @@
         hourlyData = (cachedStats.hourlyData || []).map(Number);
         historicalCurrentHourAverage =
           cachedStats.historicalCurrentHourAverage || 0;
+        statsReferenceTime = cachedStats.generatedAt || "";
         return;
       }
 
@@ -801,6 +804,7 @@
       totalIncidents = stats.totalIncidents;
       hourlyData = (stats.hourlyData || []).map(Number);
       historicalCurrentHourAverage = stats.historicalCurrentHourAverage || 0;
+      statsReferenceTime = stats.generatedAt || "";
 
       incidentsByType = Object.fromEntries(
         Object.entries(stats.incidentsByType).sort(([, a], [, b]) => b - a),
@@ -1347,6 +1351,7 @@
           {timeFilter}
           {hourlyData}
           {historicalCurrentHourAverage}
+          referenceTime={statsReferenceTime}
           {incidentsByType}
           {topLocations}
           {selectedTypes}

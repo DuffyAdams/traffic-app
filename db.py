@@ -8,7 +8,7 @@ import re
 import sqlite3
 from datetime import datetime
 
-from config import DB_FILE, db_lock
+from config import DB_FILE, db_lock, now_pst, pst_date_str, pst_timestamp_str
 from logger import safe_print
 from llm import generate_description
 
@@ -146,7 +146,7 @@ def read_incidents(
             conditions.append("active = 1")
         if date_filter in ("day", "daily"):
             conditions.append("date = ?")
-            params.append(datetime.now().strftime("%Y-%m-%d"))
+            params.append(pst_date_str())
         if cursor:
             if "|" in cursor:
                 ts_part, id_part = cursor.split("|", 1)
@@ -260,8 +260,8 @@ def save_or_update_incident(data):
         safe_print("No incident number found in data.")
         return False
 
-    date            = data.get("Date",      datetime.now().strftime("%Y-%m-%d"))
-    new_timestamp   = data.get("Timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    date            = data.get("Date",      pst_date_str())
+    new_timestamp   = data.get("Timestamp", pst_timestamp_str())
     city            = data.get("City", "")
     neighborhood    = data.get("Neighborhood", "")
     location        = data.get("Location", "")
