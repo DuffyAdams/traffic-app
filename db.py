@@ -284,7 +284,13 @@ def fetch_existing_incidents(keys):
 # Write
 # ---------------------------------------------------------------------------
 
-def save_or_update_incident(data, existing_record=None, log_unchanged=False, return_status=False):
+def save_or_update_incident(
+    data,
+    existing_record=None,
+    log_unchanged=False,
+    return_status=False,
+    generate_description_on_insert=True,
+):
     """Insert or update an incident.
 
     By default this preserves the historical bool return value. Callers that
@@ -352,7 +358,11 @@ def save_or_update_incident(data, existing_record=None, log_unchanged=False, ret
 
     # ── Generate LLM description outside the lock (slow network call) ──────
     if not existing_record:
-        new_description, new_severity = generate_description(data)
+        if generate_description_on_insert:
+            new_description, new_severity = generate_description(data)
+        else:
+            new_description = str(data.get("description", "") or "")
+            new_severity = data.get("severity")
     else:
         new_description = existing_record.get("description")
         new_severity    = existing_record.get("severity")
@@ -398,6 +408,14 @@ def save_or_update_incident(data, existing_record=None, log_unchanged=False, ret
                         safe_print(f"No changes for incident {incident_no}.")
                     return "unchanged" if return_status else False
             else:
+                cur.execute(
+                    """
+                    UPDATE incidents
+                    SET active = 0
+                    WHERE incident_no = ? AND date != ? AND active = 1
+                    """,
+                    (str(incident_no), date),
+                )
                 cur.execute(
                     """
                     INSERT INTO incidents

@@ -29,19 +29,19 @@ os.makedirs(TARGET_DIR, exist_ok=True)
 # ── Feature flags ────────────────────────────────────────────────────────────
 TESTMODE = os.environ.get("TESTMODE", "False").lower() == "true"
 
-# Fixed PST clock for all app timestamps.
-PST = pytz.FixedOffset(-480)
+# San Diego traffic sources use the local Pacific clock, including daylight time.
+PST = pytz.timezone("America/Los_Angeles")
 
 
 def now_pst():
-    """Return the current time in fixed PST."""
+    """Return the current time in San Diego's Pacific timezone."""
     return datetime.now(PST)
 
 
 def ensure_pst(dt):
-    """Attach/convert a datetime to fixed PST."""
+    """Attach/convert a datetime to San Diego's Pacific timezone."""
     if dt.tzinfo is None:
-        return dt.replace(tzinfo=PST)
+        return PST.localize(dt)
     return dt.astimezone(PST)
 
 

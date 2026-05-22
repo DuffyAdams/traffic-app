@@ -25,6 +25,9 @@ from geocoding import geocode_location as geo_geocode_location
 from config import geo_cache
 
 
+_description_executor = ThreadPoolExecutor(max_workers=2)
+
+
 def geocode_location(location_query):
     """Geocode using the shared module and cache."""
     return geo_geocode_location(location_query, cache=geo_cache, debug_print=safe_print)
@@ -71,6 +74,14 @@ def process_and_save_incident(incident):
 
         inc_exists  = incident_exists(incident_no, incident.get("Date", pst_date_str()))
         needs_geocoding = not inc_exists
+        inserted_fast = False
+
+        if not inc_exists:
+            # Write the row immediately so the feed can surface it without waiting
+            # for map generation or description enrichment to finish.
+            save_or_update_incident(incident, generate_description_on_insert=False)
+            inserted_fast = True
+            _description_executor.submit(_refresh_incident_description, dict(incident))
 
         if not needs_geocoding:
             with sqlite3.connect(DB_FILE, timeout=30) as conn:
@@ -88,8 +99,10 @@ def process_and_save_incident(incident):
             _geocode_incident(incident)
             if "Latitude" in incident and "Longitude" in incident:
                 run_map_generator(incident)
+        elif inserted_fast and "Latitude" in incident and "Longitude" in incident:
+            run_map_generator(incident)
 
-        save_or_update_incident(incident)
+        save_or_update_incident(incident, generate_description_on_insert=False)
         return str(incident_no)
     except Exception as e:
         inc_id = incident.get("No.", "unknown") if isinstance(incident, dict) else "unknown"
@@ -127,6 +140,29 @@ def _geocode_incident(incident):
     coords = geocode_location(query)
     if coords:
         incident.update(coords)
+
+
+def _refresh_incident_description(incident):
+    """Generate a summary for a newly inserted incident without blocking ingest."""
+    try:
+        incident_no = incident.get("No.") or incident.get("Incident No.")
+        if not incident_no:
+            return
+
+        description, severity = generate_description(incident)
+        incident_date = incident.get("Date", pst_date_str())
+
+        with db_lock:
+            with sqlite3.connect(DB_FILE, timeout=30) as conn:
+                conn.cursor().execute(
+                    "UPDATE incidents SET description = ?, severity = ? WHERE incident_no = ? AND date = ?",
+                    (description, severity, str(incident_no), incident_date),
+                )
+                conn.commit()
+    except Exception as e:
+        safe_print(
+            f"Background description refresh failed for {incident.get('No.', 'unknown')}: {e}"
+        )
 
 
 # ---------------------------------------------------------------------------
