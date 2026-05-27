@@ -23,6 +23,7 @@
 
   // Import stores
   import { addToast } from "./stores/appStore.js";
+  import { compareText, formatDateKey, t } from "./utils/i18n.js";
 
   /**
    * @typedef {Object} PostComment
@@ -126,6 +127,7 @@
   let posts = [];
   let loading = true;
   let darkMode = true;
+  let accessibilityMode = false;
   let currentUsername = "";
   let lastToggleTime = 0;
   let postsPerPage = 15;
@@ -171,6 +173,7 @@
   let PostTableComponent = null;
   /** @type {Promise<typeof import("./components/PostTable.svelte").default> | null} */
   let postTableLoadPromise = null;
+  const ACCESSIBILITY_MODE_STORAGE_KEY = "accessibilityMode";
 
   /**
    * @param {string} query
@@ -194,7 +197,7 @@
    */
   function buildPostFromIncident(incident, existingPost = {}) {
     const timestamp = incident.timestamp || existingPost.timestamp || "";
-    const date = timestamp ? new Date(timestamp).toLocaleDateString() : "";
+    const date = formatDateKey(timestamp);
 
     return {
       id: incident.incident_no ?? existingPost.id,
@@ -202,9 +205,9 @@
       details: Array.isArray(incident.Details) ? incident.Details : [],
       timestamp,
       time: formatTimestamp(timestamp),
-      description: incident.description || "No description available",
+      description: incident.description || t("fallback.descriptionUnavailable"),
       showFullDescription: existingPost.showFullDescription ?? false,
-      location: incident.location || "Unknown location",
+      location: incident.location || t("fallback.unknownLocation"),
       neighborhood: incident.neighborhood || "",
       latitude: incident.latitude ?? null,
       longitude: incident.longitude ?? null,
@@ -218,7 +221,7 @@
         : existingPost.comments ?? [],
       newComment: existingPost.newComment ?? "",
       showComments: existingPost.showComments ?? false,
-      type: incident.type || "Traffic Incident",
+      type: incident.type || t("fallback.trafficIncident"),
       likeError: existingPost.likeError ?? "",
       commentError: existingPost.commentError ?? "",
       likeErrorAnimation: existingPost.likeErrorAnimation ?? false,
@@ -316,11 +319,11 @@
     isOnline = navigator.onLine;
     if (!isOnline) {
       if (!isFirstCheck) {
-        addToast("You are offline. Some features may not work.", "warning", 0);
+        addToast(t("toast.offline"), "warning", 0);
       }
     } else {
       if (!isFirstCheck && !previouslyOnline) {
-        addToast("Connection restored.", "success");
+        addToast(t("toast.connectionRestored"), "success");
       }
       if (posts.length === 0) fetchIncidents();
       if (shouldFetchStats()) fetchIncidentStats();
@@ -437,10 +440,21 @@
     }
   }
 
+  function applyUserPreferences() {
+    document.body.classList.toggle("dark-mode", darkMode);
+    document.body.classList.toggle("accessibility-mode", accessibilityMode);
+  }
+
   function toggleDarkMode() {
     darkMode = !darkMode;
-    document.body.classList.toggle("dark-mode", darkMode);
+    applyUserPreferences();
     localStorage.setItem("darkMode", darkMode.toString());
+  }
+
+  function toggleAccessibilityMode() {
+    accessibilityMode = !accessibilityMode;
+    applyUserPreferences();
+    localStorage.setItem(ACCESSIBILITY_MODE_STORAGE_KEY, accessibilityMode.toString());
   }
 
   function toggleEventCounters() {
@@ -584,7 +598,7 @@
       if (!(err instanceof Error) || err.name !== "AbortError") {
         console.error("Error fetching incidents:", err);
         addToast(
-          "Failed to load incidents. Please check your connection and try again.",
+          t("toast.failedLoadIncidents"),
           "error",
         );
         if (currentPage === 1 && posts.length === 0) {
@@ -593,10 +607,10 @@
               id: "error-fallback",
               compositeId: "error-fallback",
               timestamp: new Date().toISOString(),
-              time: "Error",
-              description: "Unable to load incidents at this time.",
+              time: t("fallback.error"),
+              description: t("state.loadIncidentsUnavailable"),
               showFullDescription: false,
-              location: "N/A",
+              location: t("fallback.notAvailable"),
               neighborhood: "",
               latitude: null,
               longitude: null,
@@ -605,7 +619,7 @@
               comments: [],
               newComment: "",
               showComments: false,
-              type: "Error",
+              type: t("fallback.error"),
               likeError: "",
               commentError: "",
               likeErrorAnimation: false,
@@ -637,7 +651,7 @@
   function processIncidents(incidents) {
     if (!Array.isArray(incidents)) {
       console.error("Invalid incidents data: expected array");
-      addToast("Received invalid data from server", "error");
+      addToast(t("toast.invalidIncidentData"), "error");
       return;
     }
 
@@ -656,7 +670,7 @@
       })
       .map((incident) => {
         const date = incident.timestamp
-          ? new Date(incident.timestamp).toLocaleDateString()
+          ? formatDateKey(incident.timestamp)
           : "";
         incident.compositeId = `${incident.incident_no}-${date}`;
         return incident;
@@ -683,7 +697,7 @@
       const timeB = new Date(b.timestamp).getTime();
       if (timeB !== timeA) return timeB - timeA;
       // Tie-breaker: use ID if timestamps are identical
-      return b.id.localeCompare(a.id);
+      return compareText(b.id, a.id);
     });
 
     if (incidents.length > 0) {
@@ -815,7 +829,7 @@
     } catch (err) {
       if (!(err instanceof Error) || err.name !== "AbortError") {
         console.error("Error fetching incident stats:", err);
-        addToast("Failed to load incident statistics.", "error");
+        addToast(t("toast.failedLoadIncidentStats"), "error");
       }
     } finally {
       if (requestId === currentStatsRequestId) {
@@ -876,7 +890,7 @@
     } catch (err) {
       console.error("Error updating like:", err);
       addToast(
-        `Failed to ${wasLiked ? "unlike" : "like"} post. Please try again.`,
+        wasLiked ? t("toast.failedUnlikePost") : t("toast.failedLikePost"),
         "error",
       );
       posts = posts.map((p) =>
@@ -908,16 +922,20 @@
    * @param {Post} post
    */
   function sharePost(post) {
-    const text = `${post.description} - Location: ${post.location}. Check out more traffic incidents at San Diego Traffic Watch!`;
+    const text = t("share.incidentSummary", {
+      description: post.description,
+      location: post.location,
+    });
     const url = window.location.origin;
 
     if (navigator.share) {
-      navigator.share({ title: "San Diego Traffic Watch", text, url });
+      navigator.share({ title: t("app.name"), text, url });
     } else {
       const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
       window.open(twitterUrl, "_blank");
     }
   }
+
 
   /**
    * @param {string} postId
@@ -934,7 +952,7 @@
       (c) => c.username === currentUsername,
     );
     if (userComments.length >= 2) {
-      addToast("You can only leave 2 comments per post.", "warning");
+      addToast(t("toast.commentLimitReached"), "warning");
       return;
     }
 
@@ -980,10 +998,10 @@
           ? { ...p, comments: data.comments, newComment: "", commentError: "" }
           : p,
       );
-      addToast("Comment added successfully!", "success");
+      addToast(t("toast.commentAdded"), "success");
     } catch (err) {
       console.error("Error submitting comment:", err);
-      addToast("Failed to submit comment. Please try again.", "error");
+      addToast(t("toast.failedSubmitComment"), "error");
       posts = posts.map((p) =>
         p.id === postId
           ? {
@@ -1140,8 +1158,10 @@
       "(prefers-color-scheme: dark)",
     ).matches;
     const storedMode = localStorage.getItem("darkMode");
+    const storedAccessibilityMode = localStorage.getItem(ACCESSIBILITY_MODE_STORAGE_KEY);
     darkMode = storedMode ? storedMode === "true" : prefersDark;
-    document.body.classList.toggle("dark-mode", darkMode);
+    accessibilityMode = storedAccessibilityMode === "true";
+    applyUserPreferences();
 
     currentUsername =
       localStorage.getItem("username") || generateRandomUsername();
@@ -1283,7 +1303,7 @@
       if (newPostsCount > 0) {
         clearAllClientCaches();
         posts = updatedPosts;
-        addToast(`${newPostsCount} new incident(s)`, "info");
+        addToast(t("toast.newIncidents", { count: newPostsCount }), "info");
       } else {
         posts = updatedPosts; // Triggers reactivity for updated properties
       }
@@ -1309,9 +1329,11 @@
   <Header
     {showEventCounters}
     {darkMode}
+    accessibilityMode={accessibilityMode}
     {activeSource}
     on:toggleEventCounters={toggleEventCounters}
     on:toggleDarkMode={toggleDarkMode}
+    on:toggleAccessibilityMode={toggleAccessibilityMode}
   />
 
   <div class="toolbar">
@@ -1329,7 +1351,7 @@
   </div>
 
   {#if activeSource === "map" && !MapTabComponent}
-    <div class="map-loading">Loading map...</div>
+    <div class="map-loading">{t("state.loadingMap")}</div>
   {/if}
 
   <!-- Load the map tab lazily, then keep it mounted after the first open -->
@@ -1381,14 +1403,14 @@
     {:else if posts.length === 0}
       <div class="empty-state" in:fade={{ duration: 150 }}>
         <div class="empty-icon">📂</div>
-        <p>No incidents to display at the moment.</p>
-        <p>Check back soon for updates.</p>
+        <p>{t("state.noIncidentsTitle")}</p>
+        <p>{t("state.noIncidentsSubtitle")}</p>
       </div>
     {:else if displayPosts.length === 0}
       <div class="empty-state" in:fade={{ duration: 150 }}>
         <div class="empty-icon">🔍</div>
-        <p>No incidents match your search.</p>
-        <p>Try adjusting your query or loading more posts.</p>
+        <p>{t("state.noSearchTitle")}</p>
+        <p>{t("state.noSearchSubtitle")}</p>
       </div>
     {:else if condensedView}
       {#if PostTableComponent}
@@ -1441,7 +1463,7 @@
           <span class="dot"></span>
           <span class="dot"></span>
         </div>
-        <p>More incidents available</p>
+        <p>{t("state.moreIncidentsAvailable")}</p>
       </div>
     {/if}
   {/if}

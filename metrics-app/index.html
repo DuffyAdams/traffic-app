@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#eaeff5" />
+    <title>San Diego Traffic Metrics</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Share+Tech+Mono&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar panel">
+        <div class="topbar-copy">
+          <p class="eyebrow">Internal traffic operations</p>
+          <h1>San Diego Traffic Metrics</h1>
+          <p class="lede">
+            Live incident volume, traffic-app availability, scrape health, and user activity across production.
+          </p>
+        </div>
+        <div class="topbar-side">
+          <div class="status-line">
+            <div class="status-pill" id="status-pill">Loading live data</div>
+            <button class="refresh-button" id="refresh-button" type="button">Refresh</button>
+          </div>
+          <div class="range-control" id="range-control" aria-label="Date range control">
+            <button class="range-button is-active" type="button" data-range="day">Day</button>
+            <button class="range-button" type="button" data-range="week">Week</button>
+            <button class="range-button" type="button" data-range="month">Month</button>
+            <button class="range-button" type="button" data-range="year">Year</button>
+          </div>
+          <dl class="meta-strip">
+            <div>
+              <dt>Updated</dt>
+              <dd id="last-updated">Waiting</dd>
+            </div>
+            <div>
+              <dt>Selected range</dt>
+              <dd id="selected-range-label">Today</dd>
+            </div>
+            <div>
+              <dt>Traffic posture</dt>
+              <dd id="traffic-posture">Assessing</dd>
+            </div>
+            <div>
+              <dt>Scrape health</dt>
+              <dd id="scrape-health">Checking</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="kpi-grid" aria-label="Key operating indicators">
+        <article class="kpi-card panel">
+          <span class="kpi-label" id="incidents-range-label">Incidents in range</span>
+          <strong class="kpi-value" id="incidents-in-range">--</strong>
+          <span class="kpi-note" id="incidents-range-note">Selected ingest volume</span>
+        </article>
+        <article class="kpi-card panel">
+          <span class="kpi-label">Active incidents</span>
+          <strong class="kpi-value" id="active-incidents">--</strong>
+          <span class="kpi-note">Current active backlog</span>
+        </article>
+        <article class="kpi-card panel">
+          <span class="kpi-label">Traffic-app visitors</span>
+          <strong class="kpi-value" id="traffic-visitors">--</strong>
+          <span class="kpi-note">Unique devices in range</span>
+        </article>
+        <article class="kpi-card panel">
+          <span class="kpi-label">Traffic-app requests</span>
+          <strong class="kpi-value" id="traffic-requests">--</strong>
+          <span class="kpi-note">Observed API requests in range</span>
+        </article>
+        <article class="kpi-card panel">
+          <span class="kpi-label">Requests per minute</span>
+          <strong class="kpi-value" id="requests-per-minute">--</strong>
+          <span class="kpi-note">Recent backend request rate</span>
+        </article>
+        <article class="kpi-card panel">
+          <span class="kpi-label">Last successful scrape</span>
+          <strong class="kpi-value kpi-value-text" id="last-successful-scrape">--</strong>
+          <span class="kpi-note">Freshness of scraper output</span>
+        </article>
+      </section>
+
+      <section class="main-grid">
+        <section class="panel trend-panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Volume trend</p>
+              <h2 id="trend-title">Incident volume</h2>
+            </div>
+            <div class="panel-note" id="trend-note">Waiting for data</div>
+          </div>
+          <div class="trend-chart-wrap">
+            <svg
+              class="trend-chart"
+              id="trend-chart"
+              viewBox="0 0 900 260"
+              preserveAspectRatio="none"
+              aria-label="Incident volume trend chart"
+            ></svg>
+          </div>
+        </section>
+
+        <aside class="panel health-panel">
+          <div class="panel-header compact">
+            <div>
+              <p class="panel-kicker">Health monitoring</p>
+              <h2>traffic-app reachability</h2>
+            </div>
+          </div>
+          <div class="health-grid">
+            <article class="health-tile">
+              <span class="health-label">Public homepage</span>
+              <strong class="health-value" id="site-status">--</strong>
+              <span class="health-note" id="site-latency">Status pending</span>
+            </article>
+            <article class="health-tile">
+              <span class="health-label">Public API health</span>
+              <strong class="health-value" id="api-status">--</strong>
+              <span class="health-note" id="api-latency">Status pending</span>
+            </article>
+            <article class="health-tile">
+              <span class="health-label">Scrape freshness</span>
+              <strong class="health-value" id="scrape-freshness">--</strong>
+              <span class="health-note" id="scrape-freshness-note">Waiting for signal</span>
+            </article>
+            <article class="health-tile">
+              <span class="health-label">Process uptime</span>
+              <strong class="health-value" id="process-uptime">--</strong>
+              <span class="health-note" id="process-started">Start time pending</span>
+            </article>
+          </div>
+          <div class="load-block">
+            <div class="health-row">
+              <span>Current load versus baseline</span>
+              <strong id="load-ratio">--</strong>
+            </div>
+            <div class="meter-track">
+              <div class="meter-fill" id="load-meter-fill"></div>
+            </div>
+            <p class="load-copy" id="load-explainer">Waiting for live baseline.</p>
+          </div>
+        </aside>
+      </section>
+
+      <section class="analytics-grid">
+        <section class="panel audience-panel">
+          <div class="panel-header compact">
+            <div>
+              <p class="panel-kicker">Analytics</p>
+              <h2>Traffic and engagement mix</h2>
+            </div>
+          </div>
+          <div class="audience-metrics">
+            <div>
+              <span class="mini-label">Comments in range</span>
+              <strong id="comments-in-range">--</strong>
+            </div>
+            <div>
+              <span class="mini-label">Likes in range</span>
+              <strong id="likes-in-range">--</strong>
+            </div>
+            <div>
+              <span class="mini-label">Engagement actions</span>
+              <strong id="engagement-actions">--</strong>
+            </div>
+            <div>
+              <span class="mini-label">Metrics page visitors</span>
+              <strong id="metrics-visitors">--</strong>
+            </div>
+          </div>
+          <div class="comparison-bars" id="comparison-bars"></div>
+        </section>
+
+        <section class="panel list-panel">
+          <div class="panel-header compact">
+            <div>
+              <p class="panel-kicker">Incident mix</p>
+              <h2>Top incident types</h2>
+            </div>
+          </div>
+          <div class="list" id="type-list"></div>
+        </section>
+
+        <section class="panel list-panel">
+          <div class="panel-header compact">
+            <div>
+              <p class="panel-kicker">Location pressure</p>
+              <h2>Top locations</h2>
+            </div>
+          </div>
+          <div class="list" id="location-list"></div>
+        </section>
+      </section>
+    </main>
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>

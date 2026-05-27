@@ -21,6 +21,7 @@
     import LazyImage from "./LazyImage.svelte";
     import IncidentMiniMap from "./IncidentMiniMap.svelte";
     import { mapPanTo } from "../stores/appStore.js";
+    import { t } from "../utils/i18n.js";
 
     export let posts = [];
     export let expandedPostId = null;
@@ -105,10 +106,10 @@
 
 <div class="incidents-table">
     <div class="table-header">
-        <div class="table-cell type-cell">Type</div>
-        <div class="table-cell time-cell">Time</div>
-        <div class="table-cell location-cell">Location</div>
-        <div class="table-cell status-cell">Status</div>
+        <div class="table-cell type-cell">{t("table.type")}</div>
+        <div class="table-cell time-cell">{t("table.time")}</div>
+        <div class="table-cell location-cell">{t("table.location")}</div>
+        <div class="table-cell status-cell">{t("table.status")}</div>
     </div>
 
     {#each posts as post, i (post.compositeId)}
@@ -153,10 +154,10 @@
             <div class="table-cell status-cell">
                 {#if post.active}
                     <span class="status-badge active"
-                        ><Zap size={10} fill="currentColor" /> Active</span
+                        ><Zap size={10} fill="currentColor" /> {t("status.active")}</span
                     >
                 {:else}
-                    <span class="status-badge">Inactive</span>
+                    <span class="status-badge">{t("status.inactive")}</span>
                 {/if}
             </div>
             <span class="row-arrow"><ChevronDown size={16} /></span>
@@ -202,7 +203,7 @@
                                     </button>
                                 {/if}
                             {:else}
-                                <span class="no-data">NO DATA AVAILABLE.</span>
+                                <span class="no-data">{t("fallback.noDataAvailable")}</span>
                             {/if}
                         </div>
                         <div class="expanded-actions">
@@ -223,7 +224,7 @@
                                 <span
                                     >{post.likes > 0
                                         ? post.likes
-                                        : "Like"}</span
+                                        : t("actions.like")}</span
                                 >
                             </button>
                             <button
@@ -237,7 +238,7 @@
                                 <span
                                     >{post.comments.length > 0
                                         ? post.comments.length
-                                        : "Comment"}</span
+                                        : t("actions.comment")}</span
                                 >
                             </button>
                             <button
@@ -247,7 +248,7 @@
                                 <span class="button-icon">
                                     <Share2 size={18} />
                                 </span>
-                                <span>Share</span>
+                                <span>{t("actions.share")}</span>
                             </button>
                         </div>
                     </div>
@@ -268,7 +269,7 @@
                         >
                         <h3 class="comments-title">
                             <MessageSquare size={18} />
-                            Comments ({post.comments.length})
+                            {t("comments.title", { count: post.comments.length })}
                         </h3>
                         {#if post.commentError}
                             <p class="error-message">{post.commentError}</p>
@@ -276,7 +277,7 @@
                         <div class="comments-container">
                             {#if post.comments.length === 0}
                                 <p class="no-comments">
-                                    Be the first to comment!
+                                    {t("comments.empty")}
                                 </p>
                             {:else}
                                 {#each post.comments as comment, i}
@@ -310,7 +311,7 @@
                             <input
                                 type="text"
                                 bind:value={post.newComment}
-                                placeholder="Write a comment..."
+                                placeholder={t("comments.placeholder")}
                                 maxlength="150"
                                 on:keypress={(e) =>
                                     e.key === "Enter" &&
@@ -329,7 +330,7 @@
                                 }}
                             >
                                 <Send size={14} />
-                                Send
+                                {t("actions.send")}
                             </button>
                         </div>
                     </div>

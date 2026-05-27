@@ -9,6 +9,7 @@ import os
 import sqlite3
 import subprocess
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
@@ -18,6 +19,7 @@ from config import (
     DB_FILE, MAP_GENERATOR, TARGET_DIR, TESTMODE, HEALTHCHECK_URL, db_lock,
     now_pst, pst_date_str,
 )
+from runtime_metrics import record_scrape_success
 from logger import safe_print
 from db import incident_exists, save_or_update_incident
 from llm import generate_description
@@ -188,6 +190,7 @@ def monitor_traffic_data(interval=15):
     try:
         while True:
             try:
+                cycle_start = time.perf_counter()
                 safe_print(f"Checking updates... {now_pst().strftime('%Y-%m-%d %H:%M:%S')}")
 
                 # ── Parallel scraping ──────────────────────────────────────
@@ -231,12 +234,12 @@ def monitor_traffic_data(interval=15):
 
                 # ── Healthcheck ping ───────────────────────────────────────
                 _ping_healthcheck(success=True)
+                record_scrape_success(time.perf_counter() - cycle_start)
 
             except Exception as e:
                 safe_print(f"Error in monitoring loop: {e}")
                 _ping_healthcheck(success=False)
 
-            import time
             time.sleep(interval)
 
     except KeyboardInterrupt:

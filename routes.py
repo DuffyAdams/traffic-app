@@ -4,6 +4,7 @@ Flask API routes for the traffic app.
 Import this module to register all routes on the shared `app` instance.
 """
 
+import os
 import sqlite3
 import time
 import uuid
@@ -21,6 +22,7 @@ from config import (
 )
 from db import read_incidents, with_user_like_state
 from logger import safe_print
+from runtime_metrics import get_runtime_metrics, record_api_request
 
 
 MAX_INCIDENT_LIMIT = 150
@@ -32,6 +34,10 @@ READ_CACHE_TTL = 20
 STATS_CACHE_TTL = 45
 ALLOWED_DATE_FILTERS = {None, "day", "daily", "week", "month", "year"}
 ALLOWED_SOURCES = {"CHP", "SDPD", "SDSO", "SDFD"}
+TRAFFIC_APP_PUBLIC_URL = os.environ.get("TRAFFIC_APP_PUBLIC_URL", "https://traffic-app.duffyadams.com")
+METRICS_PUBLIC_URL = os.environ.get("METRICS_PUBLIC_URL", "https://metrics.duffyadams.com")
+TRAFFIC_APP_PUBLIC_HOST = TRAFFIC_APP_PUBLIC_URL.split("://", 1)[-1].split("/", 1)[0]
+METRICS_PUBLIC_HOST = METRICS_PUBLIC_URL.split("://", 1)[-1].split("/", 1)[0]
 
 _response_cache = {}
 _cache_lock = Lock()
@@ -126,6 +132,12 @@ def _set_cached_response(key, payload, ttl):
         _response_cache[key] = (time.time() + ttl, payload)
 
 
+@app.before_request
+def _track_api_requests():
+    if request.path.startswith("/api/"):
+        record_api_request()
+
+
 def _clear_response_cache():
     with _cache_lock:
         _response_cache.clear()
@@ -179,6 +191,116 @@ def _enforce_rate_limit(bucket, limit_spec):
         _rate_limit_hits[key] = window
 
 
+def _range_key(date_filter):
+    return date_filter or "day"
+
+
+def _range_label(date_filter):
+    labels = {
+        "day": "Today",
+        "daily": "Today",
+        "week": "Last 7 days",
+        "month": "Last 30 days",
+        "year": "Last 12 months",
+        None: "Today",
+    }
+    return labels.get(date_filter, "Today")
+
+
+def _range_start(now, date_filter):
+    selected = _range_key(date_filter)
+    if selected == "day":
+        return now.replace(hour=0, minute=0, second=0, microsecond=0)
+    if selected == "week":
+        return now - timedelta(days=7)
+    if selected == "month":
+        return now - timedelta(days=30)
+    if selected == "year":
+        return now - relativedelta(months=12)
+    return now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def _timestamp_clause(column, date_filter, now):
+    start = _range_start(now, date_filter)
+    return f"{column} >= ?", [start.strftime("%Y-%m-%d %H:%M:%S")]
+
+
+def _date_clause(column, date_filter, now):
+    selected = _range_key(date_filter)
+    if selected == "day":
+        return f"{column} = ?", [now.strftime("%Y-%m-%d")]
+    start = _range_start(now, date_filter)
+    return f"{column} >= ?", [start.strftime("%Y-%m-%d")]
+
+
+def _record_api_event(device_uuid, route_name, request_type="read"):
+    if not device_uuid:
+        return
+
+    host = (request.host or "").split(":", 1)[0]
+    try:
+        with db_lock:
+            with sqlite3.connect(DB_FILE, timeout=30) as conn:
+                conn.cursor().execute(
+                    """
+                    INSERT INTO api_events (device_uuid, route, request_type, host, client_ip, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        device_uuid,
+                        route_name,
+                        request_type,
+                        host,
+                        _client_ip(),
+                        pst_timestamp_str(),
+                    ),
+                )
+                conn.commit()
+    except Exception as exc:
+        safe_print(f"Analytics event insert failed for {route_name}: {exc}")
+
+
+def _finalize_api_response(response, device_uuid, route_name, request_type="read"):
+    _record_api_event(device_uuid, route_name, request_type=request_type)
+    return _set_uuid_cookie(response, device_uuid)
+
+
+def _count_query(cur, query, params=()):
+    cur.execute(query, params)
+    return cur.fetchone()[0] or 0
+
+
+def _probe_url(url, timeout=5):
+    started = time.perf_counter()
+    try:
+        response = requests.get(url, timeout=timeout)
+        latency_ms = round((time.perf_counter() - started) * 1000, 1)
+        return {
+            "ok": response.ok,
+            "statusCode": response.status_code,
+            "latencyMs": latency_ms,
+            "url": url,
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "statusCode": None,
+            "latencyMs": None,
+            "url": url,
+            "error": str(exc),
+        }
+
+
+def _scrape_health_status(scrape_freshness_seconds):
+    if scrape_freshness_seconds is None:
+        return "Unknown"
+    if scrape_freshness_seconds <= 90:
+        return "Healthy"
+    if scrape_freshness_seconds <= 300:
+        return "Delayed"
+    return "Stale"
+
+
 # ---------------------------------------------------------------------------
 # Incident list & stats
 # ---------------------------------------------------------------------------
@@ -186,16 +308,16 @@ def _enforce_rate_limit(bucket, limit_spec):
 @app.route("/api/incidents")
 def get_incidents():
     _enforce_rate_limit("read", API_READ_RATE_LIMIT)
-    device_uuid    = _get_or_create_uuid(request)
-    limit         = _parse_limit()
-    cursor        = request.args.get("cursor")
+    device_uuid = _get_or_create_uuid(request)
+    limit = _parse_limit()
+    cursor = request.args.get("cursor")
     if cursor and len(cursor) > 120:
         abort(400, description="Invalid cursor")
     incident_types = _clean_filter_values("type")
-    locations     = _clean_filter_values("location")
-    sources       = _clean_filter_values("source", ALLOWED_SOURCES)
-    active_only   = request.args.get("active_only", "false").lower() == "true"
-    date_filter   = _get_date_filter()
+    locations = _clean_filter_values("location")
+    sources = _clean_filter_values("source", ALLOWED_SOURCES)
+    active_only = request.args.get("active_only", "false").lower() == "true"
+    date_filter = _get_date_filter()
 
     cache_key = _cache_key("incidents")
     incidents = _get_cached_response(cache_key)
@@ -210,20 +332,22 @@ def get_incidents():
     incidents = with_user_like_state(incidents, device_uuid)
 
     response = jsonify(incidents)
-    return _set_uuid_cookie(response, device_uuid)
+    return _finalize_api_response(response, device_uuid, "incidents")
 
 
 @app.route("/api/incident_stats")
 def get_incident_stats():
     _enforce_rate_limit("read", API_READ_RATE_LIMIT)
+    device_uuid = _get_or_create_uuid(request)
     date_filter = _get_date_filter()
-    sources     = _clean_filter_values("source", ALLOWED_SOURCES)
-    now         = now_pst()
+    sources = _clean_filter_values("source", ALLOWED_SOURCES)
+    now = now_pst()
 
     cache_key = _cache_key("incident_stats")
     cached_payload = _get_cached_response(cache_key)
     if cached_payload is not None:
-        return jsonify(cached_payload)
+        response = jsonify(cached_payload)
+        return _finalize_api_response(response, device_uuid, "incident_stats")
 
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
         cur = conn.cursor()
@@ -231,20 +355,20 @@ def get_incident_stats():
         where_clauses, query_params = [], []
 
         if sources:
-            ph = ",".join("?" for _ in sources)
-            where_clauses.append(f"source IN ({ph})")
+            placeholders = ",".join("?" for _ in sources)
+            where_clauses.append(f"source IN ({placeholders})")
             query_params.extend(sources)
 
-        if date_filter == "day":
+        if _range_key(date_filter) == "day":
             where_clauses.append("date = ?")
             query_params.append(now.strftime("%Y-%m-%d"))
-        elif date_filter == "week":
+        elif _range_key(date_filter) == "week":
             where_clauses.append("timestamp >= ?")
             query_params.append((now - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S"))
-        elif date_filter == "month":
+        elif _range_key(date_filter) == "month":
             where_clauses.append("timestamp >= ?")
             query_params.append((now - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S"))
-        elif date_filter == "year":
+        elif _range_key(date_filter) == "year":
             where_clauses.append("timestamp >= ?")
             query_params.append(
                 (now - relativedelta(months=12)).strftime("%Y-%m-%d %H:%M:%S")
@@ -252,53 +376,171 @@ def get_incident_stats():
 
         def make_query(select_part, extra=None):
             clauses = where_clauses[:]
-            params  = query_params[:]
+            params = query_params[:]
             if extra:
                 clauses.append(extra)
             where = " WHERE " + " AND ".join(clauses) if clauses else ""
             return f"{select_part}{where}", params
 
-        # ── Stat counters ──────────────────────────────────────────────────
         today = now.strftime("%Y-%m-%d")
-        events_today      = _count_with_source(cur, sources, "date = ?",          [today])
-        events_last_hour  = _count_with_source(
-            cur, sources, "timestamp >= ?",
+        events_today = _count_with_source(cur, sources, "date = ?", [today])
+        events_last_hour = _count_with_source(
+            cur,
+            sources,
+            "timestamp >= ?",
             [(now - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")],
         )
         q, p = make_query("SELECT COUNT(*) FROM incidents", "active = 1")
-        cur.execute(q, p); events_active = cur.fetchone()[0]
+        cur.execute(q, p)
+        events_active = cur.fetchone()[0]
 
         q, p = make_query("SELECT COUNT(*) FROM incidents")
-        cur.execute(q, p); total_incidents = cur.fetchone()[0]
+        cur.execute(q, p)
+        total_incidents = cur.fetchone()[0]
 
         q, p = make_query("SELECT type, COUNT(*) as count FROM incidents")
         cur.execute(q + " GROUP BY type ORDER BY count DESC", p)
         incidents_by_type = {row[0]: row[1] for row in cur.fetchall()}
 
-        q, p = make_query("SELECT location, COUNT(*) as count FROM incidents",
-                          "location IS NOT NULL AND location != ''")
+        q, p = make_query(
+            "SELECT location, COUNT(*) as count FROM incidents",
+            "location IS NOT NULL AND location != ''",
+        )
         cur.execute(q + " GROUP BY location ORDER BY count DESC LIMIT 10", p)
         top_locations = {row[0]: row[1] for row in cur.fetchall()}
 
-        # ── Chart data ─────────────────────────────────────────────────────
-        chart_data = _build_chart_data(cur, sources, date_filter, now)
-
-        # ── Historical hourly average ──────────────────────────────────────
+        chart_data = _build_chart_data(cur, sources, _range_key(date_filter), now)
         historical_avg = _historical_hour_average(cur, sources, now)
 
+    runtime_snapshot = get_runtime_metrics()
     payload = {
-        "eventsToday":                 events_today,
-        "eventsLastHour":              events_last_hour,
-        "eventsActive":                events_active,
-        "totalIncidents":              total_incidents,
-        "incidentsByType":             incidents_by_type,
-        "topLocations":                top_locations,
-        "hourlyData":                  chart_data,
+        "rangeKey": _range_key(date_filter),
+        "rangeLabel": _range_label(date_filter),
+        "eventsToday": events_today,
+        "eventsLastHour": events_last_hour,
+        "eventsActive": events_active,
+        "totalIncidents": total_incidents,
+        "incidentsByType": incidents_by_type,
+        "topLocations": top_locations,
+        "hourlyData": chart_data,
         "historicalCurrentHourAverage": historical_avg,
-        "generatedAt":                 now.isoformat(),
+        "generatedAt": now.isoformat(),
+        "apiRequestsServed": runtime_snapshot["apiRequestsServed"],
+        "averageScrapeTime": runtime_snapshot["averageScrapeTime"],
+        "lastSuccessfulScrape": runtime_snapshot["lastSuccessfulScrape"],
+        "lastSuccessfulScrapeAt": runtime_snapshot["lastSuccessfulScrapeAt"],
     }
     _set_cached_response(cache_key, payload, STATS_CACHE_TTL)
-    return jsonify(payload)
+    response = jsonify(payload)
+    return _finalize_api_response(response, device_uuid, "incident_stats")
+
+
+@app.route("/api/dashboard_metrics")
+def get_dashboard_metrics():
+    _enforce_rate_limit("read", API_READ_RATE_LIMIT)
+    device_uuid = _get_or_create_uuid(request)
+    date_filter = _get_date_filter()
+    now = now_pst()
+    range_key = _range_key(date_filter)
+    range_label = _range_label(date_filter)
+
+    incident_clause, incident_params = _date_clause("date", range_key, now)
+    event_clause, event_params = _timestamp_clause("timestamp", range_key, now)
+    traffic_host = TRAFFIC_APP_PUBLIC_HOST
+    metrics_host = METRICS_PUBLIC_HOST
+
+    with sqlite3.connect(DB_FILE, timeout=30) as conn:
+        cur = conn.cursor()
+
+        total_incidents = _count_query(cur, "SELECT COUNT(*) FROM incidents")
+        active_incidents = _count_query(cur, "SELECT COUNT(*) FROM incidents WHERE active = 1")
+        incidents_in_range = _count_query(
+            cur,
+            f"SELECT COUNT(*) FROM incidents WHERE {incident_clause}",
+            tuple(incident_params),
+        )
+        tracked_days = _count_query(cur, "SELECT COUNT(DISTINCT date) FROM incidents") or 0
+
+        comments_in_range = _count_query(
+            cur,
+            f"SELECT COUNT(*) FROM comments WHERE {event_clause}",
+            tuple(event_params),
+        )
+        likes_in_range = _count_query(
+            cur,
+            f"SELECT COUNT(*) FROM likes WHERE {event_clause}",
+            tuple(event_params),
+        )
+
+        traffic_app_requests_in_range = _count_query(
+            cur,
+            f"SELECT COUNT(*) FROM api_events WHERE host = ? AND {event_clause}",
+            (traffic_host, *event_params),
+        )
+        traffic_app_unique_visitors_in_range = _count_query(
+            cur,
+            f"""
+            SELECT COUNT(DISTINCT device_uuid)
+            FROM api_events
+            WHERE host = ? AND {event_clause} AND device_uuid IS NOT NULL AND device_uuid != ''
+            """,
+            (traffic_host, *event_params),
+        )
+        metrics_page_requests_in_range = _count_query(
+            cur,
+            f"SELECT COUNT(*) FROM api_events WHERE host = ? AND {event_clause}",
+            (metrics_host, *event_params),
+        )
+        metrics_page_unique_visitors_in_range = _count_query(
+            cur,
+            f"""
+            SELECT COUNT(DISTINCT device_uuid)
+            FROM api_events
+            WHERE host = ? AND {event_clause} AND device_uuid IS NOT NULL AND device_uuid != ''
+            """,
+            (metrics_host, *event_params),
+        )
+
+    runtime_snapshot = get_runtime_metrics()
+    average_incidents_per_day = (
+        round(total_incidents / tracked_days, 1) if tracked_days else 0.0
+    )
+    scrape_health_status = _scrape_health_status(runtime_snapshot["scrapeFreshnessSeconds"])
+    public_site_health = _probe_url(f"{TRAFFIC_APP_PUBLIC_URL}/")
+    public_api_health = _probe_url(f"{TRAFFIC_APP_PUBLIC_URL}/api/healthz")
+
+    payload = {
+        "rangeKey": range_key,
+        "rangeLabel": range_label,
+        "totalIncidentsIngested": total_incidents,
+        "activeIncidents": active_incidents,
+        "incidentsInRange": incidents_in_range,
+        "averageIncidentsPerDay": average_incidents_per_day,
+        "trafficAppRequestsInRange": traffic_app_requests_in_range,
+        "trafficAppUniqueVisitorsInRange": traffic_app_unique_visitors_in_range,
+        "metricsPageRequestsInRange": metrics_page_requests_in_range,
+        "metricsPageUniqueVisitorsInRange": metrics_page_unique_visitors_in_range,
+        "commentsInRange": comments_in_range,
+        "likesInRange": likes_in_range,
+        "engagementActionsInRange": comments_in_range + likes_in_range,
+        "apiRequestsServed": runtime_snapshot["apiRequestsServed"],
+        "averageScrapeTime": runtime_snapshot["averageScrapeTime"],
+        "lastSuccessfulScrape": runtime_snapshot["lastSuccessfulScrape"],
+        "lastSuccessfulScrapeAt": runtime_snapshot["lastSuccessfulScrapeAt"],
+        "scrapeFreshnessSeconds": runtime_snapshot["scrapeFreshnessSeconds"],
+        "scrapeHealthStatus": scrape_health_status,
+        "requestsPerMinute": runtime_snapshot["requestsPerMinute"],
+        "requestsLastMinute": runtime_snapshot["requestsLastMinute"],
+        "requestsLastFiveMinutes": runtime_snapshot["requestsLastFiveMinutes"],
+        "requestsLastHour": runtime_snapshot["requestsLastHour"],
+        "processStartedAt": runtime_snapshot["processStartedAt"],
+        "processUptimeSeconds": runtime_snapshot["processUptimeSeconds"],
+        "publicSiteHealth": public_site_health,
+        "publicApiHealth": public_api_health,
+        "generatedAt": now.isoformat(),
+    }
+    response = jsonify(payload)
+    return _finalize_api_response(response, device_uuid, "dashboard_metrics")
 
 
 def _count_with_source(cur, sources, extra_cond, extra_params):
@@ -454,7 +696,7 @@ def like_incident(incident_id):
             "liked_by_user": request.method != "DELETE",
         }
     )
-    return _set_uuid_cookie(response, device_uuid)
+    return _finalize_api_response(response, device_uuid, "incident_like", request_type="write")
 
 
 # ---------------------------------------------------------------------------
@@ -506,7 +748,7 @@ def comment_incident(incident_id):
             return jsonify({"error": "Could not process comment."}), 400
 
     response = jsonify({"comments": comments})
-    return _set_uuid_cookie(response, device_uuid)
+    return _finalize_api_response(response, device_uuid, "incident_comment", request_type="write")
 
 
 # ---------------------------------------------------------------------------
@@ -517,8 +759,26 @@ def comment_incident(incident_id):
 def check_user():
     _enforce_rate_limit("read", API_READ_RATE_LIMIT)
     device_uuid = _get_or_create_uuid(request)
-    response    = jsonify({"uuid": device_uuid})
-    return _set_uuid_cookie(response, device_uuid)
+    response = jsonify({"uuid": device_uuid})
+    return _finalize_api_response(response, device_uuid, "user_check")
+
+
+# ---------------------------------------------------------------------------
+# Health
+# ---------------------------------------------------------------------------
+
+@app.route("/api/healthz", methods=["GET"])
+def healthz():
+    _enforce_rate_limit("read", API_READ_RATE_LIMIT)
+    runtime_snapshot = get_runtime_metrics()
+    return jsonify(
+        {
+            "ok": True,
+            "generatedAt": now_pst().isoformat(),
+            "lastSuccessfulScrapeAt": runtime_snapshot["lastSuccessfulScrapeAt"],
+            "scrapeHealthStatus": _scrape_health_status(runtime_snapshot["scrapeFreshnessSeconds"]),
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -532,6 +792,3 @@ def serve_app(path):
         return send_from_directory(app.static_folder, path)
     return send_from_directory(app.static_folder, "index.html")
 
-
-# Needed for the catch-all route above
-import os  # noqa: E402 (placed after function def to avoid top-level circular risk)

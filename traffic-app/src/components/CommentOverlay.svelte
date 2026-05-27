@@ -2,6 +2,7 @@
     import { createEventDispatcher } from "svelte";
     import { fly } from "svelte/transition";
     import { formatCommentTimestamp } from "../utils/helpers.js";
+    import { t } from "../utils/i18n.js";
     import X from "lucide-svelte/icons/x";
     import User from "lucide-svelte/icons/user";
     import MessageSquare from "lucide-svelte/icons/message-square";
@@ -33,12 +34,12 @@
     in:fly={{ y: 400, duration: 400, opacity: 1 }}
     out:fly={{ y: 400, duration: 300, opacity: 1 }}
 >
-    <button class="close-comments" on:click={handleClose}>
+    <button class="close-comments" type="button" on:click={handleClose} aria-label={t("actions.closeComments")}>
         <X size={20} />
     </button>
     <h3 class="comments-title">
         <MessageSquare size={18} />
-        Comments ({comments.length})
+        {t("comments.title", { count: comments.length })}
     </h3>
 
     {#if commentError}
@@ -47,7 +48,7 @@
 
     <div class="comments-container">
         {#if comments.length === 0}
-            <p class="no-comments">Be the first to comment!</p>
+            <p class="no-comments">{t("comments.empty")}</p>
         {:else}
             {#each comments as comment, i}
                 <div class="comment" style="animation-delay: {i * 20}ms">
@@ -78,13 +79,14 @@
         <input
             type="text"
             bind:value={newComment}
-            placeholder="Write a comment..."
+            aria-label={t("comments.placeholder")}
+            placeholder={t("comments.placeholder")}
             maxlength="150"
             on:keypress={handleKeyPress}
         />
-        <button on:click={handleSubmit}>
+        <button type="button" on:click={handleSubmit}>
             <Send size={14} />
-            Send
+            {t("actions.send")}
         </button>
     </div>
 </div>

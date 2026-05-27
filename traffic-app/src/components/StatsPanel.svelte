@@ -9,6 +9,7 @@
     import MapPin from "lucide-svelte/icons/map-pin";
     import X from "lucide-svelte/icons/x";
     import IncidentIcon from "./IncidentIcon.svelte";
+    import { formatDateTime, formatNumber, t } from "../utils/i18n.js";
 
     const dispatch = createEventDispatcher();
     export let eventsToday = 0;
@@ -67,7 +68,7 @@
 
         if (!chartData || chartData.length === 0)
             return {
-                text: "NO DATA",
+                text: t("status.noData"),
                 color: "var(--text-muted)",
                 isLive: false,
                 hidden: false,
@@ -80,28 +81,28 @@
             currentValue > 0
         ) {
             return {
-                text: "CRITICAL LEVEL",
+                text: t("status.criticalLevel"),
                 color: "#ef4444",
                 isLive: true,
                 hidden: false,
             };
         } else if (currentValue > historicalCurrentHourAverage * 1.2) {
             return {
-                text: "ELEVATED INCIDENTS",
+                text: t("status.elevatedIncidents"),
                 color: "#f59e0b",
                 isLive: false,
                 hidden: false,
             };
         } else if (currentValue < historicalCurrentHourAverage * 0.8) {
             return {
-                text: "LIGHT INCIDENTS",
+                text: t("status.lightIncidents"),
                 color: "#64748b",
                 isLive: false,
                 hidden: false,
             };
         } else {
             return {
-                text: "NOMINAL",
+                text: t("status.nominal"),
                 color: "#10b981",
                 isLive: false,
                 hidden: false,
@@ -126,12 +127,12 @@
 
     $: sectionTitle =
         timeFilter === "day"
-            ? "24-Hour Activity"
+            ? t("diagnostics.activity24Hours")
             : timeFilter === "week"
-              ? "7-Day Activity"
+              ? t("diagnostics.activity7Days")
               : timeFilter === "month"
-                ? "30-Day Activity"
-                : "Yearly Activity";
+                ? t("diagnostics.activity30Days")
+                : t("diagnostics.yearlyActivity");
 
     $: chartLabels =
         timeFilter === "day"
@@ -139,26 +140,23 @@
                   const time = new Date(
                       currentTime.getTime() - (23 - i) * 60 * 60 * 1000,
                   );
-                  return time.toLocaleTimeString("en-US", {
+                  return formatDateTime(time, {
                       hour: "numeric",
-                      hour12: true,
                   });
               })
             : timeFilter === "week"
               ? Array.from({ length: 7 }, (_, i) => {
                     const date = new Date();
                     date.setDate(date.getDate() - (6 - i));
-                    return date.toLocaleDateString("en-US", {
+                    return formatDateTime(date, {
                         weekday: "short",
-                        day: "numeric",
                     });
                 })
               : timeFilter === "month"
                 ? Array.from({ length: 30 }, (_, i) => {
                       const date = new Date();
                       date.setDate(date.getDate() - (29 - i));
-                      return date.toLocaleDateString("en-US", {
-                          month: "short",
+                      return formatDateTime(date, {
                           day: "numeric",
                       });
                   })
@@ -166,7 +164,7 @@
                       const date = new Date();
                       date.setDate(1);
                       date.setMonth(currentTime.getMonth() - (11 - i));
-                      return date.toLocaleDateString("en-US", {
+                      return formatDateTime(date, {
                           month: "short",
                       });
                   });
@@ -204,47 +202,47 @@
         <div class="stats-grid">
             <div class="stat-card">
                 <div class="stat-icon"><Calendar size={24} /></div>
-                <div class="stat-value">{eventsToday}</div>
-                <div class="stat-label">Today</div>
+                <div class="stat-value">{formatNumber(eventsToday)}</div>
+                <div class="stat-label">{t("diagnostics.today")}</div>
             </div>
             <div class="stat-card">
                 <div class="stat-icon"><Clock size={24} /></div>
-                <div class="stat-value">{eventsLastHour}</div>
-                <div class="stat-label">Last Hour</div>
+                <div class="stat-value">{formatNumber(eventsLastHour)}</div>
+                <div class="stat-label">{t("diagnostics.lastHour")}</div>
             </div>
             <div class="stat-card">
                 <div class="stat-icon"><Zap size={24} /></div>
-                <div class="stat-value">{eventsActive}</div>
-                <div class="stat-label">Active</div>
+                <div class="stat-value">{formatNumber(eventsActive)}</div>
+                <div class="stat-label">{t("diagnostics.active")}</div>
             </div>
             <div class="stat-card">
                 <div class="stat-icon"><BarChart3 size={24} /></div>
-                <div class="stat-value">{totalIncidents}</div>
-                <div class="stat-label">Total</div>
+                <div class="stat-value">{formatNumber(totalIncidents)}</div>
+                <div class="stat-label">{t("diagnostics.total")}</div>
             </div>
         </div>
         <div class="time-period-section">
-            <span class="section-label">Time Period</span>
+            <span class="section-label">{t("diagnostics.timePeriod")}</span>
             <div class="time-buttons">
                 <button
                     class="time-button"
                     class:active={timeFilter === "day"}
-                    on:click={() => setTimeFilter("day")}>1 Day</button
+                    on:click={() => setTimeFilter("day")}>{t("diagnostics.oneDay")}</button
                 >
                 <button
                     class="time-button"
                     class:active={timeFilter === "week"}
-                    on:click={() => setTimeFilter("week")}>Week</button
+                    on:click={() => setTimeFilter("week")}>{t("diagnostics.week")}</button
                 >
                 <button
                     class="time-button"
                     class:active={timeFilter === "month"}
-                    on:click={() => setTimeFilter("month")}>Month</button
+                    on:click={() => setTimeFilter("month")}>{t("diagnostics.month")}</button
                 >
                 <button
                     class="time-button"
                     class:active={timeFilter === "year"}
-                    on:click={() => setTimeFilter("year")}>Year</button
+                    on:click={() => setTimeFilter("year")}>{t("diagnostics.year")}</button
                 >
             </div>
         </div>
@@ -257,7 +255,7 @@
             {#if !currentTrafficStatus.hidden}
                 <div class="status-indicator">
                     {#if currentTrafficStatus.isLive}
-                        <span class="live-badge" transition:slide>LIVE</span>
+                        <span class="live-badge" transition:slide>{t("status.live")}</span>
                     {:else}
                         <span
                             class="status-dot"
@@ -304,11 +302,7 @@
                             <div class="x-label-container">
                                 {#if timeFilter === "day"}
                                     {#if i % 3 === 0 || i === chartLabels.length - 1}
-                                        <span class="x-label"
-                                            >{chartLabels[i]
-                                                .replace(" AM", "a")
-                                                .replace(" PM", "p")}</span
-                                        >
+                                        <span class="x-label">{chartLabels[i]}</span>
                                     {/if}
                                 {:else if timeFilter === "week"}
                                     <span class="x-label"
@@ -337,7 +331,7 @@
                                         {chartLabels[i]}
                                     </div>
                                     <div class="tooltip-value">
-                                        {value} incidents
+                                        {t("diagnostics.incidentsCount", { count: value })}
                                     </div>
                                 </div>
                             {/if}
@@ -345,7 +339,7 @@
                     {/each}
                 </div>
             {:else}
-                <div class="no-data-msg">No activity data available.</div>
+                <div class="no-data-msg">{t("diagnostics.noActivityData")}</div>
             {/if}
         </div>
     </div>
@@ -356,13 +350,13 @@
             <div class="breakdown-header">
                 <div class="breakdown-title-section">
                     <span class="breakdown-icon"><BarChart3 size={18} /></span>
-                    <span class="breakdown-title">By Type</span>
+                    <span class="breakdown-title">{t("diagnostics.byType")}</span>
                 </div>
                 {#if selectedTypes.size > 0}
                     <button
                         class="reset-button"
                         on:click={resetTypeFilters}
-                        title="Reset type filters"
+                        title={t("actions.resetTypeFilters")}
                     >
                         <X size={14} />
                     </button>
@@ -399,13 +393,13 @@
             <div class="breakdown-header">
                 <div class="breakdown-title-section">
                     <span class="breakdown-icon"><MapPin size={18} /></span>
-                    <span class="breakdown-title">Top Locations</span>
+                    <span class="breakdown-title">{t("diagnostics.topLocations")}</span>
                 </div>
                 {#if selectedLocations.size > 0}
                     <button
                         class="reset-button"
                         on:click={resetLocationFilters}
-                        title="Reset location filters"
+                        title={t("actions.resetLocationFilters")}
                     >
                         <X size={14} />
                     </button>

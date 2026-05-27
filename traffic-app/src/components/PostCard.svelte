@@ -19,6 +19,7 @@
     import LazyImage from "./LazyImage.svelte";
     import LiveTimestamp from "./LiveTimestamp.svelte";
     import IncidentMiniMap from "./IncidentMiniMap.svelte";
+    import { t } from "../utils/i18n.js";
 
     export let post;
     export let index = 0;
@@ -151,17 +152,17 @@
             {#if post.active}
                 <div class="active-badge">
                     <span class="active-icon"><Zap size={12} /></span>
-                    <span>Active</span>
+                    <span>{t("status.active")}</span>
                 </div>
             {/if}
             {#if post.details && post.details.length > 0}
                 <button
                     class="raw-details-button"
                     on:click={toggleRawDetails}
-                    title="View raw details"
+                    title={t("actions.viewRawDetails")}
                 >
                     <Info size={12} />
-                    <span class="details-text">Details</span>
+                    <span class="details-text">{t("actions.details")}</span>
                 </button>
             {/if}
             <div
@@ -195,7 +196,7 @@
                     transition:fly={{ y: 200, duration: 300 }}
                 >
                     <div class="raw-details-inline-header">
-                        <h4>Raw Event Details</h4>
+                        <h4>{t("actions.rawEventDetails")}</h4>
                         <button
                             class="close-inline-button"
                             on:click={() => (showRawDetails = false)}
@@ -265,7 +266,7 @@
                         </button>
                     {/if}
                 {:else}
-                    <span class="no-data">NO DATA AVAILABLE.</span>
+                    <span class="no-data">{t("fallback.noDataAvailable")}</span>
                 {/if}
             </div>
             <div class="post-actions">
@@ -281,7 +282,7 @@
                             fill={post.likedByUser ? "currentColor" : "none"}
                         />
                     </span>
-                    <span>{post.likes > 0 ? post.likes : "Like"}</span>
+                    <span>{post.likes > 0 ? post.likes : t("actions.like")}</span>
                 </button>
                 <button
                     class="action-button comment-button"
@@ -293,7 +294,7 @@
                     <span>
                         {post.comments.length > 0
                             ? post.comments.length
-                            : "Comment"}
+                            : t("actions.comment")}
                     </span>
                 </button>
                 <button
@@ -303,7 +304,7 @@
                     <span class="button-icon">
                         <Share2 size={18} />
                     </span>
-                    <span>Share</span>
+                    <span>{t("actions.share")}</span>
                 </button>
             </div>
 

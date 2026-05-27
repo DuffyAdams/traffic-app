@@ -5,9 +5,12 @@
     import Fingerprint from "lucide-svelte/icons/fingerprint";
     import Sun from "lucide-svelte/icons/sun";
     import Moon from "lucide-svelte/icons/moon";
+    import Eye from "lucide-svelte/icons/eye";
+    import { formatDateTime, t } from "../utils/i18n.js";
 
     export let showEventCounters = false;
     export let darkMode = true;
+    export let accessibilityMode = false;
     export let activeSource = "all";
 
     const dispatch = createEventDispatcher();
@@ -20,13 +23,15 @@
         dispatch("toggleDarkMode");
     }
 
+    function handleToggleAccessibilityMode() {
+        dispatch("toggleAccessibilityMode");
+    }
+
     let currentTime = "";
     let timeInterval;
 
     function updateTime() {
-        const now = new Date();
-        currentTime = now.toLocaleTimeString("en-US", {
-            hour12: false,
+        currentTime = formatDateTime(new Date(), {
             hour: "2-digit",
             minute: "2-digit",
             second: "2-digit",
@@ -51,8 +56,8 @@
                 <Shield size={40} color="var(--accent-warning)" />
             </div>
             <div class="brand-titles">
-                <h1>SAN DIEGO WATCH</h1>
-                <p>TACTICAL DISPATCH OVERVIEW</p>
+                <h1>{t("header.brandTitle")}</h1>
+                <p>{t("header.brandSubtitle")}</p>
             </div>
         </div>
         <div class="header-controls">
@@ -63,25 +68,45 @@
                         color="var(--accent-primary)"
                         class="pulse-fast"
                     />
-                    <span class="metric-label"
-                        >DISPATCH FEED • {currentTime}</span
-                    >
+                    <span class="metric-label">{t("header.feedStatus", { time: currentTime })}</span>
                 </div>
-                <div class="metric-row subtext">MONITORING INCIDENTS</div>
+                <div class="metric-row subtext">{t("header.monitoringIncidents")}</div>
             </div>
-            <button
-                class="theme-toggle"
-                on:click={handleToggleDarkMode}
-                title={darkMode
-                    ? "Switch to Light Mode"
-                    : "Switch to Dark Mode"}
-            >
-                {#if darkMode}
-                    <Sun size={18} />
-                {:else}
-                    <Moon size={18} />
-                {/if}
-            </button>
+            <div class="header-toggle-group">
+                <button
+                    class="control-toggle"
+                    class:is-active={accessibilityMode}
+                    on:click={handleToggleAccessibilityMode}
+                    type="button"
+                    aria-pressed={accessibilityMode}
+                    aria-label={accessibilityMode
+                        ? t("header.disableAccessibilityMode")
+                        : t("header.enableAccessibilityMode")}
+                    title={accessibilityMode
+                        ? t("header.disableAccessibilityMode")
+                        : t("header.enableAccessibilityMode")}
+                >
+                    <Eye size={18} />
+                </button>
+                <button
+                    class="control-toggle"
+                    on:click={handleToggleDarkMode}
+                    type="button"
+                    aria-pressed={darkMode}
+                    aria-label={darkMode
+                        ? t("header.switchToLightMode")
+                        : t("header.switchToDarkMode")}
+                    title={darkMode
+                        ? t("header.switchToLightMode")
+                        : t("header.switchToDarkMode")}
+                >
+                    {#if darkMode}
+                        <Sun size={18} />
+                    {:else}
+                        <Moon size={18} />
+                    {/if}
+                </button>
+            </div>
         </div>
     </div>
 
@@ -89,11 +114,14 @@
         <button
             class="header-action-banner"
             on:click={handleToggleEventCounters}
+            type="button"
+            aria-pressed={showEventCounters}
+            aria-label={t("header.systemDiagnostics")}
         >
             <div class="banner-icon"><Fingerprint size={18} /></div>
             <div class="banner-text">
-                SYSTEM DIAGNOSTICS
-                <span class="banner-subtext">STATISTICS</span>
+                {t("header.systemDiagnostics")}
+                <span class="banner-subtext">{t("header.statistics")}</span>
             </div>
             <div class="banner-status" class:active={showEventCounters}>
                 {showEventCounters ? "[-]" : "[+]"}
@@ -167,7 +195,13 @@
         gap: 1.5rem;
     }
 
-    .theme-toggle {
+    .header-toggle-group {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+    }
+
+    .control-toggle {
         background: rgba(51, 102, 255, 0.1);
         border: 1px solid var(--accent-primary);
         color: var(--accent-primary);
@@ -184,7 +218,7 @@
         overflow: hidden;
     }
 
-    .theme-toggle::after {
+    .control-toggle::after {
         content: "";
         position: absolute;
         top: -50%;
@@ -200,18 +234,19 @@
         transition: opacity 0.3s ease;
     }
 
-    .theme-toggle:hover::after {
+    .control-toggle:hover::after {
         opacity: 1;
     }
 
-    .theme-toggle:hover {
+    .control-toggle:hover,
+    .control-toggle.is-active {
         background: rgba(51, 102, 255, 0.2);
         color: #fff;
         box-shadow: 0 0 20px rgba(51, 102, 255, 0.4);
         border-color: #6688ff;
     }
 
-    .theme-toggle:active {
+    .control-toggle:active {
         transform: translateY(1px);
     }
 
@@ -271,6 +306,7 @@
         letter-spacing: 0.08em;
         font-family: var(--font-pixel);
         color: var(--accent-primary);
+        text-transform: uppercase;
     }
 
     .banner-subtext {
@@ -329,7 +365,7 @@
         .brand-titles h1 {
             font-size: 2.2rem;
         }
-        .theme-toggle {
+        .control-toggle {
             width: 44px;
             height: 44px;
         }
@@ -354,7 +390,7 @@
         .metric-row.subtext {
             font-size: 0.65rem;
         }
-        .theme-toggle {
+        .control-toggle {
             width: 38px;
             height: 38px;
         }

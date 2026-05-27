@@ -3,6 +3,7 @@
     import { fade, scale } from "svelte/transition";
     import IncidentIcon from "./IncidentIcon.svelte";
     import { activeMarkerId, mapPanTo } from "../stores/appStore.js";
+    import { t } from "../utils/i18n.js";
 
     export let incident;
 
@@ -158,7 +159,7 @@
                 style="border-bottom-color: {sourceColor}33;"
             >
                 <span class="type" style="color: {sourceColor};"
-                    >{incident.type || "Incident"}</span
+                    >{incident.type || t("fallback.incidentType")}</span
                 >
                 <div style="display: flex; align-items: center; gap: 8px;">
                     {#if sevInfo}
@@ -194,7 +195,7 @@
                         <span class="value">{incident.neighborhood}</span>
                     </div>
                 {/if}
-                {#if incident.description && incident.description !== "No description available"}
+                {#if incident.description && incident.description !== t("fallback.descriptionUnavailable")}
                     <div
                         class="description"
                         style="border-top-color: {sourceColor}26;"

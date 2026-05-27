@@ -4,12 +4,13 @@
     import ChevronRight from "lucide-svelte/icons/chevron-right";
     import LayoutGrid from "lucide-svelte/icons/layout-grid";
     import LayoutList from "lucide-svelte/icons/layout-list";
+    import { createEventDispatcher } from "svelte";
+    import { t } from "../utils/i18n.js";
 
     export let condensedView = false;
     export let swipeIndicator = false;
     export let swipeDirection = "";
 
-    import { createEventDispatcher } from "svelte";
     const dispatch = createEventDispatcher();
 
     function toggleView() {
@@ -17,7 +18,6 @@
     }
 </script>
 
-<!-- Swipe indicator -->
 {#if swipeIndicator}
     <div class="swipe-indicator {swipeDirection}" in:fade={{ duration: 150 }}>
         <div class="swipe-content">
@@ -29,7 +29,7 @@
                 {/if}
             </span>
             <span class="swipe-label">
-                {swipeDirection === "left" ? "Table View" : "Card View"}
+                {swipeDirection === "left" ? t("view.tableView") : t("view.cardView")}
             </span>
             <span class="swipe-icon-secondary">
                 {#if swipeDirection === "left"}
@@ -42,17 +42,21 @@
     </div>
 {/if}
 
-<!-- Side toggle button -->
 <button
     class="side-toggle"
     class:condensed={condensedView}
+    type="button"
     on:click={toggleView}
+    aria-pressed={condensedView}
     aria-label={condensedView
-        ? "Expand to card view"
-        : "Condense to table view"}
+        ? t("view.expandToCardView")
+        : t("view.condenseToTableView")}
+    title={condensedView
+        ? t("view.expandToCardView")
+        : t("view.condenseToTableView")}
 >
     <span class="side-toggle-arrow">{condensedView ? "→" : "←"}</span>
-    <span class="side-toggle-text">{condensedView ? "Cards" : "Table"}</span>
+    <span class="side-toggle-text">{condensedView ? t("view.cards") : t("view.table")}</span>
 </button>
 
 <style>
@@ -218,21 +222,7 @@
 
         .swipe-indicator {
             width: 100px;
-            height: 85px;
-        }
-
-        .swipe-icon :global(svg) {
-            width: 28px;
-            height: 28px;
-        }
-
-        .swipe-label {
-            font-size: 0.75rem;
-        }
-
-        .swipe-icon-secondary :global(svg) {
-            width: 16px;
-            height: 16px;
+            height: 84px;
         }
     }
 </style>

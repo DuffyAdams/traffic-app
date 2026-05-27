@@ -5,6 +5,7 @@
     import IncidentMarker from "./IncidentMarker.svelte";
     import { formatTimestamp, formatTime } from "../utils/helpers.js";
     import { activeMarkerId, mapPanTo } from "../stores/appStore.js";
+    import { t } from "../utils/i18n.js";
     import { fade } from "svelte/transition";
 
     // We no longer rely on the parent's paginated feed.
@@ -152,12 +153,12 @@
                     renderKey: getIncidentRenderKey(inc),
                     timestamp: inc.timestamp,
                     time: formatTimestamp(inc.timestamp),
-                    description: inc.description || "No description available",
-                    location: inc.location || "Unknown location",
+                    description: inc.description || t("fallback.descriptionUnavailable"),
+                    location: inc.location || t("fallback.unknownLocation"),
                     neighborhood: inc.neighborhood || "",
                     latitude: inc.latitude ?? null,
                     longitude: inc.longitude ?? null,
-                    type: inc.type || "Incident",
+                    type: inc.type || t("fallback.incidentType"),
                     active: Boolean(inc.active),
                     source: inc.source || "",
                     details: Array.isArray(inc.Details) ? inc.Details : [],

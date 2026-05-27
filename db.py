@@ -69,6 +69,17 @@ def init_db():
                 timestamp   TEXT
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS api_events (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_uuid  TEXT,
+                route        TEXT,
+                request_type TEXT,
+                host         TEXT,
+                client_ip    TEXT,
+                timestamp    TEXT
+            )
+        """)
 
         # ── Migrations (safe ALTER TABLE with fallback) ────────────────────
         _add_column(cur, "incidents", "source",           "TEXT DEFAULT 'CHP'")
@@ -89,6 +100,9 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_pagination       ON incidents(timestamp DESC, incident_no DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_comments_incident_time     ON comments(incident_no, timestamp)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_likes_incident_device      ON likes(incident_no, device_uuid)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_api_events_timestamp       ON api_events(timestamp)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_api_events_host_timestamp  ON api_events(host, timestamp)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_api_events_device_time     ON api_events(device_uuid, timestamp)")
 
         conn.commit()
 

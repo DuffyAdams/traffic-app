@@ -4,41 +4,25 @@
 -------------------------------------------------------------------------- */
 
 :root {
-  /* Core Backgrounds */
   --bg-base: #000000;
   --bg-surface: #0a0f18;
   --bg-surface-elevated: #111824;
-
-  /* Accent Colors matching the screenshot */
   --accent-primary: #3366ff;
-  /* Intel Blue */
   --accent-secondary: #ff3333;
-  /* Alert Red */
   --accent-success: #00cc66;
-  /* Success Green */
   --accent-warning: #ffcc00;
-  /* Warning Yellow */
-
-  /* Borders & Dividers */
   --border-color: #1e293b;
   --border-focus: #3366ff;
   --border-alert: #ff3333;
-
-  /* Text Colors */
   --text-main: #f8fafc;
   --text-muted: #64748b;
   --text-inverse: #ffffff;
-
-  /* Overlays */
   --overlay-bg: rgba(0, 0, 0, 0.85);
-
-  /* Fonts */
   --font-pixel: "VT323", "Press Start 2P", monospace;
   --font-mono: "Share Tech Mono", "JetBrains Mono", monospace;
   --font-body: "Inter", sans-serif;
 }
 
-/* Global Reset & Base Typography */
 body {
   margin: 0;
   background-color: var(--bg-base);
@@ -50,7 +34,38 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Hacker Scrollbar */
+body.accessibility-mode {
+  font-size: 16px;
+  line-height: 1.65;
+  --font-pixel: var(--font-body);
+  --font-mono: var(--font-body);
+  --text-muted: #334155;
+  --border-color: #64748b;
+}
+
+body.accessibility-mode button,
+body.accessibility-mode input,
+body.accessibility-mode textarea,
+body.accessibility-mode select {
+  min-height: 44px;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+body.accessibility-mode :focus-visible {
+  outline: 3px solid var(--accent-primary);
+  outline-offset: 3px;
+}
+
+body.accessibility-mode *,
+body.accessibility-mode *::before,
+body.accessibility-mode *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -72,4 +87,15 @@ body {
 #app {
   width: 100%;
   min-height: 100vh;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

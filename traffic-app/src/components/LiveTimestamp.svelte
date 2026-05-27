@@ -1,6 +1,7 @@
 <script>
     import { onMount, onDestroy } from "svelte";
     import { formatTimestamp } from "../utils/helpers.js";
+    import { formatRelativeTimeFromNow, t } from "../utils/i18n.js";
 
     export let timestamp;
 
@@ -10,32 +11,13 @@
 
     function updateTime() {
         if (!timestamp) {
-            relativeTime = "Recent";
-            staticTime = "Recent";
+            relativeTime = t("fallback.recent");
+            staticTime = t("fallback.recent");
             return;
         }
 
         staticTime = formatTimestamp(timestamp);
-
-        const date = new Date(timestamp);
-        const now = new Date();
-        const diffMs = now.getTime() - date.getTime();
-        const diffSeconds = Math.floor(diffMs / 1000);
-
-        if (diffSeconds < 0) {
-            relativeTime = "Just now";
-        } else if (diffSeconds < 60) {
-            relativeTime = `${diffSeconds}s ago`;
-        } else if (diffSeconds < 3600) {
-            const minutes = Math.floor(diffSeconds / 60);
-            relativeTime = `${minutes}m ago`;
-        } else if (diffSeconds < 86400) {
-            const hours = Math.floor(diffSeconds / 3600);
-            relativeTime = `${hours}h ago`;
-        } else {
-            const days = Math.floor(diffSeconds / 86400);
-            relativeTime = `${days}d ago`;
-        }
+        relativeTime = formatRelativeTimeFromNow(timestamp, { style: "short" });
     }
 
     onMount(() => {
@@ -57,7 +39,7 @@
     }
 </script>
 
-<span class="timestamp-container">
+<span class="timestamp-container" aria-label={`${staticTime} (${relativeTime})`}>
     <span class="main-time">{staticTime}</span>
     <span class="custom-tooltip">{relativeTime}</span>
 </span>

@@ -1,8 +1,19 @@
 <script>
     import { createEventDispatcher } from "svelte";
+    import { t } from "../utils/i18n.js";
+
     const dispatch = createEventDispatcher();
 
     export let activeSource = "all";
+
+    const tabs = [
+        { value: "all", label: t("filters.all") },
+        { value: "CHP", label: t("filters.traffic") },
+        { value: "SDPD", label: t("filters.sdpd") },
+        { value: "SDSO", label: t("filters.sheriff") },
+        { value: "SDFD", label: t("filters.fire") },
+        { value: "map", label: `🗺️ ${t("filters.map")}` },
+    ];
 
     function setSourceFilter(source) {
         dispatch("changeSource", source);
@@ -10,36 +21,17 @@
 </script>
 
 <div class="source-tabs">
-    <button
-        class="source-tab"
-        class:active={activeSource === "all"}
-        on:click={() => setSourceFilter("all")}>All</button
-    >
-    <button
-        class="source-tab"
-        class:active={activeSource === "CHP"}
-        on:click={() => setSourceFilter("CHP")}>Traffic</button
-    >
-    <button
-        class="source-tab"
-        class:active={activeSource === "SDPD"}
-        on:click={() => setSourceFilter("SDPD")}>SDPD</button
-    >
-    <button
-        class="source-tab"
-        class:active={activeSource === "SDSO"}
-        on:click={() => setSourceFilter("SDSO")}>Sheriff</button
-    >
-    <button
-        class="source-tab"
-        class:active={activeSource === "SDFD"}
-        on:click={() => setSourceFilter("SDFD")}>Fire</button
-    >
-    <button
-        class="source-tab"
-        class:active={activeSource === "map"}
-        on:click={() => setSourceFilter("map")}>🗺️ Map</button
-    >
+    {#each tabs as tab}
+        <button
+            class="source-tab"
+            class:active={activeSource === tab.value}
+            type="button"
+            aria-pressed={activeSource === tab.value}
+            on:click={() => setSourceFilter(tab.value)}
+        >
+            {tab.label}
+        </button>
+    {/each}
 </div>
 
 <style>

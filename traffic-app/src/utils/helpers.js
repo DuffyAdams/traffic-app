@@ -1,10 +1,11 @@
 /**
  * Utility helper functions for the Traffic App
  */
+import { formatDateTime, formatRelativeTimeFromNow, t } from "./i18n.js";
 
 // Generate a random username for anonymous users
-const adjectives = ['Cool', 'Happy', 'Swift', 'Brave', 'Clever', 'Lucky'];
-const nouns = ['Panda', 'Tiger', 'Eagle', 'Fox', 'Wolf', 'Bear'];
+const adjectives = ["Cool", "Happy", "Swift", "Brave", "Clever", "Lucky"];
+const nouns = ["Panda", "Tiger", "Eagle", "Fox", "Wolf", "Bear"];
 
 export function generateRandomUsername() {
     const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
@@ -44,25 +45,21 @@ export async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
 
 // Format timestamp for display
 export function formatTimestamp(timestamp) {
-    if (!timestamp) return "Recent";
-    const date = new Date(timestamp);
-    return date.toLocaleString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
+    if (!timestamp) return t("fallback.recent");
+    return formatDateTime(timestamp, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
     });
 }
 
 // Format time only (for compact display)
 export function formatTimeOnly(timestamp) {
-    if (!timestamp) return "Recent";
-    const date = new Date(timestamp);
-    return date.toLocaleString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
+    if (!timestamp) return t("fallback.recent");
+    return formatDateTime(timestamp, {
+        hour: "numeric",
+        minute: "2-digit",
     });
 }
 export const formatTime = formatTimeOnly;
@@ -83,32 +80,22 @@ export function formatCommentTimestamp(timestamp) {
     const now = new Date();
     const diff = now.getTime() - date.getTime();
 
-    if (diff < 60000) return "just now";
-    if (diff < 3600000) {
-        const minutes = Math.floor(diff / 60000);
-        return `${minutes}m ago`;
-    }
-    if (diff < 86400000) {
-        const hours = Math.floor(diff / 3600000);
-        return `${hours}h ago`;
-    }
     if (diff < 604800000) {
-        const days = Math.floor(diff / 86400000);
-        return `${days}d ago`;
+        return formatRelativeTimeFromNow(timestamp, { style: "short" });
     }
 
-    return date.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric'
+    return formatDateTime(timestamp, {
+        month: "short",
+        day: "numeric"
     });
 }
 
 // Truncate description text
 export function truncateDescription(text, length = 150) {
-    if (!text) return '';
+    if (!text) return "";
     if (text.length <= length) return text;
 
-    const lastSpaceIndex = text.lastIndexOf(' ', length);
+    const lastSpaceIndex = text.lastIndexOf(" ", length);
     if (lastSpaceIndex === -1) return text.substring(0, length);
 
     return text.substring(0, lastSpaceIndex);
@@ -170,18 +157,18 @@ export function highlightFuzzy(text, query) {
     if (!query || query.trim() === "") return escapedText;
 
     const q = query.trim().toLowerCase();
-    
+
     if (escapedText.toLowerCase().includes(q)) {
-        const escapedQ = q.replace(/[-/\\\\^$*+?.()|[\\]{}]/g, '\\\\$&');
+        const escapedQ = q.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
         const regex = new RegExp(`(${escapedQ})`, "gi");
         return escapedText.replace(regex, '<mark class="search-highlight">$1</mark>');
     }
 
-    const words = q.split(/\\s+/).filter(Boolean);
+    const words = q.split(/\s+/).filter(Boolean);
     let highlightedText = escapedText;
     for (const word of words) {
         if (word.length > 0) {
-            const escapedWord = word.replace(/[-/\\\\^$*+?.()|[\\]{}]/g, '\\\\$&');
+            const escapedWord = word.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
             const regex = new RegExp(`(${escapedWord})`, "gi");
             highlightedText = highlightedText.replace(regex, '<mark class="search-highlight">$1</mark>');
         }

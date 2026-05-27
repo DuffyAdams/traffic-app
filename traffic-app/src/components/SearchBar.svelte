@@ -1,11 +1,12 @@
 <script>
-    import { createEventDispatcher, onMount } from "svelte";
     import Search from "lucide-svelte/icons/search";
     import X from "lucide-svelte/icons/x";
+    import { createEventDispatcher } from "svelte";
+    import { t } from "../utils/i18n.js";
 
     export let value = "";
-    export let placeholder = "Search incidents...";
-    
+    export let placeholder = t("search.placeholder");
+
     const dispatch = createEventDispatcher();
     let inputRef;
 
@@ -27,14 +28,15 @@
     </div>
     <input
         bind:this={inputRef}
-        type="text"
+        type="search"
         class="search-input"
+        aria-label={t("search.ariaLabel")}
         {placeholder}
         {value}
         on:input={handleInput}
     />
     {#if value.length > 0}
-        <button class="clear-button" on:click={clearSearch} aria-label="Clear search">
+        <button class="clear-button" type="button" on:click={clearSearch} aria-label={t("search.clear")}>
             <X size={14} />
         </button>
     {/if}
