@@ -73,39 +73,6 @@ npm install
 npx playwright install
 ```
 
-## Environment Variables
-
-The backend loads `.env` from the repo root.
-
-| Variable | Required | Default | Purpose |
-| --- | --- | --- | --- |
-| `GPT_KEY` | Yes for live LLM summaries | none | OpenRouter or compatible API key used by `llm.py` |
-| `SDSO_API_URL` | No | unset | Enables San Diego Sheriff's Office ingestion |
-| `TESTMODE` | No | `False` | Disables live LLM and map-generation side effects and returns mock summaries |
-| `TRAFFIC_APP_HOST` | No | `0.0.0.0` | Flask bind host |
-| `TRAFFIC_APP_PORT` | No | `5002` | Flask bind port |
-| `TRAFFIC_APP_ALLOWED_ORIGINS` | No | `http://localhost:5173,http://127.0.0.1:5173` | CORS allowlist for `/api/*` and `/maps/*` |
-| `COOKIE_SECURE` | No | `true` outside local host mode | Controls secure cookie behavior for device UUIDs |
-| `HTTP_TIMEOUT_SECONDS` | No | `12` | Timeout for external source and probe requests |
-| `HEALTHCHECK_URL` | No | unset | Optional heartbeat endpoint pinged after scrape cycles |
-| `TRUST_PROXY_HEADERS` | No | derived from host config | Enables trusted use of `X-Forwarded-For` |
-| `TRUSTED_PROXY_CIDRS` | No | `127.0.0.0/8,::1/128` | Allowed proxy CIDRs for forwarded IP parsing |
-| `API_READ_RATE_LIMIT` | No | `120 per minute` | Read bucket limit |
-| `API_WRITE_RATE_LIMIT` | No | `20 per minute` | Write bucket limit |
-| `RESPONSE_CACHE_MAX_ENTRIES` | No | `256` | In-memory API response cache size |
-| `RATE_LIMIT_MAX_BUCKETS` | No | `4096` | In-memory rate-limit bucket cap |
-| `TRAFFIC_APP_PUBLIC_URL` | No | `https://traffic-app.duffyadams.com` | Public site URL used by dashboard probes |
-| `METRICS_PUBLIC_URL` | No | `https://metrics.duffyadams.com` | Public metrics URL used for analytics grouping |
-
-Minimal local `.env` example:
-
-```ini
-GPT_KEY=replace_me
-TESTMODE=true
-TRAFFIC_APP_HOST=127.0.0.1
-TRAFFIC_APP_PORT=5002
-```
-
 ## Running Locally
 
 ### Backend only
