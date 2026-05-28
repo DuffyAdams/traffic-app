@@ -1314,18 +1314,20 @@
 </script>
 
 <div class="container" bind:this={scrollContainer}>
-  <HeadlineTicker
-    events={[
-      ...posts.slice(0, 5),
-      ...posts.filter(
-        (p) =>
-          p.active &&
-          p.type &&
-          p.type.toLowerCase().includes("sig") &&
-          !posts.slice(0, 5).some((bp) => bp.id === p.id),
-      ),
-    ]}
-  />
+  {#if !accessibilityMode}
+    <HeadlineTicker
+      events={[
+        ...posts.slice(0, 5),
+        ...posts.filter(
+          (p) =>
+            p.active &&
+            p.type &&
+            p.type.toLowerCase().includes("sig") &&
+            !posts.slice(0, 5).some((bp) => bp.id === p.id),
+        ),
+      ]}
+    />
+  {/if}
   <Header
     {showEventCounters}
     {darkMode}
@@ -1538,6 +1540,27 @@
     --error-bg: #fff5f5;
     --error-color: #e53e3e;
     --success-color: #38a169;
+  }
+
+  :global(body:not(.dark-mode) .control-toggle:hover),
+  :global(body:not(.dark-mode) .control-toggle.is-active),
+  :global(body:not(.dark-mode) .source-tab.active),
+  :global(body:not(.dark-mode) .action-button:hover),
+  :global(body:not(.dark-mode) .clickable-location:hover) {
+    color: #0f172a;
+  }
+
+  :global(body:not(.dark-mode) .control-toggle:hover),
+  :global(body:not(.dark-mode) .control-toggle.is-active) {
+    background: rgba(49, 130, 206, 0.18);
+    border-color: #1e40af;
+    box-shadow: 0 0 0 2px rgba(30, 64, 175, 0.12);
+  }
+
+  :global(body:not(.dark-mode) .action-button:hover),
+  :global(body:not(.dark-mode) .source-tab.active) {
+    background: rgba(49, 130, 206, 0.16);
+    border-color: #1e40af;
   }
 
   :global(body.dark-mode) {

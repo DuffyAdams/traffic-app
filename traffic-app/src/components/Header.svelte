@@ -70,7 +70,9 @@
                     />
                     <span class="metric-label">{t("header.feedStatus", { time: currentTime })}</span>
                 </div>
-                <div class="metric-row subtext">{t("header.monitoringIncidents")}</div>
+                {#if t("header.monitoringIncidents")}
+                    <div class="metric-row subtext">{t("header.monitoringIncidents")}</div>
+                {/if}
             </div>
             <div class="header-toggle-group">
                 <button

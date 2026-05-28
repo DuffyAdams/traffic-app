@@ -17,11 +17,11 @@ import requests
 
 from config import (
     DB_FILE, MAP_GENERATOR, TARGET_DIR, TESTMODE, HEALTHCHECK_URL, db_lock,
-    now_pst, pst_date_str,
+    HTTP_TIMEOUT_SECONDS, now_pst, pst_date_str,
 )
 from runtime_metrics import record_scrape_success
 from logger import safe_print
-from db import incident_exists, save_or_update_incident
+from db import fetch_existing_incidents, save_or_update_incident
 from llm import generate_description
 from geocoding import geocode_location as geo_geocode_location
 from config import geo_cache
@@ -66,7 +66,7 @@ def run_map_generator(incident):
 # Per-incident processing
 # ---------------------------------------------------------------------------
 
-def process_and_save_incident(incident):
+def process_and_save_incident(incident, existing_record=None):
     """Geocode, generate map, and persist one incident. Returns incident_no or None."""
     try:
         incident_no = incident.get("No.") or incident.get("Incident No.")
@@ -74,28 +74,24 @@ def process_and_save_incident(incident):
             safe_print("WARNING: No incident number found. Skipping.")
             return None
 
-        inc_exists  = incident_exists(incident_no, incident.get("Date", pst_date_str()))
+        inc_exists = existing_record is not None
         needs_geocoding = not inc_exists
         inserted_fast = False
 
         if not inc_exists:
             # Write the row immediately so the feed can surface it without waiting
             # for map generation or description enrichment to finish.
-            save_or_update_incident(incident, generate_description_on_insert=False)
+            save_or_update_incident(
+                incident,
+                existing_record=None,
+                generate_description_on_insert=False,
+            )
             inserted_fast = True
             _description_executor.submit(_refresh_incident_description, dict(incident))
 
-        if not needs_geocoding:
-            with sqlite3.connect(DB_FILE, timeout=30) as conn:
-                cur = conn.cursor()
-                cur.execute(
-                    "SELECT latitude, map_filename FROM incidents WHERE incident_no = ?",
-                    (str(incident_no),),
-                )
-                row = cur.fetchone()
-                if row and (row[0] is None or not row[1]):
-                    safe_print(f"Incident {incident_no} missing coords/map — will geocode.")
-                    needs_geocoding = True
+        if inc_exists and (existing_record.get("latitude") is None or not existing_record.get("map_filename")):
+            safe_print(f"Incident {incident_no} missing coords/map; will geocode.")
+            needs_geocoding = True
 
         if needs_geocoding:
             _geocode_incident(incident)
@@ -104,7 +100,11 @@ def process_and_save_incident(incident):
         elif inserted_fast and "Latitude" in incident and "Longitude" in incident:
             run_map_generator(incident)
 
-        save_or_update_incident(incident, generate_description_on_insert=False)
+        save_or_update_incident(
+            incident,
+            existing_record=existing_record if inc_exists else None,
+            generate_description_on_insert=False,
+        )
         return str(incident_no)
     except Exception as e:
         inc_id = incident.get("No.", "unknown") if isinstance(incident, dict) else "unknown"
@@ -215,10 +215,21 @@ def monitor_traffic_data(interval=15):
                 # ── Parallel processing ────────────────────────────────────
                 active_ids = set()
                 if all_incidents:
-                    # CHP first (already has coords — faster to process)
+                    # CHP first (already has coords; faster to process). Prefetch
+                    # existing rows once to avoid one SQLite read per incident.
                     all_incidents.sort(key=lambda x: 0 if x.get("Source") == "CHP" else 1)
+                    incident_keys = [
+                        (inc.get("No.") or inc.get("Incident No."), inc.get("Date", pst_date_str()))
+                        for inc in all_incidents
+                    ]
+                    existing_records = fetch_existing_incidents(incident_keys)
                     with ThreadPoolExecutor(max_workers=10) as executor:
-                        futures = [executor.submit(process_and_save_incident, inc) for inc in all_incidents]
+                        futures = []
+                        for inc in all_incidents:
+                            incident_no = inc.get("No.") or inc.get("Incident No.")
+                            date = inc.get("Date", pst_date_str())
+                            existing_record = existing_records.get((str(incident_no), date))
+                            futures.append(executor.submit(process_and_save_incident, inc, existing_record))
                         for f in as_completed(futures):
                             inc_id = f.result()
                             if inc_id:
@@ -315,9 +326,11 @@ def _mark_inactive(active_ids):
 
 
 def _ping_healthcheck(success=True):
+    if not HEALTHCHECK_URL:
+        return
     url = HEALTHCHECK_URL + ("" if success else "/fail")
     try:
-        requests.get(url, timeout=10)
+        requests.get(url, timeout=HTTP_TIMEOUT_SECONDS)
         safe_print(f"Healthcheck ping: {'success' if success else 'failure'}")
     except Exception as e:
         safe_print(f"Failed to ping healthcheck: {e}")

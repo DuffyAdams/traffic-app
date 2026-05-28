@@ -6,7 +6,7 @@ from datetime import datetime
 
 import requests
 
-from config import SDSO_API_URL, HEADERS
+from config import SDSO_API_URL, HEADERS, HTTP_TIMEOUT_SECONDS
 from config import ensure_pst, now_pst
 from logger import safe_print
 
@@ -29,7 +29,7 @@ def scrape_sdso_incidents():
 
     safe_print("Scraping SDSO incidents...")
     try:
-        response = requests.get(SDSO_API_URL, headers=HEADERS)
+        response = requests.get(SDSO_API_URL, headers=HEADERS, timeout=HTTP_TIMEOUT_SECONDS)
         response.raise_for_status()
         data   = response.json()
         events = data.get("Events", [])

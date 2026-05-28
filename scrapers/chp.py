@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import requests
 from bs4 import BeautifulSoup
 
-from config import CHP_SCRAPE_URL, HEADERS, PARAMS
+from config import CHP_SCRAPE_URL, HEADERS, PARAMS, HTTP_TIMEOUT_SECONDS
 from config import ensure_pst, now_pst
 from logger import safe_print
 
@@ -26,7 +26,7 @@ _EXCLUDED_DETAILS = {"Unit At Scene", "Unit Enroute", "Unit Assigned"}
 def scrape_chp_incidents():
     """Return a list of incident dicts from the CHP live CAD feed."""
     try:
-        response = requests.get(CHP_SCRAPE_URL, headers=HEADERS)
+        response = requests.get(CHP_SCRAPE_URL, headers=HEADERS, timeout=HTTP_TIMEOUT_SECONDS)
         response.raise_for_status()
         soup     = BeautifulSoup(response.text, "html.parser")
         table    = soup.find("table", id="gvIncidents")
@@ -80,7 +80,7 @@ def _get_incident_details(row_index, viewstate):
             "ddlSearches":          "Choose One",
             "ddlResources":         "Choose One",
         }
-        post = requests.post(CHP_SCRAPE_URL, params=PARAMS, headers=HEADERS, data=data)
+        post = requests.post(CHP_SCRAPE_URL, params=PARAMS, headers=HEADERS, data=data, timeout=HTTP_TIMEOUT_SECONDS)
         post.raise_for_status()
         return _extract_traffic_info(post.text)
     except requests.exceptions.RequestException as e:

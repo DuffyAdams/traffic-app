@@ -4,6 +4,7 @@ Flask API routes for the traffic app.
 Import this module to register all routes on the shared `app` instance.
 """
 
+import ipaddress
 import os
 import sqlite3
 import time
@@ -16,9 +17,9 @@ from dateutil.relativedelta import relativedelta
 from flask import abort, jsonify, request, send_from_directory
 
 from config import (
-    app, DB_FILE, TARGET_DIR, COOKIE_NAME, COOKIE_MAX_AGE, db_lock,
+    app, DB_FILE, TARGET_DIR, COOKIE_NAME, COOKIE_MAX_AGE, COOKIE_SECURE, db_lock,
     API_READ_RATE_LIMIT, API_WRITE_RATE_LIMIT, TRUST_PROXY_HEADERS,
-    now_pst, pst_timestamp_str,
+    HTTP_TIMEOUT_SECONDS, now_pst, pst_timestamp_str,
 )
 from db import read_incidents, with_user_like_state
 from logger import safe_print
@@ -38,6 +39,20 @@ TRAFFIC_APP_PUBLIC_URL = os.environ.get("TRAFFIC_APP_PUBLIC_URL", "https://traff
 METRICS_PUBLIC_URL = os.environ.get("METRICS_PUBLIC_URL", "https://metrics.duffyadams.com")
 TRAFFIC_APP_PUBLIC_HOST = TRAFFIC_APP_PUBLIC_URL.split("://", 1)[-1].split("/", 1)[0]
 METRICS_PUBLIC_HOST = METRICS_PUBLIC_URL.split("://", 1)[-1].split("/", 1)[0]
+RESPONSE_CACHE_MAX_ENTRIES = int(os.environ.get("RESPONSE_CACHE_MAX_ENTRIES", "256"))
+RATE_LIMIT_MAX_BUCKETS = int(os.environ.get("RATE_LIMIT_MAX_BUCKETS", "4096"))
+INCIDENT_CACHE_ARGS = {"limit", "cursor", "type", "location", "source", "active_only", "date_filter"}
+STATS_CACHE_ARGS = {"source", "date_filter"}
+
+TRUSTED_PROXY_NETWORKS = []
+for raw_network in os.environ.get("TRUSTED_PROXY_CIDRS", "127.0.0.0/8,::1/128").split(","):
+    raw_network = raw_network.strip()
+    if not raw_network:
+        continue
+    try:
+        TRUSTED_PROXY_NETWORKS.append(ipaddress.ip_network(raw_network, strict=False))
+    except ValueError:
+        safe_print(f"Ignoring invalid TRUSTED_PROXY_CIDRS entry: {raw_network}")
 
 _response_cache = {}
 _cache_lock = Lock()
@@ -49,24 +64,28 @@ _rate_limit_lock = Lock()
 # Cookie helper
 # ---------------------------------------------------------------------------
 
+def _normalize_uuid(value):
+    if not value:
+        return None
+    try:
+        return str(uuid.UUID(str(value)))
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
 def _get_or_create_uuid(req):
-    device_uuid = req.cookies.get(COOKIE_NAME)
-    if not device_uuid:
-        device_uuid = str(uuid.uuid4())
-        safe_print(f"New UUID: {device_uuid}")
-    else:
-        safe_print(f"Reusing UUID: {device_uuid}")
-    return device_uuid
+    device_uuid = _normalize_uuid(req.cookies.get(COOKIE_NAME))
+    return device_uuid or str(uuid.uuid4())
 
 
 def _set_uuid_cookie(response, device_uuid):
-    """Attach UUID cookie to a response if not already present."""
-    if COOKIE_NAME not in request.cookies:
+    """Attach UUID cookie to a response if missing or invalid."""
+    if _normalize_uuid(request.cookies.get(COOKIE_NAME)) != device_uuid:
         response.set_cookie(
             COOKIE_NAME,
             device_uuid,
             max_age=COOKIE_MAX_AGE,
-            secure=False,
+            secure=COOKIE_SECURE,
             httponly=True,
             samesite="Lax",
         )
@@ -104,11 +123,12 @@ def _get_date_filter():
     return date_filter
 
 
-def _cache_key(prefix, *extra_parts):
+def _cache_key(prefix, allowed_args=None, *extra_parts):
     args = tuple(
         sorted(
             (key, tuple(sorted(value.strip() for value in values)))
             for key, values in request.args.lists()
+            if allowed_args is None or key in allowed_args
         )
     )
     return (prefix, args, extra_parts)
@@ -127,9 +147,20 @@ def _get_cached_response(key):
         return payload
 
 
+def _prune_response_cache(now):
+    expired = [key for key, (expires_at, _) in _response_cache.items() if expires_at <= now]
+    for key in expired:
+        _response_cache.pop(key, None)
+
+    while len(_response_cache) >= RESPONSE_CACHE_MAX_ENTRIES:
+        _response_cache.pop(next(iter(_response_cache)), None)
+
+
 def _set_cached_response(key, payload, ttl):
+    now = time.time()
     with _cache_lock:
-        _response_cache[key] = (time.time() + ttl, payload)
+        _prune_response_cache(now)
+        _response_cache[key] = (now + ttl, payload)
 
 
 @app.before_request
@@ -167,11 +198,37 @@ def _parse_rate_limit(limit_spec):
     return max_requests, window_seconds
 
 
+def _is_trusted_proxy(remote_addr):
+    if not remote_addr or not TRUSTED_PROXY_NETWORKS:
+        return False
+    try:
+        ip = ipaddress.ip_address(remote_addr)
+    except ValueError:
+        return False
+    return any(ip in network for network in TRUSTED_PROXY_NETWORKS)
+
+
 def _client_ip():
     forwarded_for = request.headers.get("X-Forwarded-For", "")
-    if TRUST_PROXY_HEADERS and forwarded_for:
-        return forwarded_for.split(",", 1)[0].strip()
+    if TRUST_PROXY_HEADERS and forwarded_for and _is_trusted_proxy(request.remote_addr):
+        candidate = forwarded_for.split(",", 1)[0].strip()
+        try:
+            return str(ipaddress.ip_address(candidate))
+        except ValueError:
+            pass
     return request.remote_addr or "unknown"
+
+
+def _prune_rate_limit_buckets(now):
+    stale_keys = [
+        key for key, hits in _rate_limit_hits.items()
+        if not hits or now - max(hits) >= 3600
+    ]
+    for key in stale_keys:
+        _rate_limit_hits.pop(key, None)
+
+    while len(_rate_limit_hits) > RATE_LIMIT_MAX_BUCKETS:
+        _rate_limit_hits.pop(next(iter(_rate_limit_hits)), None)
 
 
 def _enforce_rate_limit(bucket, limit_spec):
@@ -189,6 +246,8 @@ def _enforce_rate_limit(bucket, limit_spec):
             abort(429, description="Too many requests")
         window.append(now)
         _rate_limit_hits[key] = window
+        if len(_rate_limit_hits) > RATE_LIMIT_MAX_BUCKETS:
+            _prune_rate_limit_buckets(now)
 
 
 def _range_key(date_filter):
@@ -270,7 +329,7 @@ def _count_query(cur, query, params=()):
     return cur.fetchone()[0] or 0
 
 
-def _probe_url(url, timeout=5):
+def _probe_url(url, timeout=HTTP_TIMEOUT_SECONDS):
     started = time.perf_counter()
     try:
         response = requests.get(url, timeout=timeout)
@@ -319,7 +378,7 @@ def get_incidents():
     active_only = request.args.get("active_only", "false").lower() == "true"
     date_filter = _get_date_filter()
 
-    cache_key = _cache_key("incidents")
+    cache_key = _cache_key("incidents", INCIDENT_CACHE_ARGS)
     incidents = _get_cached_response(cache_key)
     if incidents is None:
         incidents = read_incidents(
@@ -343,7 +402,7 @@ def get_incident_stats():
     sources = _clean_filter_values("source", ALLOWED_SOURCES)
     now = now_pst()
 
-    cache_key = _cache_key("incident_stats")
+    cache_key = _cache_key("incident_stats", STATS_CACHE_ARGS)
     cached_payload = _get_cached_response(cache_key)
     if cached_payload is not None:
         response = jsonify(cached_payload)
@@ -666,11 +725,15 @@ def like_incident(incident_id):
     with db_lock:
         with sqlite3.connect(DB_FILE, timeout=30) as conn:
             cur = conn.cursor()
+            cur.execute("SELECT 1 FROM incidents WHERE incident_no = ?", (incident_id,))
+            if not cur.fetchone():
+                abort(404, description="Incident not found")
             if request.method == "DELETE":
                 cur.execute("DELETE FROM likes WHERE incident_no = ? AND device_uuid = ?",
                             (incident_id, device_uuid))
-                cur.execute("UPDATE incidents SET likes = MAX(likes - 1, 0) WHERE incident_no = ?",
-                            (incident_id,))
+                if cur.rowcount:
+                    cur.execute("UPDATE incidents SET likes = MAX(likes - 1, 0) WHERE incident_no = ?",
+                                (incident_id,))
             else:
                 cur.execute("SELECT 1 FROM likes WHERE incident_no = ? AND device_uuid = ?",
                             (incident_id, device_uuid))
@@ -720,32 +783,37 @@ def comment_incident(incident_id):
     if len(username) > MAX_USERNAME_LENGTH:
         username = username[:MAX_USERNAME_LENGTH]
 
-    with sqlite3.connect(DB_FILE, timeout=30) as conn:
-        conn.execute("PRAGMA foreign_keys = ON")
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                "SELECT COUNT(*) FROM comments WHERE incident_no = ? AND username = ?",
-                (incident_id, username),
-            )
-            if cur.fetchone()[0] >= 2:
-                return jsonify({"error": "You can only leave 2 comments per post."}), 400
+    with db_lock:
+        with sqlite3.connect(DB_FILE, timeout=30) as conn:
+            conn.execute("PRAGMA foreign_keys = ON")
+            cur = conn.cursor()
+            try:
+                cur.execute("SELECT 1 FROM incidents WHERE incident_no = ?", (incident_id,))
+                if not cur.fetchone():
+                    abort(404, description="Incident not found")
 
-            cur.execute(
-                "INSERT INTO comments (incident_no, device_uuid, username, comment, timestamp) VALUES (?, ?, ?, ?, ?)",
-                (incident_id, device_uuid, username, new_comment, timestamp),
-            )
-            conn.commit()
-            _clear_response_cache()
-            cur.execute(
-                "SELECT username, comment, timestamp FROM comments WHERE incident_no = ? ORDER BY timestamp ASC",
-                (incident_id,),
-            )
-            comments = [{"username": r[0] or "Anonymous", "comment": r[1], "timestamp": r[2]}
-                        for r in cur.fetchall()]
-        except sqlite3.IntegrityError:
-            conn.rollback()
-            return jsonify({"error": "Could not process comment."}), 400
+                cur.execute(
+                    "SELECT COUNT(*) FROM comments WHERE incident_no = ? AND device_uuid = ?",
+                    (incident_id, device_uuid),
+                )
+                if cur.fetchone()[0] >= 2:
+                    return jsonify({"error": "You can only leave 2 comments per post."}), 400
+
+                cur.execute(
+                    "INSERT INTO comments (incident_no, device_uuid, username, comment, timestamp) VALUES (?, ?, ?, ?, ?)",
+                    (incident_id, device_uuid, username, new_comment, timestamp),
+                )
+                conn.commit()
+                _clear_response_cache()
+                cur.execute(
+                    "SELECT username, comment, timestamp FROM comments WHERE incident_no = ? ORDER BY timestamp ASC",
+                    (incident_id,),
+                )
+                comments = [{"username": r[0] or "Anonymous", "comment": r[1], "timestamp": r[2]}
+                            for r in cur.fetchall()]
+            except sqlite3.IntegrityError:
+                conn.rollback()
+                return jsonify({"error": "Could not process comment."}), 400
 
     response = jsonify({"comments": comments})
     return _finalize_api_response(response, device_uuid, "incident_comment", request_type="write")

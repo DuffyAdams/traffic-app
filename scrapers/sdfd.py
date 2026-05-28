@@ -6,7 +6,7 @@ from datetime import datetime
 
 import requests
 
-from config import SDFD_API_URL, HEADERS
+from config import SDFD_API_URL, HEADERS, HTTP_TIMEOUT_SECONDS
 from config import ensure_pst, now_pst
 from logger import safe_print
 
@@ -15,7 +15,7 @@ def scrape_sdfd_incidents():
     """Return a list of incident dicts from the SDFD dispatch API."""
     safe_print("Scraping SDFD incidents...")
     try:
-        response = requests.get(SDFD_API_URL, headers=HEADERS)
+        response = requests.get(SDFD_API_URL, headers=HEADERS, timeout=HTTP_TIMEOUT_SECONDS)
         response.raise_for_status()
         data = response.json()
 

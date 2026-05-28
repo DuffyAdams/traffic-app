@@ -7,7 +7,7 @@ from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
 
-from config import SDPD_SCRAPE_URL, HEADERS
+from config import SDPD_SCRAPE_URL, HEADERS, HTTP_TIMEOUT_SECONDS
 from config import ensure_pst, now_pst
 from logger import safe_print
 
@@ -59,7 +59,7 @@ def scrape_sdpd_incidents():
     """Return a list of incident dicts from the SDPD online CAD table."""
     safe_print("Scraping SDPD incidents...")
     try:
-        response = requests.get(SDPD_SCRAPE_URL, headers=HEADERS)
+        response = requests.get(SDPD_SCRAPE_URL, headers=HEADERS, timeout=HTTP_TIMEOUT_SECONDS)
         response.raise_for_status()
         soup  = BeautifulSoup(response.text, "html.parser")
         table = soup.find("table", id="myDataTable")

@@ -21,9 +21,9 @@ const messages = {
     },
     header: {
       brandTitle: "San Diego Watch",
-      brandSubtitle: "Tactical Dispatch Overview",
-      feedStatus: ({ time }) => `Dispatch feed • ${time}`,
-      monitoringIncidents: "Monitoring incidents",
+      brandSubtitle: "Dispatch Overview",
+      feedStatus: ({ time }) => time,
+      monitoringIncidents: "",
       systemDiagnostics: "System diagnostics",
       statistics: "Statistics",
       switchToLightMode: "Switch to light mode",
