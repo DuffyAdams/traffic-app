@@ -69,6 +69,7 @@
     let resizeObserver;
     let resizeFrame = 0;
     let activationTimer = 0;
+    let readyFallbackTimer = 0;
     let isNearViewport = false;
     let canRenderMap = false;
     let mapReady = false;
@@ -162,6 +163,28 @@
         activationTimer = 0;
     }
 
+    function clearReadyFallbackTimer() {
+        if (!readyFallbackTimer) return;
+        window.clearTimeout(readyFallbackTimer);
+        readyFallbackTimer = 0;
+    }
+
+    function markMapReady() {
+        if (!map || isDestroyed) return;
+        clearReadyFallbackTimer();
+        mapReady = true;
+        hasRenderedOnce = true;
+    }
+
+    function scheduleReadyFallback(delay = 700) {
+        if (readyFallbackTimer || mapReady || !map || isDestroyed) return;
+
+        readyFallbackTimer = window.setTimeout(() => {
+            readyFallbackTimer = 0;
+            markMapReady();
+        }, delay);
+    }
+
     function startResizeObserver() {
         if (resizeObserver || !("ResizeObserver" in window) || !shell) return;
 
@@ -202,8 +225,14 @@
         )
             return;
 
-        await loadMapLibraries();
-        await tick();
+        try {
+            await loadMapLibraries();
+            await tick();
+        } catch (error) {
+            console.warn("IncidentMiniMap: failed to load map libraries", error);
+            handleMapUnavailable();
+            return;
+        }
 
         if (
             isDestroyed ||
@@ -219,10 +248,10 @@
             return;
         }
 
-        ensureProtocol();
         mapReady = false;
 
         try {
+            ensureProtocol();
             map = new maplibregl.Map({
                 container: mapContainer,
                 style: getStyle(),
@@ -240,9 +269,9 @@
 
         startResizeObserver();
 
-        map.once("error", (event) => {
+        map.on("error", (event) => {
             console.warn("IncidentMiniMap: map failed to load", event?.error || event);
-            handleMapUnavailable();
+            scheduleReadyFallback();
         });
 
         map.once("load", () => {
@@ -250,6 +279,7 @@
             requestAnimationFrame(() => {
                 if (map) {
                     map.resize();
+                    scheduleReadyFallback();
                 }
             });
         });
@@ -265,6 +295,7 @@
         }
         stopResizeObserver();
         if (!map) return;
+        clearReadyFallbackTimer();
         map.remove();
         map = null;
         mapReady = false;
@@ -295,12 +326,11 @@
         });
 
         if (renderedFeatures.length === 0) {
-            handleMapUnavailable();
+            scheduleReadyFallback(250);
             return;
         }
 
-        mapReady = true;
-        hasRenderedOnce = true;
+        markMapReady();
     }
 
     function getStyle() {
@@ -531,13 +561,14 @@
 
 <div
     class="mini-map-shell"
-    class:loading={!mapReady && !hasRenderedOnce}
+    class:loading={!mapReady && !hasRenderedOnce && !mapUnavailable}
     bind:this={shell}
     style="--marker-color: {markerColor};"
 >
     <div
         class:ready={mapReady}
         class:loaded-before={hasRenderedOnce}
+        class:unavailable={mapUnavailable}
         class="mini-map-fallback"
         aria-hidden="true"
     >
@@ -611,6 +642,12 @@
 
     .mini-map-fallback.ready {
         opacity: 0.28;
+        filter: blur(0);
+        transform: scale(1);
+    }
+
+    .mini-map-fallback.unavailable {
+        opacity: 0.95;
         filter: blur(0);
         transform: scale(1);
     }
