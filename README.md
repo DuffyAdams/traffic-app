@@ -1,158 +1,270 @@
-# Traffic Alerts App (San Diego)
+# San Diego Traffic Watch
 
 <div align="center">
-  <img src="screenshots/logo.png" alt="Traffic Alerts App Logo" width="400" />
+  <img src="screenshots/logo.png" alt="San Diego Traffic Watch logo" width="320" />
 </div>
 
-A real-time dashboard and backend service that monitors, aggregates, and visualizes traffic and emergency incidents across the San Diego region.
+San Diego Traffic Watch is a Flask plus Svelte application that ingests live public-safety and traffic incidents across San Diego County, stores them in SQLite, enriches them with geocoding and AI-generated summaries, and serves both the public site and operational metrics from the same backend.
 
 ## Overview
 
-The Traffic Alerts App automatically scrapes and structures incident data from multiple local agencies, utilizing large language models to generate tweet-friendly summaries and displaying the results on a modern, responsive map interface. 
+The repo has three main pieces:
 
-It provides an efficient way to track accidents, road hazards, maintenance activities, and emergency dispatch events in near real-time.
+- `traffic_scraper.py` starts the Flask app and the continuous background scraper loop.
+- `traffic-app/` contains the Svelte frontend that is built into `traffic-app/dist` and served by Flask in production.
+- `metrics-app/` is a separate static dashboard that reads from the same backend APIs for operational visibility.
 
-### Key Features
-* **Multi-Agency Aggregation**: Consolidates live data from:
-  * California Highway Patrol (CHP)
-  * San Diego Police Department (SDPD)
-  * San Diego Fire-Rescue Department (SDFD)
-* **Automated Geocoding & Mapping**: Automatically reverse-geocodes street descriptions and generates static map imagery for incidents.
-* **AI-Generated Summaries**: Uses LLMs (via OpenRouter/Google Gemini) to transform dense dispatcher codes into easily readable, concise alerts.
-* **Modern Frontend**: A fully responsive web interface built with Svelte that includes interactive maps, real-time updates, and filtering capabilities.
-* **Interactive Community**: Users can "like" and comment on specific traffic incidents directly through the web UI.
+## Current Features
 
----
+- Aggregates incidents from CHP, SDPD, SDFD, and optionally SDSO when `SDSO_API_URL` is configured.
+- Runs continuous scrape cycles every 15 seconds and marks stale incidents inactive when they fall out of source feeds.
+- Stores incidents, likes, comments, geocoding cache entries, and API analytics events in SQLite with WAL mode enabled.
+- Geocodes non-coordinate incidents with cached lookups, Nominatim first, and ArcGIS fallback constrained to the San Diego region.
+- Generates incident summaries and 1 to 5 severity scores through OpenRouter via the OpenAI SDK.
+- Supports per-device likes and up to two comments per incident using a persistent UUID cookie.
+- Serves incident statistics, operational dashboard metrics, and health checks over JSON endpoints.
+- Renders interactive frontend maps with MapLibre plus local PMTiles assets instead of remote static map images.
+- Includes backup, restore, geocoding catch-up, mock-data, and deployment helpers in `scripts/` and `deploy/`.
 
-## 📸 Screenshots
+## Screenshots
 
-| Dashboard | Map View | Analytics/Stats |
-|:---:|:---:|:---:|
-| <img src="screenshots/frontpage.png" alt="Frontpage Dashboard" height="300"/> | <img src="screenshots/map_screenshot.png" alt="Interactive Map View" height="300"/> | <img src="screenshots/stats_screenshot.png" alt="Traffic Statistics" height="300"/> |
-
----
+| Dashboard | Map View | Analytics |
+| --- | --- | --- |
+| <img src="screenshots/frontpage.png" alt="Traffic feed dashboard" height="260" /> | <img src="screenshots/map_screenshot.png" alt="Interactive map view" height="260" /> | <img src="screenshots/stats_screenshot.png" alt="Traffic statistics panel" height="260" /> |
 
 ## Architecture
 
-* **Backend / API**: Python & Flask
-* **Database**: SQLite (Optimized with WAL mode for high concurrency)
-* **Frontend**: Svelte (Vite build system)
-* **Data Processing**: `BeautifulSoup4` for web scraping, `ThreadPoolExecutor` for concurrent operations.
-* **AI Integration**: OpenAI Python SDK interfaced with OpenRouter (Google Gemini).
+- Backend: Flask app in [traffic_scraper.py](traffic_scraper.py), route handlers in [routes.py](routes.py), background scrape loop in [monitor.py](monitor.py)
+- Frontend: Svelte 5 plus Vite in [traffic-app](traffic-app)
+- Metrics UI: static dashboard in [metrics-app](metrics-app)
+- Database: SQLite file at `traffic_data.db`
+- Geocoding: cached Nominatim and ArcGIS lookups in [geocoding.py](geocoding.py)
+- LLM summaries: OpenRouter-backed client in [llm.py](llm.py)
 
----
+## Requirements
 
-## Installation
+- Python 3.10+
+- Node.js 18+
+- `npm`
 
-### Prerequisites
-* **Python 3.9+**
-* **Node.js (v18+)** and `npm`
+## Setup
 
-### 1. Backend Setup
-
-Clone the repository and set up a Python virtual environment:
+Clone the repo, create a virtual environment, and install backend dependencies from the project root:
 
 ```bash
-cd traffic-app
+cd /home/ubuntu/projects/san-diego-traffic-watch
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Environment Variables
-
-Create a `.env` file in the root directory and populate it with the necessary API keys, relying on `.env.example` (or `cred.env`) as a template:
-
-```ini
-GPT_KEY=your_openrouter_or_openai_key
-MAP_ACCESS_TOKEN=your_mapbox_access_token
-# (Optional) Add your Twitter/X Developer credentials for the RoadAlerts auto-poster
-```
-
-### 3. Database Backups
-
-A monthly cron job keeps a SQLite backup in `backups/` and retains only the newest three copies.
-
-Backup script:
+Install frontend dependencies:
 
 ```bash
-python scripts/backup_db.py
-```
-
-Restore the newest backup:
-
-```bash
-python scripts/restore_db.py
-```
-
-Restore a specific backup:
-
-```bash
-python scripts/restore_db.py backups/traffic_data_YYYY-MM-DD_HHMMSS_UTC.db
-```
-
-Important: stop the backend before restoring so the live SQLite file is not being written while the restore runs.
-
-### 4. Frontend Setup
-
-Install the Node dependencies for the Svelte interface:
-
-```bash
-cd traffic-app/src
+cd /home/ubuntu/projects/san-diego-traffic-watch/traffic-app
 npm install
 ```
 
----
+Optional: install the Playwright workspace used for UI and API smoke tests:
 
-## Running the Application
-
-### Option 1: Standard Execution (Local Development)
-
-First, build the frontend:
 ```bash
-cd traffic-app
-npm run build
+cd /home/ubuntu/projects/san-diego-traffic-watch/tests
+npm install
+npx playwright install
 ```
 
-Then, run the main Python script from the root project directory. This single script (`traffic_scraper.py`) will start the continuous background scraping threads AND initialize the Flask server to serve both the API and the compiled Svelte static files.
+## Environment Variables
 
-```bash
-python traffic_scraper.py
+The backend loads `.env` from the repo root.
+
+| Variable | Required | Default | Purpose |
+| --- | --- | --- | --- |
+| `GPT_KEY` | Yes for live LLM summaries | none | OpenRouter or compatible API key used by `llm.py` |
+| `SDSO_API_URL` | No | unset | Enables San Diego Sheriff's Office ingestion |
+| `TESTMODE` | No | `False` | Disables live LLM and map-generation side effects and returns mock summaries |
+| `TRAFFIC_APP_HOST` | No | `0.0.0.0` | Flask bind host |
+| `TRAFFIC_APP_PORT` | No | `5002` | Flask bind port |
+| `TRAFFIC_APP_ALLOWED_ORIGINS` | No | `http://localhost:5173,http://127.0.0.1:5173` | CORS allowlist for `/api/*` and `/maps/*` |
+| `COOKIE_SECURE` | No | `true` outside local host mode | Controls secure cookie behavior for device UUIDs |
+| `HTTP_TIMEOUT_SECONDS` | No | `12` | Timeout for external source and probe requests |
+| `HEALTHCHECK_URL` | No | unset | Optional heartbeat endpoint pinged after scrape cycles |
+| `TRUST_PROXY_HEADERS` | No | derived from host config | Enables trusted use of `X-Forwarded-For` |
+| `TRUSTED_PROXY_CIDRS` | No | `127.0.0.0/8,::1/128` | Allowed proxy CIDRs for forwarded IP parsing |
+| `API_READ_RATE_LIMIT` | No | `120 per minute` | Read bucket limit |
+| `API_WRITE_RATE_LIMIT` | No | `20 per minute` | Write bucket limit |
+| `RESPONSE_CACHE_MAX_ENTRIES` | No | `256` | In-memory API response cache size |
+| `RATE_LIMIT_MAX_BUCKETS` | No | `4096` | In-memory rate-limit bucket cap |
+| `TRAFFIC_APP_PUBLIC_URL` | No | `https://traffic-app.duffyadams.com` | Public site URL used by dashboard probes |
+| `METRICS_PUBLIC_URL` | No | `https://metrics.duffyadams.com` | Public metrics URL used for analytics grouping |
+
+Minimal local `.env` example:
+
+```ini
+GPT_KEY=replace_me
+TESTMODE=true
+TRAFFIC_APP_HOST=127.0.0.1
+TRAFFIC_APP_PORT=5002
 ```
 
-*The frontend will be accessible at: `http://localhost:5002`*
+## Running Locally
 
-### Option 2: Live Development Mode
+### Backend only
 
-If you are actively developing the Svelte frontend, you can run the Vite development server independent of Flask (note you will still need to run the Python backend separately).
+Use this when you want the API and scraper loop without the Vite dev server:
 
 ```bash
-# In terminal 1 (Backend)
-python traffic_scraper.py
+cd /home/ubuntu/projects/san-diego-traffic-watch
+source venv/bin/activate
+TESTMODE=true python3 traffic_scraper.py
+```
 
-# In terminal 2 (Frontend)
-cd traffic-app
+The Flask app serves on `http://127.0.0.1:5002` if you set `TRAFFIC_APP_HOST=127.0.0.1`.
+
+### Frontend dev mode
+
+Run the Flask backend separately, then start Vite from `traffic-app/`:
+
+```bash
+cd /home/ubuntu/projects/san-diego-traffic-watch/traffic-app
 npm run dev
 ```
 
----
+Useful frontend scripts:
 
-## Project Structure
+- `npm run dev`: Vite dev server on port `5173`
+- `npm run dev:local`: Vite bound to `127.0.0.1`
+- `npm run dev:proxy`: Vite proxied to `https://sandiegotraffic.com`
+- `npm run dev:backend`: starts the backend in `TESTMODE`
+- `npm run build`: production build to `traffic-app/dist`
+- `npm run preview`: preview the production bundle
+
+### Production-style local run
+
+Build the SPA and let Flask serve the compiled assets:
+
+```bash
+cd /home/ubuntu/projects/san-diego-traffic-watch/traffic-app
+npm run build
+cd ..
+source venv/bin/activate
+python3 traffic_scraper.py
+```
+
+## API Surface
+
+### Read endpoints
+
+- `GET /api/incidents`: paginated incident feed with filters for `limit`, `cursor`, `type`, `location`, `source`, `active_only`, and `date_filter`
+- `GET /api/incident_stats`: aggregated counts, top locations, chart data, and scrape/runtime metrics for `day`, `week`, `month`, or `year`
+- `GET /api/dashboard_metrics`: production-facing operations and engagement metrics used by `metrics-app/`
+- `GET /api/user/check`: returns the device UUID used for likes and comments
+- `GET /api/healthz`: lightweight backend health response with scrape freshness
+- `GET /maps/<filename>`: serves generated map assets if present
+
+### Write endpoints
+
+- `POST /api/incidents/<incident_id>/like`: like an incident
+- `DELETE /api/incidents/<incident_id>/like`: remove a like
+- `POST /api/incidents/<incident_id>/comment`: add a comment with a two-comment-per-device limit
+
+The backend applies in-memory read and write rate limiting and caches read responses for short TTL windows.
+
+## Database and Background Jobs
+
+The app initializes SQLite automatically on startup and creates these tables as needed:
+
+- `incidents`
+- `likes`
+- `comments`
+- `api_events`
+- `geocode_cache`
+- `reverse_geocode_cache`
+
+Scrape and enrichment behavior:
+
+- Source scrapers run concurrently every 15 seconds.
+- New incidents are inserted quickly, then description refreshes continue in the background.
+- CHP incidents usually arrive with coordinates already present.
+- SDPD, SDFD, and SDSO incidents are geocoded when coordinates are missing.
+- `generate_map.py` is now a legacy no-op; the frontend renders mini-maps client-side from coordinates and local PMTiles data.
+
+## Scripts
+
+Operational helper scripts live in [scripts](scripts):
+
+- `python3 scripts/backup_db.py`: create a consistent WAL-safe backup in `backups/` and retain the newest three copies
+- `python3 scripts/restore_db.py`: restore the newest backup
+- `python3 scripts/restore_db.py backups/traffic_data_<timestamp>.db`: restore a specific backup
+- `python3 scripts/catchup_geocoding.py`: backfill coordinates for older incidents that still need geocoding
+- `python3 scripts/add_mock_data.py`: seed historical mock incidents for dashboard or UI testing
+- `python3 scripts/update_db.py`: normalize older incident type values in the database
+
+Stop the backend before running a restore so the live SQLite file is not being written during the copy.
+
+## Testing
+
+The repo currently has a mix of Python test scripts and a separate Playwright workspace.
+
+Python-side coverage in `tests/` includes geocoding and incident-stats logic, but some of those files are ad hoc scripts rather than a clean, unified automated suite.
+
+Playwright coverage in [tests/README.md](tests/README.md) covers:
+
+- UI workflows
+- API contract checks
+- accessibility smoke tests
+- edge cases
+- release-readiness checks
+
+Common commands:
+
+```bash
+cd /home/ubuntu/projects/san-diego-traffic-watch/tests
+npm test
+npm run test:ui
+npm run test:api
+```
+
+## Deployment Notes
+
+Production deployment artifacts live in [deploy](deploy):
+
+- `deploy/traffic-app.service` runs the Flask backend and scraper on `127.0.0.1:5002`
+- `deploy/nginx-traffic-app.conf` fronts the public traffic site
+- `deploy/nginx-metrics.duffyadams.com.http.conf` and `deploy/nginx-metrics.duffyadams.com.conf` front the metrics dashboard
+- `deploy/DEPLOYMENT.md` and `deploy/METRICS_DEPLOYMENT.md` document the production layout
+
+The main service expects:
+
+- repo path: `/home/ubuntu/projects/san-diego-traffic-watch`
+- virtualenv: `/home/ubuntu/projects/san-diego-traffic-watch/venv`
+- env file: `/home/ubuntu/projects/san-diego-traffic-watch/.env`
+
+## Project Layout
 
 ```text
-traffic-app/
-├── traffic_scraper.py       # Main entry point: runs the Flask API and background scrapers
-├── geocoding.py             # Custom geocoding and caching logic
-├── generate_map.py          # Script for generating map static imagery
-├── requirements.txt         # Python dependencies
-├── traffic_data.db          # SQLite Database containing incidents, likes, comments (Generated at runtime)
-├── .env                     # Contains critical API Keys (OpenRouter, MapBox)
-└── traffic-app/             # Svelte Frontend Root Directory
-    ├── src/                 # Svelte Components and Assets (App.svelte, MapTab.svelte, etc.)
-    ├── public/              # Static assets and icons
-    └── package.json         # Node.js dependencies
+san-diego-traffic-watch/
+├── config.py
+├── db.py
+├── geocoding.py
+├── llm.py
+├── logger.py
+├── monitor.py
+├── routes.py
+├── runtime_metrics.py
+├── traffic_scraper.py
+├── scrapers/
+├── scripts/
+├── deploy/
+├── metrics-app/
+├── tests/
+├── traffic-app/
+│   ├── src/
+│   ├── public/
+│   ├── dist/
+│   └── package.json
+└── traffic_data.db
 ```
 
 ## License
 
-This project is open-source. Please see the `LICENSE` file for more details. 
+See [LICENSE](LICENSE).
