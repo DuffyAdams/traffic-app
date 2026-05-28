@@ -16,7 +16,7 @@
     export let type;
     export let size = 16;
     export let fill = "none";
-    export let color = "#ffffff";
+    export let color = "currentColor";
 
     const iconMap = {
         "Aircraft Emergency": Plane,

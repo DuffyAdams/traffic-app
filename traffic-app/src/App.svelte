@@ -1563,6 +1563,39 @@
     border-color: #1e40af;
   }
 
+  :global(body:not(.dark-mode) .post-badge) {
+    background: #ffffff;
+    color: #0f172a;
+    border-color: color-mix(in srgb, var(--badge-color) 70%, #0f172a);
+    box-shadow:
+      0 8px 20px rgba(15, 23, 42, 0.14),
+      inset 4px 0 0 var(--badge-color);
+  }
+
+  :global(body:not(.dark-mode) .post-badge .incident-icon) {
+    color: #0f172a;
+  }
+
+  :global(body:not(.dark-mode) .placeholder-content) {
+    color: #1e293b;
+    opacity: 1;
+  }
+
+  :global(body:not(.dark-mode) .incident-icon-small) {
+    color: #0f172a !important;
+    filter: none;
+  }
+
+  :global(body:not(.dark-mode) .stat-value) {
+    color: #0f172a;
+    text-shadow: none;
+  }
+
+  :global(body:not(.dark-mode) .stat-icon) {
+    color: #1e40af;
+    filter: none;
+  }
+
   :global(body.dark-mode) {
     --primary-color: #4299e1;
     --primary-dark: #3182ce;
