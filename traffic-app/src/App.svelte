@@ -1576,6 +1576,25 @@
     color: #0f172a;
   }
 
+  :global(body:not(.dark-mode) .severity-inline-badge) {
+    background: color-mix(in srgb, var(--sev-color) 14%, #ffffff);
+    border-color: color-mix(in srgb, var(--sev-color) 42%, #cbd5e1);
+    color: color-mix(in srgb, var(--sev-color) 78%, #0f172a);
+    box-shadow:
+      0 8px 18px rgba(15, 23, 42, 0.08),
+      inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  }
+
+  :global(body:not(.dark-mode) .severity-inline-badge .sev-score-box) {
+    color: #ffffff;
+    box-shadow:
+      0 4px 10px color-mix(in srgb, var(--sev-color) 24%, transparent);
+  }
+
+  :global(body:not(.dark-mode) .severity-inline-badge .sev-label) {
+    color: inherit;
+  }
+
   :global(body:not(.dark-mode) .placeholder-content) {
     color: #1e293b;
     opacity: 1;
