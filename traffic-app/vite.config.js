@@ -7,8 +7,10 @@ export default defineConfig({
     include: ['lucide-svelte']
   },
   server: {
-    host: '127.0.0.1', // Locked to local network only for security
-    port: 5173, // Optional: lock to specific port
+    host: process.env.VITE_DEV_HOST || '0.0.0.0',
+    port: Number(process.env.VITE_DEV_PORT || 5173),
+    strictPort: true,
+    allowedHosts: ['traffic-app.duffyadams.com'],
     proxy: {
       '/api': {
         target: process.env.VITE_PROD_URL || 'http://127.0.0.1:5002',

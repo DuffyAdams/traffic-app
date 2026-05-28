@@ -348,7 +348,7 @@
         .header-top {
             flex-direction: column;
             align-items: flex-start;
-            gap: 1.5rem;
+            gap: 0;
             text-align: left;
         }
         .header-brand {
