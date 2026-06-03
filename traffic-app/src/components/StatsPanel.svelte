@@ -45,6 +45,10 @@
                 ? 30
                 : 12;
     $: chartData = normalizeChartData(hourlyData, expectedBucketCount);
+    $: typeEntries = Object.entries(incidentsByType);
+    $: locationEntries = Object.entries(topLocations);
+    $: maxTypeCount = Math.max(...typeEntries.map(([, count]) => count), 1);
+    $: maxLocationCount = Math.max(...locationEntries.map(([, count]) => count), 1);
 
     // Div-based chart computations
     $: maxValue = chartData && chartData.length ? Math.max(...chartData) : 0;
@@ -363,7 +367,7 @@
                 {/if}
             </div>
             <div class="breakdown-list">
-                {#each Object.entries(incidentsByType) as [type, count]}
+                {#each typeEntries as [type, count]}
                     <button
                         class="breakdown-item"
                         class:selected={selectedTypes.has(type)}
@@ -374,12 +378,7 @@
                         </span>
                         <span
                             class="breakdown-count-bar"
-                            style="width: {(count /
-                                Math.max(
-                                    ...Object.values(incidentsByType),
-                                    1,
-                                )) *
-                                100}%"
+                            style="width: {(count / maxTypeCount) * 100}%"
                         ></span>
                         <div class="breakdown-text">
                             <span class="breakdown-name">{type}</span>
@@ -406,7 +405,7 @@
                 {/if}
             </div>
             <div class="breakdown-list">
-                {#each Object.entries(topLocations) as [location, count]}
+                {#each locationEntries as [location, count]}
                     <button
                         class="breakdown-item"
                         class:selected={selectedLocations.has(location)}
@@ -414,9 +413,7 @@
                     >
                         <div
                             class="breakdown-count-bar"
-                            style="width: {(count /
-                                Math.max(...Object.values(topLocations), 1)) *
-                                100}%"
+                            style="width: {(count / maxLocationCount) * 100}%"
                         ></div>
                         <div class="breakdown-text">
                             <span class="breakdown-name">{location}</span>

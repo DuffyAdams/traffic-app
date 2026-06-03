@@ -39,6 +39,7 @@ STATIC_ASSET_MAX_AGE_SECONDS = int(os.environ.get("STATIC_ASSET_MAX_AGE_SECONDS"
 API_EVENT_BATCH_SIZE = int(os.environ.get("API_EVENT_BATCH_SIZE", "50"))
 API_EVENT_FLUSH_SECONDS = float(os.environ.get("API_EVENT_FLUSH_SECONDS", "1.0"))
 API_EVENT_QUEUE_SIZE = int(os.environ.get("API_EVENT_QUEUE_SIZE", "10000"))
+STATS_TYPE_BREAKDOWN_LIMIT = int(os.environ.get("STATS_TYPE_BREAKDOWN_LIMIT", "40"))
 ALLOWED_DATE_FILTERS = {None, "day", "daily", "week", "month", "year"}
 ALLOWED_SOURCES = {"CHP", "SDPD", "SDSO", "SDFD"}
 TRAFFIC_APP_PUBLIC_URL = os.environ.get("TRAFFIC_APP_PUBLIC_URL", "https://traffic-app.duffyadams.com")
@@ -523,8 +524,14 @@ def _build_incident_stats_payload(date_filter, sources, now):
         cur.execute(q, p)
         total_incidents = cur.fetchone()[0]
 
-        q, p = make_query("SELECT type, COUNT(*) as count FROM incidents")
-        cur.execute(q + " GROUP BY type ORDER BY count DESC", p)
+        q, p = make_query(
+            "SELECT type, COUNT(*) as count FROM incidents",
+            "type IS NOT NULL AND type != ''",
+        )
+        cur.execute(
+            q + " GROUP BY type ORDER BY count DESC LIMIT ?",
+            [*p, STATS_TYPE_BREAKDOWN_LIMIT],
+        )
         incidents_by_type = {row[0]: row[1] for row in cur.fetchall()}
 
         q, p = make_query(
