@@ -6,7 +6,9 @@ Import this module to register all routes on the shared `app` instance.
 
 import ipaddress
 import os
+import queue
 import sqlite3
+import threading
 import time
 import uuid
 from datetime import datetime, timedelta
@@ -33,6 +35,10 @@ MAX_COMMENT_LENGTH = 500
 MAX_USERNAME_LENGTH = 40
 READ_CACHE_TTL = 20
 STATS_CACHE_TTL = 45
+STATIC_ASSET_MAX_AGE_SECONDS = int(os.environ.get("STATIC_ASSET_MAX_AGE_SECONDS", str(60 * 60 * 24 * 30)))
+API_EVENT_BATCH_SIZE = int(os.environ.get("API_EVENT_BATCH_SIZE", "50"))
+API_EVENT_FLUSH_SECONDS = float(os.environ.get("API_EVENT_FLUSH_SECONDS", "1.0"))
+API_EVENT_QUEUE_SIZE = int(os.environ.get("API_EVENT_QUEUE_SIZE", "10000"))
 ALLOWED_DATE_FILTERS = {None, "day", "daily", "week", "month", "year"}
 ALLOWED_SOURCES = {"CHP", "SDPD", "SDSO", "SDFD"}
 TRAFFIC_APP_PUBLIC_URL = os.environ.get("TRAFFIC_APP_PUBLIC_URL", "https://traffic-app.duffyadams.com")
@@ -56,8 +62,21 @@ for raw_network in os.environ.get("TRUSTED_PROXY_CIDRS", "127.0.0.0/8,::1/128").
 
 _response_cache = {}
 _cache_lock = Lock()
+_singleflight_locks = {}
+_singleflight_guard = Lock()
 _rate_limit_hits = {}
 _rate_limit_lock = Lock()
+_api_event_queue = queue.Queue(maxsize=API_EVENT_QUEUE_SIZE)
+_api_event_drop_count = 0
+
+
+def _get_singleflight_lock(key):
+    with _singleflight_guard:
+        lock = _singleflight_locks.get(key)
+        if lock is None:
+            lock = Lock()
+            _singleflight_locks[key] = lock
+        return lock
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +180,43 @@ def _set_cached_response(key, payload, ttl):
     with _cache_lock:
         _prune_response_cache(now)
         _response_cache[key] = (now + ttl, payload)
+
+
+def _api_event_worker():
+    batch = []
+    while True:
+        try:
+            item = _api_event_queue.get(timeout=API_EVENT_FLUSH_SECONDS)
+            batch.append(item)
+            while len(batch) < API_EVENT_BATCH_SIZE:
+                try:
+                    batch.append(_api_event_queue.get_nowait())
+                except queue.Empty:
+                    break
+        except queue.Empty:
+            pass
+
+        if not batch:
+            continue
+
+        try:
+            with db_lock:
+                with sqlite3.connect(DB_FILE, timeout=30) as conn:
+                    conn.cursor().executemany(
+                        """
+                        INSERT INTO api_events (device_uuid, route, request_type, host, client_ip, timestamp)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        batch,
+                    )
+                    conn.commit()
+        except Exception as exc:
+            safe_print(f"Analytics batch insert failed: {exc}")
+        finally:
+            batch.clear()
+
+
+threading.Thread(target=_api_event_worker, name="api-event-writer", daemon=True).start()
 
 
 @app.before_request
@@ -293,30 +349,26 @@ def _date_clause(column, date_filter, now):
 
 
 def _record_api_event(device_uuid, route_name, request_type="read"):
+    global _api_event_drop_count
+
     if not device_uuid:
         return
 
     host = (request.host or "").split(":", 1)[0]
+    event = (
+        device_uuid,
+        route_name,
+        request_type,
+        host,
+        _client_ip(),
+        pst_timestamp_str(),
+    )
     try:
-        with db_lock:
-            with sqlite3.connect(DB_FILE, timeout=30) as conn:
-                conn.cursor().execute(
-                    """
-                    INSERT INTO api_events (device_uuid, route, request_type, host, client_ip, timestamp)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        device_uuid,
-                        route_name,
-                        request_type,
-                        host,
-                        _client_ip(),
-                        pst_timestamp_str(),
-                    ),
-                )
-                conn.commit()
-    except Exception as exc:
-        safe_print(f"Analytics event insert failed for {route_name}: {exc}")
+        _api_event_queue.put_nowait(event)
+    except queue.Full:
+        _api_event_drop_count += 1
+        if _api_event_drop_count % 100 == 1:
+            safe_print(f"Analytics event queue full; dropped {_api_event_drop_count} events")
 
 
 def _finalize_api_response(response, device_uuid, route_name, request_type="read"):
@@ -408,6 +460,20 @@ def get_incident_stats():
         response = jsonify(cached_payload)
         return _finalize_api_response(response, device_uuid, "incident_stats")
 
+    with _get_singleflight_lock(cache_key):
+        cached_payload = _get_cached_response(cache_key)
+        if cached_payload is not None:
+            response = jsonify(cached_payload)
+            return _finalize_api_response(response, device_uuid, "incident_stats")
+
+        payload = _build_incident_stats_payload(date_filter, sources, now)
+        _set_cached_response(cache_key, payload, STATS_CACHE_TTL)
+
+    response = jsonify(payload)
+    return _finalize_api_response(response, device_uuid, "incident_stats")
+
+
+def _build_incident_stats_payload(date_filter, sources, now):
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
         cur = conn.cursor()
 
@@ -489,9 +555,7 @@ def get_incident_stats():
         "lastSuccessfulScrape": runtime_snapshot["lastSuccessfulScrape"],
         "lastSuccessfulScrapeAt": runtime_snapshot["lastSuccessfulScrapeAt"],
     }
-    _set_cached_response(cache_key, payload, STATS_CACHE_TTL)
-    response = jsonify(payload)
-    return _finalize_api_response(response, device_uuid, "incident_stats")
+    return payload
 
 
 @app.route("/api/dashboard_metrics")
@@ -857,6 +921,6 @@ def healthz():
 @app.route("/<path:path>")
 def serve_app(path):
     if path and os.path.exists(os.path.join(app.static_folder, path)):
-        return send_from_directory(app.static_folder, path)
-    return send_from_directory(app.static_folder, "index.html")
-
+        max_age = STATIC_ASSET_MAX_AGE_SECONDS if path.startswith(("assets/", "map_tiles/")) else None
+        return send_from_directory(app.static_folder, path, max_age=max_age)
+    return send_from_directory(app.static_folder, "index.html", max_age=0)

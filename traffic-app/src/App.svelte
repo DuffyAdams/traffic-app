@@ -1194,7 +1194,7 @@
         checkForUpdates();
         if (shouldFetchStats()) fetchIncidentStats();
       }
-    }, 10000);
+    }, 20000);
 
     return () => {
       clearInterval(updateInterval);
