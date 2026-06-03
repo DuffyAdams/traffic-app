@@ -60,9 +60,9 @@
     export let deferActivation = false;
 
     const PMTILES_URL = "/map_tiles/sandiego.pmtiles";
-    const MINI_MAP_ZOOM = 13.35;
-    const MINI_MAP_PITCH = 48;
-    const MINI_MAP_BEARING = -16;
+    const MINI_MAP_ZOOM = 14.35;
+    const MINI_MAP_PITCH = 58;
+    const MINI_MAP_BEARING = -22;
     const ACTIVATION_DELAY_MS = 250;
     const DEACTIVATION_DELAY_MS = 700;
     let shell;
@@ -375,6 +375,7 @@
                     url: "pmtiles://" + PMTILES_URL,
                 },
             },
+            glyphs: "/fonts/{fontstack}/{range}.pbf",
             layers: [
                 {
                     id: "background",
@@ -522,6 +523,42 @@
                             5,
                         ],
                         "line-opacity": 0.9,
+                    },
+                },
+                {
+                    id: "road_label_named",
+                    source: "sandiego",
+                    "source-layer": "roads",
+                    filter: [
+                        "all",
+                        ["has", "name"],
+                        ["in", "kind", "highway", "major_road", "medium_road", "minor_road"],
+                    ],
+                    type: "symbol",
+                    minzoom: 13,
+                    layout: {
+                        "text-field": "{name}",
+                        "text-font": ["Noto Sans Regular"],
+                        "text-size": [
+                            "interpolate",
+                            ["linear"],
+                            ["zoom"],
+                            13,
+                            9,
+                            16,
+                            11,
+                        ],
+                        "symbol-placement": "line",
+                        "symbol-spacing": 240,
+                        "text-max-angle": 30,
+                        "text-allow-overlap": false,
+                        "text-ignore-placement": false,
+                    },
+                    paint: {
+                        "text-color": "#aab4c7",
+                        "text-halo-color": "#08090a",
+                        "text-halo-width": 1.25,
+                        "text-opacity": 0.86,
                     },
                 },
             ],
