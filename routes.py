@@ -928,6 +928,6 @@ def healthz():
 @app.route("/<path:path>")
 def serve_app(path):
     if path and os.path.exists(os.path.join(app.static_folder, path)):
-        max_age = STATIC_ASSET_MAX_AGE_SECONDS if path.startswith(("assets/", "map_tiles/")) else None
+        max_age = STATIC_ASSET_MAX_AGE_SECONDS if path.startswith(("assets/", "map_tiles/", "fonts/")) else None
         return send_from_directory(app.static_folder, path, max_age=max_age)
     return send_from_directory(app.static_folder, "index.html", max_age=0)

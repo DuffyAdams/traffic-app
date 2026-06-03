@@ -62,6 +62,7 @@
     const PMTILES_URL = "/map_tiles/sandiego.pmtiles";
     const MINI_MAP_ZOOM = 12.1;
     const ACTIVATION_DELAY_MS = 250;
+    const DEACTIVATION_DELAY_MS = 700;
     let shell;
     let mapContainer;
     let map;
@@ -69,6 +70,7 @@
     let resizeObserver;
     let resizeFrame = 0;
     let activationTimer = 0;
+    let deactivationTimer = 0;
     let readyFallbackTimer = 0;
     let isNearViewport = false;
     let canRenderMap = false;
@@ -126,6 +128,7 @@
 
     const miniMapInstance = {
         deactivate() {
+            cancelMapDeactivation();
             canRenderMap = false;
             destroyMap(false);
         },
@@ -143,6 +146,7 @@
 
     function requestMapSlot() {
         if (!canActivateMap()) return;
+        cancelMapDeactivation();
         mapUnavailable = false;
         claimMiniMapSlot(miniMapInstance);
         canRenderMap = true;
@@ -161,6 +165,25 @@
         if (!activationTimer) return;
         window.clearTimeout(activationTimer);
         activationTimer = 0;
+    }
+
+    function cancelMapDeactivation() {
+        if (!deactivationTimer) return;
+        window.clearTimeout(deactivationTimer);
+        deactivationTimer = 0;
+    }
+
+    function scheduleMapDeactivation() {
+        cancelMapActivation();
+        if (deactivationTimer) return;
+
+        deactivationTimer = window.setTimeout(() => {
+            deactivationTimer = 0;
+            if (isDestroyed || isNearViewport) return;
+            canRenderMap = false;
+            initRequestId++;
+            destroyMap();
+        }, DEACTIVATION_DELAY_MS);
     }
 
     function clearReadyFallbackTimer() {
@@ -321,7 +344,6 @@
                 "road_major",
                 "road_highway_casing",
                 "road_highway",
-                "road_label_major",
             ],
         });
 
@@ -343,7 +365,6 @@
                     url: "pmtiles://" + PMTILES_URL,
                 },
             },
-            glyphs: "/fonts/{fontstack}/{range}.pbf",
             layers: [
                 {
                     id: "background",
@@ -469,30 +490,6 @@
                         "line-opacity": 0.9,
                     },
                 },
-                {
-                    id: "road_label_major",
-                    source: "sandiego",
-                    "source-layer": "roads",
-                    filter: [
-                        "all",
-                        ["in", "kind", "major_road", "medium_road"],
-                        ["has", "name"],
-                    ],
-                    type: "symbol",
-                    minzoom: 12,
-                    layout: {
-                        "text-field": "{name}",
-                        "text-font": ["Noto Sans Regular"],
-                        "text-size": 11,
-                        "symbol-placement": "line",
-                        "symbol-spacing": 280,
-                    },
-                    paint: {
-                        "text-color": "#8491a6",
-                        "text-halo-color": "#08090a",
-                        "text-halo-width": 1.5,
-                    },
-                },
             ],
         };
     }
@@ -528,16 +525,14 @@
             ([entry]) => {
                 isNearViewport = entry.isIntersecting;
                 if (isNearViewport) {
+                    cancelMapDeactivation();
                     scheduleMapActivation();
                 } else {
-                    cancelMapActivation();
-                    canRenderMap = false;
-                    initRequestId++;
-                    destroyMap();
+                    scheduleMapDeactivation();
                 }
             },
             {
-                rootMargin: "120px 0px",
+                rootMargin: "500px 0px",
                 threshold: 0,
             },
         );
@@ -554,6 +549,7 @@
         isDestroyed = true;
         initRequestId++;
         cancelMapActivation();
+        cancelMapDeactivation();
         if (observer) observer.disconnect();
         destroyMap();
     });

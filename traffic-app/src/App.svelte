@@ -458,16 +458,12 @@
   }
 
   function toggleEventCounters() {
-    const willShowDiagnostics = !showEventCounters;
     showEventCounters = !showEventCounters;
     if (shouldFetchStats()) {
       void ensureStatsPanelLoaded();
       fetchIncidentStats();
     } else {
       stopStatsRequest();
-      if (!willShowDiagnostics) {
-        suspendMiniMapsUntilScroll();
-      }
     }
   }
 
