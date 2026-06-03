@@ -1,0 +1,22 @@
+[Unit]
+Description=Traffic Alerts App beta web/API server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/projects/san-diego-traffic-watch-beta
+EnvironmentFile=/home/ubuntu/projects/san-diego-traffic-watch/.env
+Environment=TRAFFIC_APP_HOST=127.0.0.1
+Environment=TRAFFIC_APP_PORT=5003
+Environment=TRAFFIC_APP_PUBLIC_URL=https://beta.duffyadams.com
+Environment=TRAFFIC_APP_ALLOWED_ORIGINS=https://beta.duffyadams.com,http://localhost:5173,http://127.0.0.1:5173
+Environment=COOKIE_SECURE=true
+Environment=TZ=America/Los_Angeles
+ExecStart=/home/ubuntu/projects/san-diego-traffic-watch/venv/bin/python /home/ubuntu/projects/san-diego-traffic-watch-beta/scripts/run_beta_server.py
+Restart=always
+RestartSec=5
+User=ubuntu
+Group=ubuntu
+
+[Install]
+WantedBy=multi-user.target
