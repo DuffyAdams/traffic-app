@@ -60,7 +60,9 @@
     export let deferActivation = false;
 
     const PMTILES_URL = "/map_tiles/sandiego.pmtiles";
-    const MINI_MAP_ZOOM = 12.1;
+    const MINI_MAP_ZOOM = 13.35;
+    const MINI_MAP_PITCH = 48;
+    const MINI_MAP_BEARING = -16;
     const ACTIVATION_DELAY_MS = 250;
     const DEACTIVATION_DELAY_MS = 700;
     let shell;
@@ -280,6 +282,8 @@
                 style: getStyle(),
                 center: [longitude, latitude],
                 zoom: MINI_MAP_ZOOM,
+                pitch: MINI_MAP_PITCH,
+                bearing: MINI_MAP_BEARING,
                 interactive: false,
                 attributionControl: false,
                 fadeDuration: 0,
@@ -359,6 +363,12 @@
         return {
             version: 8,
             name: "Incident Mini Map",
+            light: {
+                anchor: "viewport",
+                color: "#d7e3ff",
+                intensity: 0.28,
+                position: [1.2, 210, 35],
+            },
             sources: {
                 sandiego: {
                     type: "vector",
@@ -404,11 +414,35 @@
                     id: "buildings",
                     source: "sandiego",
                     "source-layer": "buildings",
-                    type: "fill",
+                    type: "fill-extrusion",
                     minzoom: 13,
                     paint: {
-                        "fill-color": "#171b21",
-                        "fill-outline-color": "#252b35",
+                        "fill-extrusion-color": "#202632",
+                        "fill-extrusion-height": [
+                            "interpolate",
+                            ["linear"],
+                            ["zoom"],
+                            13,
+                            0,
+                            15,
+                            ["case", ["has", "height"], ["get", "height"], 10],
+                        ],
+                        "fill-extrusion-base": [
+                            "interpolate",
+                            ["linear"],
+                            ["zoom"],
+                            13,
+                            0,
+                            15,
+                            [
+                                "case",
+                                ["has", "min_height"],
+                                ["get", "min_height"],
+                                0,
+                            ],
+                        ],
+                        "fill-extrusion-opacity": 0.62,
+                        "fill-extrusion-vertical-gradient": true,
                     },
                 },
                 {

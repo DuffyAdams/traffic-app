@@ -51,6 +51,8 @@
     const MIN_ZOOM = 9.2;
     const INCIDENT_FOCUS_MIN_ZOOM = 12.5;
     const INCIDENT_FOCUS_ZOOM = 14;
+    const MAP_PITCH = 48;
+    const MAP_BEARING = -14;
 
     function getIncidentRenderKey(incident) {
         return [
@@ -244,6 +246,8 @@
                 map.flyTo({
                     center: [panData.longitude, panData.latitude],
                     zoom: targetZoom,
+                    pitch: MAP_PITCH,
+                    bearing: MAP_BEARING,
                     essential: true,
                     duration: 1200,
                 });
@@ -268,6 +272,12 @@
             const style = {
             version: 8,
             name: "DEFCON Dark",
+            light: {
+                anchor: "viewport",
+                color: "#d7e3ff",
+                intensity: 0.35,
+                position: [1.2, 210, 35],
+            },
             sources: {
                 sandiego: {
                     type: "vector",
@@ -392,11 +402,43 @@
                     id: "buildings",
                     source: "sandiego",
                     "source-layer": "buildings",
-                    type: "fill",
+                    type: "fill-extrusion",
                     minzoom: 13,
                     paint: {
-                        "fill-color": "#111418",
-                        "fill-outline-color": "#1c2028",
+                        "fill-extrusion-color": [
+                            "interpolate",
+                            ["linear"],
+                            ["zoom"],
+                            13,
+                            "#141922",
+                            16,
+                            "#252d39",
+                        ],
+                        "fill-extrusion-height": [
+                            "interpolate",
+                            ["linear"],
+                            ["zoom"],
+                            13,
+                            0,
+                            15,
+                            ["case", ["has", "height"], ["get", "height"], 12],
+                        ],
+                        "fill-extrusion-base": [
+                            "interpolate",
+                            ["linear"],
+                            ["zoom"],
+                            13,
+                            0,
+                            15,
+                            [
+                                "case",
+                                ["has", "min_height"],
+                                ["get", "min_height"],
+                                0,
+                            ],
+                        ],
+                        "fill-extrusion-opacity": 0.74,
+                        "fill-extrusion-vertical-gradient": true,
                     },
                 },
                 // ── Roads (bottom to top: minor → major → highway) ──
@@ -762,8 +804,11 @@
                 style: style,
                 center: [-117.1611, 32.7157], // San Diego coordinates
                 zoom: 10.8,
+                pitch: MAP_PITCH,
+                bearing: MAP_BEARING,
                 minZoom: MIN_ZOOM,
                 maxZoom: 18,
+                maxPitch: 65,
                 renderWorldCopies: false,
                 hash: false,
             });
@@ -869,6 +914,8 @@
             map.flyTo({
                 center: [incident.longitude, incident.latitude],
                 zoom: getIncidentFocusZoom(),
+                pitch: MAP_PITCH,
+                bearing: MAP_BEARING,
                 essential: true,
                 duration: 1200,
             });
