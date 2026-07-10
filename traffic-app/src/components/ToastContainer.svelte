@@ -38,57 +38,45 @@
         align-items: center;
         justify-content: space-between;
         padding: 1rem 1.25rem;
-        border-radius: 6px;
+        border-radius: var(--radius-md);
         font-size: 0.9rem;
-        font-family: var(--font-mono);
         text-transform: uppercase;
         font-weight: bold;
         background: var(--bg-surface-elevated);
         border: 1px solid var(--border-color);
+        box-shadow: var(--shadow-md);
         min-width: 300px;
     }
 
     .toast-info {
-        border-color: var(--accent-primary);
         color: var(--accent-primary);
-        box-shadow: inset 0 0 0 1px rgba(51, 102, 255, 0.3);
     }
 
     :global(body.dark-mode) .toast-info {
-        border-color: var(--accent-primary);
         color: var(--accent-primary);
     }
 
     .toast-success {
-        border-color: var(--success-color, #00cc66);
         color: var(--success-color, #00cc66);
-        box-shadow: inset 0 0 0 1px rgba(0, 204, 102, 0.3);
     }
 
     :global(body.dark-mode) .toast-success {
-        border-color: var(--success-color, #00cc66);
         color: var(--success-color, #00cc66);
     }
 
     .toast-warning {
-        border-color: var(--accent-warning, #ffcc00);
         color: var(--accent-warning, #ffcc00);
-        box-shadow: inset 0 0 0 1px rgba(255, 204, 0, 0.3);
     }
 
     :global(body.dark-mode) .toast-warning {
-        border-color: var(--accent-warning, #ffcc00);
         color: var(--accent-warning, #ffcc00);
     }
 
     .toast-error {
-        border-color: var(--accent-secondary, #ff3333);
         color: var(--accent-secondary, #ff3333);
-        box-shadow: inset 0 0 0 1px rgba(255, 51, 51, 0.3);
     }
 
     :global(body.dark-mode) .toast-error {
-        border-color: var(--accent-secondary, #ff3333);
         color: var(--accent-secondary, #ff3333);
     }
 

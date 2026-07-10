@@ -1,104 +1,90 @@
 <script>
     import { createEventDispatcher } from "svelte";
+    import CircleDot from "lucide-svelte/icons/circle-dot";
+    import CarFront from "lucide-svelte/icons/car-front";
+    import Flame from "lucide-svelte/icons/flame";
+    import Map from "lucide-svelte/icons/map";
+    import Shield from "lucide-svelte/icons/shield";
+    import Siren from "lucide-svelte/icons/siren";
     import { t } from "../utils/i18n.js";
 
     const dispatch = createEventDispatcher();
-
     export let activeSource = "all";
 
     const tabs = [
-        { value: "all", label: t("filters.all") },
-        { value: "CHP", label: t("filters.traffic") },
-        { value: "SDPD", label: t("filters.sdpd") },
-        { value: "SDSO", label: t("filters.sheriff") },
-        { value: "SDFD", label: t("filters.fire") },
-        { value: "map", label: `🗺️ ${t("filters.map")}` },
+        { value: "all", label: t("filters.all"), icon: CircleDot },
+        { value: "CHP", label: t("filters.traffic"), icon: CarFront },
+        { value: "SDPD", label: t("filters.sdpd"), icon: Siren },
+        { value: "SDSO", label: t("filters.sheriff"), icon: Shield },
+        { value: "SDFD", label: t("filters.fire"), icon: Flame },
+        { value: "map", label: t("filters.map"), icon: Map },
     ];
-
-    function setSourceFilter(source) {
-        dispatch("changeSource", source);
-    }
 </script>
 
-<div class="source-tabs">
+<nav class="source-tabs" aria-label="Incident sources">
     {#each tabs as tab}
         <button
             class="source-tab"
             class:active={activeSource === tab.value}
             type="button"
             aria-pressed={activeSource === tab.value}
-            on:click={() => setSourceFilter(tab.value)}
+            aria-label={tab.label}
+            on:click={() => dispatch("changeSource", tab.value)}
         >
-            {tab.label}
+            <svelte:component this={tab.icon} size={15} strokeWidth={2.2} />
+            <span>{tab.label}</span>
         </button>
     {/each}
-</div>
+</nav>
 
 <style>
     .source-tabs {
         display: flex;
-        justify-content: center;
-        gap: 0.4rem;
-        padding: 5px 0 0.4rem 0;
-        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.3rem;
+        width: 100%;
+        overflow-x: auto;
+        scrollbar-width: none;
     }
+
+    .source-tabs::-webkit-scrollbar { display: none; }
 
     .source-tab {
-        background: var(--bg-surface-elevated);
-        border: 1px solid var(--border-color);
+        min-height: 40px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.42rem;
+        flex: 0 0 auto;
+        padding: 0.55rem 0.78rem;
         color: var(--text-muted);
-        padding: 0.4rem 1.2rem;
-        border-radius: 6px;
-        font-size: 0.85rem;
-        font-family: var(--font-mono);
-        text-transform: uppercase;
-        cursor: pointer;
-        transition: all 0.15s ease;
         white-space: nowrap;
-        flex: 1 1 auto;
-        text-align: center;
-    }
-
-    :global(body.dark-mode) .source-tab {
-        background: rgba(0, 0, 0, 0.5);
-        border: 1px solid var(--border-color);
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 13px;
+        font-size: 0.8rem;
+        font-weight: 550;
+        cursor: pointer;
+        transition: color .2s, background .2s, border-color .2s, transform .25s var(--ease-out);
     }
 
     .source-tab:hover {
-        border-color: var(--accent-primary);
-        background: rgba(51, 102, 255, 0.1);
         color: var(--text-main);
+        background: var(--hover-bg);
     }
 
     .source-tab.active {
-        background: rgba(51, 102, 255, 0.15);
-        color: #fff;
-        border-color: var(--accent-primary);
-        box-shadow: inset 0 0 0 1px rgba(51, 102, 255, 0.3);
+        color: var(--text-main);
+        background: var(--bg-surface-elevated);
+        border-color: var(--border-color);
+        box-shadow: var(--shadow-sm);
     }
 
-    :global(body.dark-mode) .source-tab.active {
-        background: rgba(51, 102, 255, 0.15);
-        color: #fff;
-        border-color: var(--accent-primary);
-    }
+    .source-tab:active { transform: scale(.97); }
+    .source-tab.active :global(svg) { color: var(--accent-primary); }
 
-    @media (max-width: 480px) {
-        .source-tabs {
-            gap: 0.25rem;
-        }
-
-        .source-tab {
-            padding: 0.4rem 0.5rem;
-            font-size: 0.75rem;
-        }
-    }
-
-    @media (min-width: 768px) {
-        .source-tab {
-            flex: 0 1 auto;
-            padding: 0.3rem 1rem;
-            font-size: 0.8rem;
-        }
+    @media (max-width: 650px) {
+        .source-tabs { padding-bottom: .1rem; }
+        .source-tab { min-height: 42px; padding: .55rem .75rem; }
     }
 </style>

@@ -160,6 +160,8 @@
                     class="raw-details-button"
                     on:click={toggleRawDetails}
                     title={t("actions.viewRawDetails")}
+                    aria-label={t("actions.viewRawDetails")}
+                    type="button"
                 >
                     <Info size={12} />
                     <span class="details-text">{t("actions.details")}</span>
@@ -200,6 +202,8 @@
                         <button
                             class="close-inline-button"
                             on:click={() => (showRawDetails = false)}
+                            aria-label="Close event details"
+                            type="button"
                         >
                             <X size={16} />
                         </button>
@@ -233,9 +237,6 @@
             </div>
             <div
                 class="post-description"
-                style="border-left-color: {sevInfo
-                    ? sevInfo.color
-                    : 'var(--accent-primary)'}"
             >
                 {#if sevInfo}
                     <div class="description-header">
@@ -261,6 +262,7 @@
                         <button
                             class="more-button"
                             on:click={handleToggleDescription}
+                            type="button"
                         >
                             {post.showFullDescription ? "[-]" : "[+]"}
                         </button>
@@ -275,6 +277,8 @@
                     class:liked={post.likedByUser}
                     class:like-error={post.likeErrorAnimation}
                     on:click={handleLike}
+                    type="button"
+                    aria-label={`${t("actions.like")} (${post.likes})`}
                 >
                     <span class="button-icon">
                         <Heart
@@ -287,6 +291,8 @@
                 <button
                     class="action-button comment-button"
                     on:click={handleToggleComments}
+                    type="button"
+                    aria-label={`${t("actions.comment")} (${post.comments.length})`}
                 >
                     <span class="button-icon">
                         <MessageSquare size={18} />
@@ -300,6 +306,8 @@
                 <button
                     class="action-button share-button"
                     on:click={handleShare}
+                    type="button"
+                    aria-label={t("actions.share")}
                 >
                     <span class="button-icon">
                         <Share2 size={18} />
@@ -332,26 +340,28 @@
     }
 
     .post {
-        flex: 0 0 calc(33.333% - 1.5rem);
-        min-width: 300px;
-        max-width: 400px;
+        flex: 1 1 calc(33.333% - 1.25rem);
+        min-width: 320px;
+        max-width: 450px;
         box-sizing: border-box;
         background: var(--bg-surface);
-        border-radius: 6px;
+        border-radius: var(--radius-lg);
         border: 1px solid var(--border-color);
-        transition: all 0.15s ease-out;
+        transition: transform .4s var(--ease-out), border-color .25s, box-shadow .35s;
         position: relative;
         display: flex;
         flex-direction: column;
-        margin-bottom: 2rem;
+        margin-bottom: 0.35rem;
         width: 100%;
         overflow: hidden;
         transform: translateZ(0);
+        box-shadow: var(--shadow-sm);
     }
 
     .post:hover {
-        border-color: var(--accent-primary);
-        box-shadow: inset 0 0 0 1px rgba(51, 102, 255, 0.2);
+        border-color: color-mix(in srgb, var(--accent-primary) 32%, var(--border-color));
+        box-shadow: var(--shadow-md);
+        transform: translateY(-5px);
     }
 
     .post.active {
@@ -359,16 +369,13 @@
     }
 
     .post.sig-alert {
-        border-color: var(--accent-secondary);
-        background: var(--bg-surface-elevated);
-        animation: retroPulse 1.5s infinite alternate;
+        border-color: color-mix(in srgb, var(--accent-secondary) 45%, var(--border-color));
+        background: var(--bg-surface);
     }
 
     .post.sig-alert:hover {
-        border-color: #ff4d4d;
-        box-shadow:
-            0 0 15px rgba(255, 51, 51, 0.5),
-            inset 0 0 5px rgba(255, 51, 51, 0.3);
+        border-color: color-mix(in srgb, var(--accent-secondary) 65%, var(--border-color));
+        box-shadow: var(--shadow-md);
     }
 
     @keyframes retroPulse {
@@ -397,11 +404,11 @@
     .post-image-container {
         position: relative;
         width: 100%;
-        height: 190px;
+        height: 215px;
         overflow: hidden;
         border-bottom: 1px solid var(--border-color);
         background-color: #000;
-        border-radius: 6px 6px 0 0;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
         isolation: isolate;
     }
 
@@ -418,11 +425,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background: linear-gradient(
-            135deg,
-            var(--bg-color) 0%,
-            var(--card-bg) 100%
-        );
+        background: var(--secondary-bg);
         opacity: 0.8;
         color: var(--text-muted);
     }
@@ -431,64 +434,52 @@
         position: absolute;
         top: 0.8rem;
         left: 0.8rem;
-        background-color: var(--bg-surface-elevated);
-        color: var(--badge-color);
-        padding: 0.3rem 0.6rem;
-        border-radius: 6px;
-        border: 1px solid var(--badge-color);
-        font-family: var(--font-mono);
+        background: var(--bg-surface-elevated);
+        color: var(--text-main);
+        padding: 0.42rem 0.68rem;
+        border-radius: 12px;
+        border: 1px solid color-mix(in srgb, var(--badge-color) 62%, var(--border-color));
         text-transform: uppercase;
-        font-size: 0.75rem;
-        font-weight: bold;
+        font-size: 0.7rem;
+        font-weight: 550;
         display: flex;
         align-items: center;
         gap: 0.4rem;
         z-index: 5;
-        transition: all 0.15s ease;
+        box-shadow: var(--shadow-sm);
     }
 
     .post-badge:hover {
-        background-color: var(--badge-color);
-        color: #000;
+        background: var(--bg-surface-elevated);
     }
 
     .post-badge.sig-alert-badge {
-        border: none;
-        box-shadow:
-            0 2px 8px rgba(0, 0, 0, 0.2),
-            0 0 6px color-mix(in srgb, #dc2626 35%, transparent),
-            0 0 12px color-mix(in srgb, #dc2626 25%, transparent),
-            0 0 18px color-mix(in srgb, #dc2626 15%, transparent),
-            0 0 24px color-mix(in srgb, #dc2626 8%, transparent);
+        border: 1px solid color-mix(in srgb, var(--badge-color) 70%, var(--border-color));
+        box-shadow: var(--shadow-sm);
     }
 
     .post-badge.sig-alert-badge:hover {
-        box-shadow:
-            0 4px 12px rgba(0, 0, 0, 0.3),
-            0 0 10px color-mix(in srgb, #dc2626 40%, transparent),
-            0 0 20px color-mix(in srgb, #dc2626 30%, transparent),
-            0 0 30px color-mix(in srgb, #dc2626 20%, transparent),
-            0 0 40px color-mix(in srgb, #dc2626 12%, transparent);
+        box-shadow: var(--shadow-md);
     }
 
     .active-badge {
         position: absolute;
         top: 0.8rem;
         right: 0.8rem;
-        background-color: var(--accent-secondary);
+        background: #dc2626;
         color: #fff;
         padding: 0.25rem 0.5rem;
-        border-radius: 6px;
-        font-family: var(--font-mono);
+        border-radius: 11px;
         text-transform: uppercase;
         font-size: 0.7rem;
-        font-weight: bold;
+        font-weight: 600;
         display: flex;
         align-items: center;
         gap: 0.25rem;
         z-index: 5;
-        border: 1px solid #ff4d4d;
-        box-shadow: 0 0 10px rgba(255, 51, 51, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.24);
+        box-shadow: 0 6px 18px rgba(220, 38, 38, 0.3);
+        animation: badgePulse 2.4s ease-in-out infinite;
     }
 
     .description-header {
@@ -501,17 +492,14 @@
         display: inline-flex;
         align-items: center;
         gap: 0.35rem;
-        background: rgba(0, 0, 0, 0.3);
+        background: color-mix(in srgb, var(--sev-color) 12%, var(--bg-surface-elevated));
         border: 1px solid color-mix(in srgb, var(--sev-color) 40%, transparent);
         color: var(--sev-color);
         padding: 0.15rem 0.5rem 0.15rem 0.15rem;
-        border-radius: 4px;
-        font-family: var(--font-mono);
+        border-radius: 10px;
         text-transform: uppercase;
         font-size: 0.6rem;
         font-weight: bold;
-        box-shadow: 0 0 8px
-            color-mix(in srgb, var(--sev-color) 15%, transparent);
     }
 
     .severity-inline-badge .sev-score-box {
@@ -519,7 +507,7 @@
         color: #000;
         width: 16px;
         height: 16px;
-        border-radius: 3px;
+        border-radius: 7px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -555,15 +543,14 @@
         background-color: rgba(0, 0, 0, 0.65);
         color: white;
         border: none;
-        border-radius: 6px;
-        height: 26px;
+        border-radius: 10px;
+        height: 30px;
         padding: 0 7px;
         display: flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
         z-index: 2;
-        backdrop-filter: blur(8px);
         box-shadow: 0 2px 6px #0003;
         transition:
             background-color 0.2s ease,
@@ -609,7 +596,7 @@
         display: flex;
         flex-direction: column;
         z-index: 10;
-        border-radius: 6px 6px 0 0;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
         overflow: hidden;
     }
 
@@ -638,7 +625,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 6px;
+        border-radius: 10px;
         transition: all 0.2s;
     }
 
@@ -679,12 +666,12 @@
         width: 100%;
         height: 100%;
         object-fit: cover;
-        border-radius: 6px 6px 0 0;
-        transition: transform 0.3s ease;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        transition: transform .7s var(--ease-out);
     }
 
     .post:hover :global(.post-image) {
-        transform: scale(1.05);
+        transform: scale(1.035);
     }
 
     /* Keep this as a backup in case the global selector doesn't work */
@@ -692,7 +679,7 @@
         width: 100%;
         height: 100%;
         object-fit: cover;
-        border-radius: 6px 6px 0 0;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
         transition: transform 0.3s ease;
     }
 
@@ -701,8 +688,7 @@
     }
 
     .post-info {
-        padding: 1.4rem;
-        padding-bottom: 4rem;
+        padding: 1.15rem 1.15rem 4.8rem;
         flex-grow: 1;
         display: flex;
         flex-direction: column;
@@ -712,8 +698,9 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 1rem;
-        font-size: 0.9rem;
+        margin-bottom: 0.9rem;
+        font-size: 0.82rem;
+        gap: .7rem;
     }
 
     .post-time {
@@ -728,34 +715,32 @@
         display: flex;
         align-items: center;
         gap: 0.3rem;
+        min-width: 0;
+        text-align: right;
     }
 
     .clickable-location {
         cursor: pointer;
         color: var(--accent-primary);
-        text-decoration: underline;
-        text-decoration-style: dashed;
-        text-underline-offset: 4px;
+        text-decoration: none;
         transition: all 0.2s;
     }
 
     .clickable-location:hover {
-        color: #fff;
-        text-shadow: 0 0 8px var(--accent-primary);
+        color: var(--primary-light);
     }
 
     .post-description {
-        font-size: 0.85rem;
-        line-height: 1.6;
+        font-size: 0.88rem;
+        line-height: 1.55;
         margin-bottom: 1.25rem;
         color: var(--text-muted);
         position: relative;
         text-align: left;
-        font-family: var(--font-mono);
         background: var(--bg-surface-elevated);
-        padding: 0.85rem;
-        border-left: 2px solid var(--accent-primary);
-        border-radius: 0 6px 6px 0;
+        padding: 0.9rem;
+        border: 1px solid var(--border-color);
+        border-radius: 14px;
     }
 
     .description-text {
@@ -777,13 +762,12 @@
         margin-top: 0.25rem;
         font-size: 0.7rem;
         font-weight: bold;
-        font-family: var(--font-mono);
         cursor: pointer;
         display: inline-flex;
         align-items: center;
         transition: all 0.15s ease;
         text-transform: uppercase;
-        border-radius: 4px;
+        border-radius: 9px;
         vertical-align: middle;
     }
 
@@ -796,8 +780,8 @@
     .post-actions {
         display: flex;
         justify-content: space-between;
-        border-top: 1px dashed var(--border-color);
-        padding: 0.75rem 1rem;
+        border-top: 1px solid var(--border-color);
+        padding: 0.7rem 0.8rem;
         gap: 0.5rem;
         position: absolute;
         bottom: 0;
@@ -811,15 +795,14 @@
         align-items: center;
         justify-content: center;
         gap: 0.3rem;
-        background: rgba(51, 102, 255, 0.05);
-        border: 1px solid rgba(51, 102, 255, 0.2);
-        color: var(--accent-primary);
-        font-family: var(--font-mono);
-        text-transform: uppercase;
-        font-size: 0.8rem;
-        font-weight: bold;
-        padding: 0.4rem 0;
-        border-radius: 6px;
+        min-height: 42px;
+        background: transparent;
+        border: 1px solid transparent;
+        color: var(--text-muted);
+        font-size: 0.78rem;
+        font-weight: 500;
+        padding: 0.45rem 0;
+        border-radius: 12px;
         cursor: pointer;
         transition: all 0.15s;
         flex: 1;
@@ -827,9 +810,9 @@
     }
 
     .action-button:hover {
-        background: rgba(51, 102, 255, 0.15);
-        border-color: var(--accent-primary);
-        color: #fff;
+        background: var(--primary-lightest);
+        border-color: color-mix(in srgb, var(--accent-primary) 22%, transparent);
+        color: var(--accent-primary);
     }
 
     @keyframes sharpFlash {
@@ -902,14 +885,16 @@
     }
 
     @keyframes badgePulse {
-        0% {
-            box-shadow: 0 0 0 0 rgba(255, 99, 71, 0.7);
-        }
-        70% {
-            box-shadow: 0 0 0 6px rgba(255, 99, 71, 0);
-        }
+        0%,
         100% {
-            box-shadow: 0 0 0 0 rgba(255, 99, 71, 0);
+            box-shadow:
+                0 6px 18px rgba(220, 38, 38, 0.3),
+                0 0 0 0 rgba(239, 68, 68, 0.24);
+        }
+        50% {
+            box-shadow:
+                0 6px 20px rgba(220, 38, 38, 0.38),
+                0 0 0 4px rgba(239, 68, 68, 0);
         }
     }
 
@@ -919,10 +904,10 @@
             flex: 0 0 100%;
             max-width: 100%;
             margin: 0 0 0.8rem 0;
-            border-radius: 6px;
+            border-radius: var(--radius-lg);
         }
         .post-image-container {
-            border-radius: 6px 6px 0 0;
+            border-radius: var(--radius-lg) var(--radius-lg) 0 0;
         }
         .post-info {
             padding: 1rem 1rem 4rem;
@@ -937,10 +922,10 @@
     @media (max-width: 480px) {
         .post {
             margin: 0 0 0.5rem 0;
-            border-radius: 6px;
+            border-radius: var(--radius-lg);
         }
         .post-image-container {
-            border-radius: 6px 6px 0 0;
+            border-radius: var(--radius-lg) var(--radius-lg) 0 0;
         }
         .post-info {
             padding: 0.7rem 0.7rem 4rem;
@@ -971,12 +956,12 @@
     @media (max-width: 320px) {
         .post {
             margin: 0 0 0.3rem 0;
-            border-radius: 2px;
+            border-radius: 18px;
             min-width: unset;
             max-width: 100%;
         }
         .post-image-container {
-            border-radius: 2px 2px 0 0;
+            border-radius: 18px 18px 0 0;
         }
         .post-info {
             padding: 0.5rem 0.5rem 4rem;

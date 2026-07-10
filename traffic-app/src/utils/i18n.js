@@ -21,11 +21,11 @@ const messages = {
     },
     header: {
       brandTitle: "San Diego Watch",
-      brandSubtitle: "Dispatch Overview",
+      brandSubtitle: "",
       feedStatus: ({ time }) => time,
       monitoringIncidents: "",
-      systemDiagnostics: "System diagnostics",
-      statistics: "Statistics",
+      systemDiagnostics: "Stats",
+      statistics: "Stats",
       switchToLightMode: "Switch to light mode",
       switchToDarkMode: "Switch to dark mode",
       enableAccessibilityMode: "Enable accessibility mode",
@@ -46,7 +46,7 @@ const messages = {
       status: "Status",
     },
     search: {
-      placeholder: "Search incidents",
+      placeholder: "Search incidents...",
       ariaLabel: "Search incidents",
       clear: "Clear search",
     },
@@ -73,7 +73,7 @@ const messages = {
     comments: {
       title: ({ count }) => `Comments (${formatNumber(count)})`,
       empty: "Be the first to comment.",
-      placeholder: "Write a comment",
+      placeholder: "Write a comment...",
     },
     status: {
       active: "Active",
@@ -137,7 +137,7 @@ const messages = {
       failedLikePost: "Failed to like post. Please try again.",
       failedUnlikePost: "Failed to unlike post. Please try again.",
       commentLimitReached: "You can only leave 2 comments per post.",
-      commentAdded: "Comment added successfully.",
+      commentAdded: "Comment added successfully!",
       failedSubmitComment: "Failed to submit comment. Please try again.",
       newIncidents: ({ count }) => `${formatNumber(count)} new ${pluralize("incident", count)}`,
     },

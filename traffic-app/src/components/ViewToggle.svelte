@@ -1,7 +1,5 @@
 <script>
     import { fade } from "svelte/transition";
-    import ChevronLeft from "lucide-svelte/icons/chevron-left";
-    import ChevronRight from "lucide-svelte/icons/chevron-right";
     import LayoutGrid from "lucide-svelte/icons/layout-grid";
     import LayoutList from "lucide-svelte/icons/layout-list";
     import { createEventDispatcher } from "svelte";
@@ -13,8 +11,8 @@
 
     const dispatch = createEventDispatcher();
 
-    function toggleView() {
-        dispatch("toggle");
+    function selectView(nextCondensedView) {
+        if (nextCondensedView !== condensedView) dispatch("toggle");
     }
 </script>
 
@@ -42,22 +40,28 @@
     </div>
 {/if}
 
-<button
-    class="side-toggle"
-    class:condensed={condensedView}
-    type="button"
-    on:click={toggleView}
-    aria-pressed={condensedView}
-    aria-label={condensedView
-        ? t("view.expandToCardView")
-        : t("view.condenseToTableView")}
-    title={condensedView
-        ? t("view.expandToCardView")
-        : t("view.condenseToTableView")}
->
-    <span class="side-toggle-arrow">{condensedView ? "→" : "←"}</span>
-    <span class="side-toggle-text">{condensedView ? t("view.cards") : t("view.table")}</span>
-</button>
+<div class="view-toggle" role="group" aria-label="Incident display mode">
+    <button
+        class:active={!condensedView}
+        type="button"
+        on:click={() => selectView(false)}
+        aria-pressed={!condensedView}
+        aria-label={t("view.expandToCardView")}
+    >
+        <LayoutGrid size={15} strokeWidth={1.8} />
+        <span>{t("view.cards")}</span>
+    </button>
+    <button
+        class:active={condensedView}
+        type="button"
+        on:click={() => selectView(true)}
+        aria-pressed={condensedView}
+        aria-label={t("view.condenseToTableView")}
+    >
+        <LayoutList size={15} strokeWidth={1.8} />
+        <span>{t("view.table")}</span>
+    </button>
+</div>
 
 <style>
     .swipe-indicator {
@@ -68,21 +72,18 @@
         border: 1px solid var(--border-color);
         color: var(--text-main);
         padding: 0;
-        border-radius: 6px;
+        border-radius: 24px;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
         z-index: 100;
         pointer-events: none;
-        backdrop-filter: blur(12px);
-        box-shadow:
-            0 8px 32px rgba(0, 0, 0, 0.3),
-            0 0 0 1px rgba(255, 255, 255, 0.1);
+        box-shadow: var(--shadow-md);
         width: 120px;
         height: 100px;
         text-align: center;
-        opacity: 0.95;
+        opacity: 1;
     }
 
     .swipe-indicator.left {
@@ -153,44 +154,50 @@
         }
     }
 
-    .side-toggle {
-        position: fixed;
-        right: -5px;
-        top: 50%;
-        transform: translateY(-50%);
+    .view-toggle {
+        display: inline-grid;
+        grid-template-columns: repeat(2, auto);
+        gap: 0.2rem;
+        padding: 0.25rem;
         background: var(--bg-surface-elevated);
         border: 1px solid var(--border-color);
-        border-right: none;
-        color: var(--accent-primary);
-        border-radius: 6px 0 0 6px;
-        padding: 0.8rem 0.4rem;
-        display: flex;
-        flex-direction: column;
+        border-radius: 14px;
+        box-shadow: var(--shadow-sm);
+    }
+
+    .view-toggle button {
+        min-height: 34px;
+        padding: 0.38rem 0.7rem;
+        display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 0.5rem;
+        gap: 0.38rem;
+        border: 1px solid transparent;
+        border-radius: 10px;
+        background: transparent;
+        color: var(--text-muted);
+        font: inherit;
+        font-size: 0.75rem;
+        font-weight: 500;
         cursor: pointer;
-        z-index: 100;
-        transition: all 0.15s ease;
+        transition: color .2s ease, background .2s ease, border-color .2s ease, box-shadow .2s ease;
     }
 
-    .side-toggle:hover {
-        background: rgba(0, 229, 255, 0.15);
-        transform: translateY(-50%) translateX(-5px);
+    .view-toggle button:hover:not(.active) {
+        color: var(--text-main);
+        background: var(--primary-lightest);
     }
 
-    .side-toggle-arrow {
-        font-size: 1.5rem;
-        font-weight: bold;
-        line-height: 1;
+    .view-toggle button.active {
+        color: var(--accent-primary);
+        background: var(--bg-surface);
+        border-color: color-mix(in srgb, var(--accent-primary) 30%, var(--border-color));
+        box-shadow: 0 2px 8px rgba(0,0,0,.1);
     }
 
-    .side-toggle-text {
-        font-size: 0.8rem;
-        writing-mode: vertical-rl;
-        transform: rotate(180deg);
-        text-transform: uppercase;
-        letter-spacing: 1px;
+    .view-toggle button:focus-visible {
+        outline: 2px solid var(--accent-primary);
+        outline-offset: 2px;
     }
 
     @keyframes slideInRight {
@@ -216,13 +223,17 @@
     }
 
     @media (max-width: 768px) {
-        .side-toggle {
-            display: none;
-        }
-
         .swipe-indicator {
             width: 100px;
             height: 84px;
+        }
+
+        .view-toggle button {
+            padding-inline: 0.58rem;
+        }
+
+        .view-toggle {
+            display: none;
         }
     }
 </style>

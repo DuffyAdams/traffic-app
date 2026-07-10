@@ -21,11 +21,12 @@
 <style>
     .skeleton-card {
         background: var(--card-bg);
-        border-radius: 6px;
+        border-radius: var(--radius-lg);
         box-shadow:
             0 4px 20px var(--shadow-color),
             0 0 0 1px rgba(0, 0, 0, 0.03);
         overflow: hidden;
+        box-shadow: var(--shadow-sm);
         animation: skeleton-pulse 1.5s ease-in-out infinite;
         flex: 0 0 calc(33.333% - 1.5rem);
         min-width: 300px;

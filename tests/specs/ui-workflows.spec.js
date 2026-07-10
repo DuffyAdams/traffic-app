@@ -28,10 +28,42 @@ test("loads the incident feed and supports source filtering", async ({ page }) =
 test("supports diagnostics, search, and comment submission", async ({ page }) => {
   await gotoApp(page);
 
-  await page.getByRole("button", { name: /system diagnostics/i }).click();
+  await page.getByRole("button", { name: /^stats$/i }).click();
   await expect(page.getByText("24-Hour Activity")).toBeVisible();
   await expect(page.getByText("Today")).toBeVisible();
   await expect(page.getByRole("button", { name: "Week" })).toBeVisible();
+
+  await page.locator(".bar-wrapper").last().hover();
+  const activityTooltip = page.locator(".chart-tooltip");
+  await expect(activityTooltip.locator(".tooltip-value")).toContainText(/incidents?$/);
+  const tooltipContrast = await activityTooltip.evaluate((tooltip) => {
+    const channels = (color) => color.match(/[\d.]+/g).slice(0, 3).map(Number);
+    const luminance = (color) => {
+      const [red, green, blue] = channels(color).map((channel) => {
+        const value = channel / 255;
+        return value <= 0.04045
+          ? value / 12.92
+          : ((value + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+    };
+    const foreground = luminance(
+      getComputedStyle(tooltip.querySelector(".tooltip-value")).color,
+    );
+    const background = luminance(getComputedStyle(tooltip).backgroundColor);
+    return (Math.max(foreground, background) + 0.05) /
+      (Math.min(foreground, background) + 0.05);
+  });
+  expect(tooltipContrast).toBeGreaterThanOrEqual(4.5);
+
+  const statsButton = page.getByRole("button", { name: /^stats$/i });
+  const statsShell = page.locator(".stats-panel-shell");
+  await statsButton.click();
+  await expect(statsShell).toHaveAttribute("aria-hidden", "true");
+  await expect(statsShell.locator(".event-counters")).toHaveCount(1);
+  await statsButton.click();
+  await expect(statsShell).toHaveAttribute("aria-hidden", "false");
+  await expect(statsShell.locator(".event-counters")).toBeVisible();
 
   await page.getByPlaceholder("Search incidents...").fill("North Park");
   await expect(page.getByText("Traffic accident with injuries near North Park.")).toBeVisible();
@@ -40,7 +72,7 @@ test("supports diagnostics, search, and comment submission", async ({ page }) =>
   const northParkCard = page.locator(".post").filter({
     hasText: "Traffic accident with injuries near North Park.",
   });
-  await northParkCard.getByRole("button").nth(1).click();
+  await northParkCard.getByRole("button", { name: /^Comment/i }).click();
   await page.getByPlaceholder("Write a comment...").fill("Detour confirmed.");
   await page.getByRole("button", { name: /send/i }).click();
 

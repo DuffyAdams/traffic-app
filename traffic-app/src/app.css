@@ -1,46 +1,179 @@
-/* --------------------------------------------------------------------------
-   Pentagon Pizza Index / OSINT Tracker Theme System
-   Provides a completely flat, sharp, military dashboard interface.
--------------------------------------------------------------------------- */
-
+/* San Diego Watch — soft, native-feeling interface foundation */
 :root {
-  --bg-base: #000000;
-  --bg-surface: #0a0f18;
-  --bg-surface-elevated: #111824;
-  --accent-primary: #3366ff;
-  --accent-secondary: #ff3333;
-  --accent-success: #00cc66;
-  --accent-warning: #ffcc00;
-  --border-color: #1e293b;
-  --border-focus: #3366ff;
-  --border-alert: #ff3333;
-  --text-main: #f8fafc;
-  --text-muted: #64748b;
-  --text-inverse: #ffffff;
-  --overlay-bg: rgba(0, 0, 0, 0.85);
-  --font-pixel: "VT323", "Press Start 2P", monospace;
-  --font-mono: "Share Tech Mono", "JetBrains Mono", monospace;
-  --font-body: "Inter", sans-serif;
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+  font-synthesis: none;
+  color-scheme: dark;
+
+  --bg-base: #101218;
+  --bg-color: #101218;
+  --bg-surface: #1a1d25;
+  --bg-surface-elevated: #242832;
+  --card-bg: #1a1d25;
+  --secondary-bg: #242832;
+  --comment-bg: #20242d;
+  --hover-bg: rgba(255, 255, 255, 0.075);
+  --overlay-bg: rgba(7, 9, 13, 0.78);
+
+  --accent-primary: #78a7ff;
+  --accent-secondary: #ff6577;
+  --accent-success: #4bd78b;
+  --accent-warning: #ffc85c;
+  --primary-color: #78a7ff;
+  --primary-dark: #5b8eec;
+  --primary-light: #a5c4ff;
+  --primary-lightest: rgba(120, 167, 255, 0.13);
+  --button-bg: #78a7ff;
+  --button-hover: #91b7ff;
+  --success-color: #4bd78b;
+  --error-color: #ff7b89;
+  --error-bg: rgba(255, 101, 119, 0.12);
+
+  --text-main: #f5f7fb;
+  --text-color: #f5f7fb;
+  --text-muted: #9ba4b5;
+  --text-dark: #c9cfda;
+  --text-darker: #eef1f6;
+  --text-inverse: #0c1018;
+  /* Keep decorative borders layout-neutral; elevation and surface color carry separation. */
+  --border-color: transparent;
+  --border-focus: rgba(120, 167, 255, 0.72);
+  --border-alert: #ff6577;
+  --shadow-color: rgba(0, 0, 0, 0.35);
+  --avatar-bg: #343947;
+
+  --font-pixel: inherit;
+  --font-mono: inherit;
+  --font-body: inherit;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.24), 0 2px 4px rgba(0, 0, 0, 0.14);
+  --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.24), 0 6px 14px rgba(0, 0, 0, 0.16);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  min-height: 100%;
+  background: var(--bg-base);
+  scroll-behavior: smooth;
 }
 
 body {
   margin: 0;
-  background-color: var(--bg-base);
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--bg-base);
+  background-attachment: fixed;
   color: var(--text-main);
   font-family: var(--font-body);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.5;
+  letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent-primary) 55%, transparent);
+  outline-offset: 3px;
+}
+
+::selection {
+  background: rgba(120, 167, 255, 0.3);
+  color: var(--text-main);
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(132, 142, 160, 0.38);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(152, 162, 180, 0.62);
+}
+
+#app {
+  width: 100%;
+  min-height: 100vh;
+}
+
+body:not(.dark-mode) {
+  color-scheme: light;
+  --bg-base: #f3f5f9;
+  --bg-color: #f3f5f9;
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: #eef1f6;
+  --card-bg: #ffffff;
+  --secondary-bg: #f1f4f8;
+  --comment-bg: #eef2f7;
+  --hover-bg: rgba(28, 39, 58, 0.06);
+  --overlay-bg: rgba(237, 241, 247, 0.76);
+  --accent-primary: #2868d8;
+  --accent-secondary: #d93e57;
+  --accent-success: #16894d;
+  --accent-warning: #bc7710;
+  --primary-color: #2868d8;
+  --primary-dark: #1753bb;
+  --primary-light: #4f82df;
+  --primary-lightest: rgba(40, 104, 216, 0.1);
+  --text-main: #151922;
+  --text-color: #151922;
+  --text-muted: #667085;
+  --text-dark: #40495a;
+  --text-darker: #202633;
+  --text-inverse: #ffffff;
+  --border-color: transparent;
+  --shadow-color: rgba(41, 54, 76, 0.14);
+  --avatar-bg: #dce2eb;
+  --shadow-sm: 0 1px 2px rgba(38, 49, 67, 0.08), 0 2px 4px rgba(53, 65, 86, 0.06);
+  --shadow-md: 0 2px 6px rgba(44, 57, 80, 0.1), 0 6px 14px rgba(44, 57, 80, 0.08);
+  background: var(--bg-base);
 }
 
 body.accessibility-mode {
-  font-size: 16px;
+  font-size: 17px;
   line-height: 1.65;
-  --font-pixel: var(--font-body);
-  --font-mono: var(--font-body);
-  --text-muted: #334155;
-  --border-color: #64748b;
+  --text-muted: #c2c8d3;
+  --border-color: rgba(255, 255, 255, 0.24);
+}
+
+body:not(.dark-mode).accessibility-mode {
+  --text-muted: #3f4858;
+  --border-color: rgba(25, 33, 47, 0.25);
 }
 
 body.accessibility-mode button,
@@ -53,8 +186,7 @@ body.accessibility-mode select {
 }
 
 body.accessibility-mode :focus-visible {
-  outline: 3px solid var(--accent-primary);
-  outline-offset: 3px;
+  outline-width: 4px;
 }
 
 body.accessibility-mode *,
@@ -64,29 +196,6 @@ body.accessibility-mode *::after {
   animation-iteration-count: 1 !important;
   transition-duration: 0.01ms !important;
   scroll-behavior: auto !important;
-}
-
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--bg-base);
-  border-left: 1px solid var(--border-color);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--accent-primary);
-}
-
-#app {
-  width: 100%;
-  min-height: 100vh;
 }
 
 @media (prefers-reduced-motion: reduce) {

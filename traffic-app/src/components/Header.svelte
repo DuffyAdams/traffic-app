@@ -1,32 +1,22 @@
 <script>
     import { createEventDispatcher, onMount, onDestroy } from "svelte";
-    import Radio from "lucide-svelte/icons/radio";
-    import Shield from "lucide-svelte/icons/shield";
-    import Fingerprint from "lucide-svelte/icons/fingerprint";
-    import Sun from "lucide-svelte/icons/sun";
-    import Moon from "lucide-svelte/icons/moon";
+    import BarChart3 from "lucide-svelte/icons/chart-no-axes-column-increasing";
+    import ChevronDown from "lucide-svelte/icons/chevron-down";
     import Eye from "lucide-svelte/icons/eye";
+    import LayoutGrid from "lucide-svelte/icons/layout-grid";
+    import LayoutList from "lucide-svelte/icons/layout-list";
+    import Moon from "lucide-svelte/icons/moon";
+    import Sun from "lucide-svelte/icons/sun";
+    import sirenLogo from "../assets/siren-logo.svg";
     import { formatDateTime, t } from "../utils/i18n.js";
 
     export let showEventCounters = false;
     export let darkMode = true;
+    export let condensedView = false;
     export let accessibilityMode = false;
     export let activeSource = "all";
 
     const dispatch = createEventDispatcher();
-
-    function handleToggleEventCounters() {
-        dispatch("toggleEventCounters");
-    }
-
-    function handleToggleDarkMode() {
-        dispatch("toggleDarkMode");
-    }
-
-    function handleToggleAccessibilityMode() {
-        dispatch("toggleAccessibilityMode");
-    }
-
     let currentTime = "";
     let timeInterval;
 
@@ -34,14 +24,13 @@
         currentTime = formatDateTime(new Date(), {
             hour: "2-digit",
             minute: "2-digit",
-            second: "2-digit",
             timeZoneName: "short",
         });
     }
 
     onMount(() => {
         updateTime();
-        timeInterval = setInterval(updateTime, 1000);
+        timeInterval = setInterval(updateTime, 30000);
     });
 
     onDestroy(() => {
@@ -52,33 +41,47 @@
 <header class="header">
     <div class="header-top">
         <div class="header-brand">
-            <div class="brand-icon">
-                <Shield size={40} color="var(--accent-warning)" />
+            <div class="brand-icon" aria-hidden="true">
+                <img src={sirenLogo} alt="" />
             </div>
             <div class="brand-titles">
                 <h1>{t("header.brandTitle")}</h1>
-                <p>{t("header.brandSubtitle")}</p>
             </div>
         </div>
+
         <div class="header-controls">
-            <div class="header-metrics">
-                <div class="metric-row">
-                    <Radio
-                        size={12}
-                        color="var(--accent-primary)"
-                        class="pulse-fast"
-                    />
-                    <span class="metric-label">{t("header.feedStatus", { time: currentTime })}</span>
+            <div class="live-status" aria-label={t("header.feedStatus", { time: currentTime })}>
+                <span class="status-indicator"><span></span></span>
+                <div>
+                    <strong>Live feed</strong>
+                    <small>{currentTime}</small>
                 </div>
-                {#if t("header.monitoringIncidents")}
-                    <div class="metric-row subtext">{t("header.monitoringIncidents")}</div>
-                {/if}
             </div>
             <div class="header-toggle-group">
+                {#if activeSource !== "map"}
+                    <button
+                        class="control-toggle mobile-view-toggle"
+                        on:click={() => dispatch("toggleView")}
+                        type="button"
+                        aria-pressed={condensedView}
+                        aria-label={condensedView
+                            ? t("view.expandToCardView")
+                            : t("view.condenseToTableView")}
+                        title={condensedView
+                            ? t("view.expandToCardView")
+                            : t("view.condenseToTableView")}
+                    >
+                        {#if condensedView}
+                            <LayoutGrid size={18} />
+                        {:else}
+                            <LayoutList size={18} />
+                        {/if}
+                    </button>
+                {/if}
                 <button
                     class="control-toggle"
                     class:is-active={accessibilityMode}
-                    on:click={handleToggleAccessibilityMode}
+                    on:click={() => dispatch("toggleAccessibilityMode")}
                     type="button"
                     aria-pressed={accessibilityMode}
                     aria-label={accessibilityMode
@@ -92,7 +95,7 @@
                 </button>
                 <button
                     class="control-toggle"
-                    on:click={handleToggleDarkMode}
+                    on:click={() => dispatch("toggleDarkMode")}
                     type="button"
                     aria-pressed={darkMode}
                     aria-label={darkMode
@@ -102,11 +105,7 @@
                         ? t("header.switchToLightMode")
                         : t("header.switchToDarkMode")}
                 >
-                    {#if darkMode}
-                        <Sun size={18} />
-                    {:else}
-                        <Moon size={18} />
-                    {/if}
+                    {#if darkMode}<Sun size={18} />{:else}<Moon size={18} />{/if}
                 </button>
             </div>
         </div>
@@ -115,301 +114,223 @@
     {#if activeSource !== "map"}
         <button
             class="header-action-banner"
-            on:click={handleToggleEventCounters}
+            class:expanded={showEventCounters}
+            on:click={() => dispatch("toggleEventCounters")}
             type="button"
             aria-pressed={showEventCounters}
             aria-label={t("header.systemDiagnostics")}
         >
-            <div class="banner-icon"><Fingerprint size={18} /></div>
-            <div class="banner-text">
-                {t("header.systemDiagnostics")}
-                <span class="banner-subtext">{t("header.statistics")}</span>
-            </div>
-            <div class="banner-status" class:active={showEventCounters}>
-                {showEventCounters ? "[-]" : "[+]"}
-            </div>
+            <span class="banner-icon"><BarChart3 size={19} /></span>
+            <span class="banner-text">
+                <strong>{t("header.systemDiagnostics")}</strong>
+            </span>
+            <span class="banner-state">
+                <span>{showEventCounters ? "Collapse stats" : "Expand stats"}</span>
+                <ChevronDown size={17} class="chevron" />
+            </span>
         </button>
     {/if}
 </header>
 
 <style>
     .header {
-        margin-bottom: 0.5rem;
         display: flex;
         flex-direction: column;
-        gap: 1rem;
-        font-family: var(--font-mono);
+        gap: 0.65rem;
+        margin: 0.25rem 0 0;
     }
 
     .header-top {
         display: flex;
+        align-items: center;
         justify-content: space-between;
-        align-items: flex-end;
-        padding: 0 0.5rem;
+        gap: 0.75rem;
+        padding: 0.62rem 0.75rem;
+        border: 1px solid var(--border-color);
+        border-radius: 18px;
+        background: var(--bg-surface);
+        box-shadow: var(--shadow-md);
     }
 
-    .header-brand {
+    .header-brand,
+    .header-controls,
+    .header-toggle-group,
+    .live-status,
+    .header-action-banner,
+    .banner-state {
         display: flex;
         align-items: center;
-        gap: 1rem;
     }
 
+    .header-brand { gap: 0.62rem; min-width: 0; }
+
     .brand-icon {
-        image-rendering: pixelated;
+        width: 40px;
+        height: 40px;
+        display: grid;
+        place-items: center;
+        flex: 0 0 auto;
+    }
+
+    .brand-icon img {
+        width: 31px;
+        height: 31px;
+        display: block;
+        object-fit: contain;
     }
 
     .brand-titles h1 {
         margin: 0;
-        font-size: 3rem;
-        font-family: var(--font-pixel);
-        color: var(--accent-primary);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        line-height: 0.9;
-        text-shadow: 2px 2px 0px rgba(0, 0, 0, 0.2);
+        color: var(--text-main);
+        font-size: clamp(1.25rem, 2.3vw, 1.62rem);
+        font-weight: 760;
+        letter-spacing: -0.038em;
+        line-height: 1;
     }
 
-    :global(.dark-mode) .brand-titles h1 {
-        color: #ffffff;
-        text-shadow: 2px 2px 0px rgba(51, 102, 255, 0.4);
+    .header-controls { gap: 0.72rem; flex: 0 0 auto; }
+
+    .live-status {
+        gap: 0.48rem;
+        padding-right: 0.72rem;
+        border-right: 1px solid var(--border-color);
     }
 
-    .brand-titles p {
-        margin: 0.5rem 0 0 0;
-        font-size: 0.75rem;
-        color: var(--text-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
+    .live-status > div { display: flex; align-items: baseline; gap: .35rem; }
+    .live-status strong { font-size: 0.74rem; font-weight: 700; }
+    .live-status small { color: var(--text-muted); font-size: 0.68rem; }
+
+    .status-indicator {
+        width: 18px;
+        height: 18px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        background: rgba(75, 215, 139, 0.13);
     }
 
-    .header-metrics {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        font-size: 0.8rem;
-        gap: 0.3rem;
-        padding-bottom: 0.2rem;
+    .status-indicator span {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--accent-success);
+        box-shadow: 0 0 0 4px rgba(75, 215, 139, 0.1);
+        animation: breathe 2.4s ease-in-out infinite;
     }
 
-    .header-controls {
-        display: flex;
-        align-items: center;
-        gap: 1.5rem;
-    }
-
-    .header-toggle-group {
-        display: flex;
-        align-items: center;
-        gap: 0.65rem;
-    }
+    .header-toggle-group { gap: 0.38rem; }
 
     .control-toggle {
-        background: rgba(51, 102, 255, 0.1);
-        border: 1px solid var(--accent-primary);
-        color: var(--accent-primary);
-        width: 40px;
-        height: 40px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        width: 36px;
+        height: 36px;
+        display: grid;
+        place-items: center;
+        padding: 0;
+        color: var(--text-muted);
+        background: var(--bg-surface-elevated);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        box-shadow: var(--shadow-sm);
         cursor: pointer;
-        transition: all 0.2s ease;
-        border-radius: 6px;
-        box-shadow: 0 0 10px rgba(51, 102, 255, 0.15);
-        position: relative;
-        overflow: hidden;
-    }
-
-    .control-toggle::after {
-        content: "";
-        position: absolute;
-        top: -50%;
-        left: -50%;
-        width: 200%;
-        height: 200%;
-        background: radial-gradient(
-            circle,
-            rgba(51, 102, 255, 0.1) 0%,
-            transparent 70%
-        );
-        opacity: 0;
-        transition: opacity 0.3s ease;
-    }
-
-    .control-toggle:hover::after {
-        opacity: 1;
+        transition: transform .25s var(--ease-out), color .2s, border-color .2s, background .2s;
     }
 
     .control-toggle:hover,
     .control-toggle.is-active {
-        background: rgba(51, 102, 255, 0.2);
-        color: #fff;
-        box-shadow: 0 0 20px rgba(51, 102, 255, 0.4);
-        border-color: #6688ff;
-    }
-
-    .control-toggle:active {
-        transform: translateY(1px);
-    }
-
-    .metric-row {
-        display: flex;
-        align-items: center;
-        gap: 0.4rem;
         color: var(--accent-primary);
-        font-weight: bold;
-        letter-spacing: 0.05em;
+        border-color: color-mix(in srgb, var(--accent-primary) 45%, var(--border-color));
+        background: var(--primary-lightest);
+        transform: translateY(-2px);
     }
 
-    .metric-row.subtext {
-        color: var(--accent-primary);
-        font-size: 0.7rem;
-        opacity: 0.8;
-    }
+    .control-toggle:active { transform: scale(.96); }
+
+    .mobile-view-toggle { display: none; }
 
     .header-action-banner {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
         width: 100%;
-        background: var(--bg-surface-elevated);
-        border: 1px solid var(--accent-primary);
-        border-radius: 6px;
-        padding: 0.85rem 1.75rem;
+        gap: 0.62rem;
+        padding: 0.52rem 0.68rem;
         color: var(--text-main);
-        cursor: pointer;
         text-align: left;
-        transition: all 0.15s ease;
-        box-shadow: inset 0 0 0 1px rgba(51, 102, 255, 0.2);
+        background: var(--bg-surface);
+        border: 1px solid var(--border-color);
+        border-radius: 15px;
+        box-shadow: var(--shadow-sm);
+        cursor: pointer;
+        transition:
+            transform .25s var(--ease-out),
+            border-color .2s,
+            border-radius .3s var(--ease-out),
+            background .2s,
+            box-shadow .2s;
     }
 
     .header-action-banner:hover {
-        background: var(--hover-bg, #111a30);
-        border-color: #4d7dff;
+        transform: translateY(-2px);
+        border-color: color-mix(in srgb, var(--accent-primary) 42%, var(--border-color));
+        background: var(--bg-surface-elevated);
     }
 
-    .header-action-banner:active {
-        transform: translateY(1px);
+    .header-action-banner.expanded {
+        border-radius: 15px 15px 0 0;
+        border-bottom-color: transparent;
+        background: var(--bg-surface);
+        box-shadow: none;
+        transform: none;
+    }
+
+    .header-action-banner.expanded:hover {
+        border-bottom-color: transparent;
+        background: var(--bg-surface);
+        transform: none;
     }
 
     .banner-icon {
+        width: 31px;
+        height: 31px;
+        display: grid;
+        place-items: center;
+        flex: 0 0 auto;
         color: var(--accent-primary);
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        border-radius: 10px;
+        background: var(--primary-lightest);
     }
 
-    .banner-text {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        font-size: 1.5rem;
-        font-weight: normal;
-        letter-spacing: 0.08em;
-        font-family: var(--font-pixel);
-        color: var(--accent-primary);
-        text-transform: uppercase;
-    }
+    .banner-text { flex: 1; display: flex; }
+    .banner-text strong { font-size: 0.84rem; font-weight: 700; }
 
-    .banner-subtext {
-        font-size: 0.75rem;
-        font-family: var(--font-mono);
+    .banner-state {
+        gap: .42rem;
         color: var(--text-muted);
-        letter-spacing: 0.05em;
-        margin-top: 0.4rem;
-        text-transform: uppercase;
+        font-size: .76rem;
+        font-weight: 580;
     }
 
-    .banner-status {
-        color: var(--text-muted);
-        font-family: var(--font-mono);
-        font-size: 1.25rem;
-        font-weight: bold;
+    :global(.chevron) { transition: transform .3s var(--ease-out); }
+    .expanded :global(.chevron) { transform: rotate(180deg); }
+
+    @keyframes breathe {
+        50% { transform: scale(.82); opacity: .72; }
     }
 
-    .banner-status.active {
-        color: var(--accent-primary);
-    }
-
-    :global(.pulse-fast) {
-        animation: pulseHeart 1s infinite alternate step-end;
-    }
-
-    @keyframes pulseHeart {
-        from {
-            opacity: 0.2;
-        }
-        to {
-            opacity: 1;
-        }
+    @media (max-width: 720px) {
+        .header-top { padding: .58rem .65rem; border-radius: 16px; }
+        .live-status { display: none; }
+        .header-controls { gap: .5rem; }
+        .banner-state span { display: none; }
     }
 
     @media (max-width: 768px) {
-        .header-top {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 0;
-            text-align: left;
-        }
-        .header-brand {
-            flex-direction: row;
-            align-items: center;
-            gap: 0.75rem;
-        }
-        .header-controls {
-            width: 100%;
-            justify-content: space-between;
-            gap: 1rem;
-        }
-        .header-metrics {
-            align-items: flex-start;
-        }
-        .brand-titles h1 {
-            font-size: 2.2rem;
-        }
-        .control-toggle {
-            width: 44px;
-            height: 44px;
-        }
-        .header-action-banner {
-            padding: 0.6rem 1rem;
-        }
-        .banner-text {
-            font-size: 1.25rem;
-        }
+        .mobile-view-toggle { display: grid; }
     }
 
-    @media (max-width: 480px) {
-        .brand-titles h1 {
-            font-size: 1.7rem;
-        }
-        .brand-titles p {
-            font-size: 0.65rem;
-        }
-        .metric-label {
-            font-size: 0.75rem;
-        }
-        .metric-row.subtext {
-            font-size: 0.65rem;
-        }
-        .control-toggle {
-            width: 38px;
-            height: 38px;
-        }
-        .banner-text {
-            font-size: 1.1rem;
-        }
-        .banner-icon {
-            transform: scale(0.9);
-        }
-    }
-
-    @media (max-width: 360px) {
-        .brand-titles h1 {
-            font-size: 1.45rem;
-        }
-        .header-brand {
-            gap: 0.5rem;
-        }
+    @media (max-width: 440px) {
+        .header-top { gap: .5rem; }
+        .header-brand { gap: .65rem; }
+        .brand-icon { width: 38px; height: 38px; }
+        .brand-titles h1 { font-size: 1.2rem; }
+        .control-toggle { width: 34px; height: 34px; border-radius: 11px; }
+        .header-toggle-group { gap: .35rem; }
     }
 </style>

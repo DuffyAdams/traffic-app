@@ -1,6 +1,6 @@
 <script>
   import { onMount } from "svelte";
-  import { fade, slide } from "svelte/transition";
+  import { fade } from "svelte/transition";
 
   // Import components
   import Header from "./components/Header.svelte";
@@ -24,6 +24,7 @@
   // Import stores
   import { addToast } from "./stores/appStore.js";
   import { compareText, formatDateKey, t } from "./utils/i18n.js";
+  import { loadMapLibraries } from "./utils/mapRuntime.js";
 
   /**
    * @typedef {Object} PostComment
@@ -165,6 +166,7 @@
   let MapTabComponent = null;
   /** @type {Promise<typeof import("./components/MapTab.svelte").default> | null} */
   let mapTabLoadPromise = null;
+  let mapResourcesPreloadPromise = null;
   /** @type {typeof import("./components/StatsPanel.svelte").default | null} */
   let StatsPanelComponent = null;
   /** @type {Promise<typeof import("./components/StatsPanel.svelte").default> | null} */
@@ -260,7 +262,7 @@
     activeSource = source;
     if (source === "map") {
       stopStatsRequest();
-      void ensureMapTabLoaded();
+      void Promise.all([ensureMapTabLoaded(), preloadMapResources()]);
       return;
     }
     currentPage = 1;
@@ -282,6 +284,16 @@
       );
     }
     return mapTabLoadPromise;
+  }
+
+  function preloadMapResources() {
+    if (!mapResourcesPreloadPromise) {
+      mapResourcesPreloadPromise = loadMapLibraries().catch((error) => {
+        mapResourcesPreloadPromise = null;
+        console.warn("Map resources could not be preloaded", error);
+      });
+    }
+    return mapResourcesPreloadPromise;
   }
 
   async function ensureStatsPanelLoaded() {
@@ -1159,6 +1171,13 @@
     accessibilityMode = storedAccessibilityMode === "true";
     applyUserPreferences();
 
+    const connection = /** @type {Navigator & { connection?: { saveData?: boolean, effectiveType?: string } }} */ (navigator).connection;
+    const shouldPreloadMap =
+      !connection?.saveData && !["slow-2g", "2g"].includes(connection?.effectiveType || "");
+    const mapPreloadTimer = shouldPreloadMap
+      ? window.setTimeout(() => void preloadMapResources(), 2500)
+      : 0;
+
     currentUsername =
       localStorage.getItem("username") || generateRandomUsername();
     if (!localStorage.getItem("username")) {
@@ -1194,6 +1213,7 @@
 
     return () => {
       clearInterval(updateInterval);
+      if (mapPreloadTimer) window.clearTimeout(mapPreloadTimer);
       window.removeEventListener("online", updateOnlineStatus);
       window.removeEventListener("offline", updateOnlineStatus);
       window.removeEventListener("scroll", debouncedHandleScroll);
@@ -1327,41 +1347,23 @@
   <Header
     {showEventCounters}
     {darkMode}
+    {condensedView}
     accessibilityMode={accessibilityMode}
     {activeSource}
     on:toggleEventCounters={toggleEventCounters}
     on:toggleDarkMode={toggleDarkMode}
     on:toggleAccessibilityMode={toggleAccessibilityMode}
+    on:toggleView={toggleView}
   />
 
-  <div class="toolbar">
-    <div class="tabs-container">
-      <SourceTabs
-        {activeSource}
-        on:changeSource={handleSourceChange}
-      />
-    </div>
-    {#if activeSource !== "map"}
-      <div class="search-wrapper">
-        <SearchBar bind:value={searchQuery} />
-      </div>
-    {/if}
-  </div>
-
-  {#if activeSource === "map" && !MapTabComponent}
-    <div class="map-loading">{t("state.loadingMap")}</div>
-  {/if}
-
-  <!-- Load the map tab lazily, then keep it mounted after the first open -->
-  {#if MapTabComponent}
-    <div style={activeSource === "map" ? "" : "display:none"}>
-      <svelte:component this={MapTabComponent} isVisible={activeSource === "map"} />
-    </div>
-  {/if}
-
-  {#if activeSource !== "map"}
-    {#if showEventCounters}
-      {#if StatsPanelComponent}
+  {#if activeSource !== "map" && StatsPanelComponent}
+    <div
+      class="stats-panel-shell"
+      class:expanded={showEventCounters}
+      aria-hidden={!showEventCounters}
+      inert={!showEventCounters}
+    >
+      <div class="stats-panel-content">
         <svelte:component
           this={StatsPanelComponent}
           {eventsToday}
@@ -1382,16 +1384,49 @@
           on:resetTypeFilters={resetTypeFilters}
           on:resetLocationFilters={resetLocationFilters}
         />
-      {/if}
+      </div>
+    </div>
+  {/if}
+
+  <div class="toolbar-row">
+    <div class="toolbar">
+      <div class="tabs-container">
+        <SourceTabs
+          {activeSource}
+          on:changeSource={handleSourceChange}
+        />
+      </div>
+      <div class="search-wrapper">
+        <SearchBar
+          bind:value={searchQuery}
+          on:activate={() => activeSource === "map" && setSourceFilter("all")}
+        />
+      </div>
+    </div>
+    {#if activeSource !== "map"}
+      <div class="toolbar-view-toggle">
+        <ViewToggle
+          {condensedView}
+          {swipeIndicator}
+          {swipeDirection}
+          on:toggle={toggleView}
+        />
+      </div>
     {/if}
+  </div>
 
-    <ViewToggle
-      {condensedView}
-      {swipeIndicator}
-      {swipeDirection}
-      on:toggle={toggleView}
-    />
+  {#if activeSource === "map" && !MapTabComponent}
+    <div class="map-loading">{t("state.loadingMap")}</div>
+  {/if}
 
+  <!-- Load the map tab lazily, then keep it mounted after the first open -->
+  {#if MapTabComponent}
+    <div style={activeSource === "map" ? "" : "display:none"}>
+      <svelte:component this={MapTabComponent} isVisible={activeSource === "map"} />
+    </div>
+  {/if}
+
+  {#if activeSource !== "map"}
     {#if loading && posts.length === 0}
       <div class="loading-container" in:fade={{ duration: 150 }}>
         {#each Array(6) as _}
@@ -1507,145 +1542,10 @@
     color: var(--text-color);
   }
 
-  :global(body:not(.dark-mode)) {
-    --primary-color: #3182ce;
-    --primary-dark: #2c5282;
-    --primary-light: #4299e1;
-    --primary-lightest: #ebf8ff;
-    --accent-color: #f6ad55;
-    --accent-dark: #dd6b20;
-    --bg-color: #eaeff5;
-    --bg-base: #eaeff5;
-    --bg-surface: #ffffff;
-    --bg-surface-elevated: #f8fafc;
-    --text-color: #1a202c;
-    --text-main: #1a202c;
-    --text-inverse: #ffffff;
-    --card-bg: #ffffff;
-    --shadow-color: rgba(0, 0, 0, 0.1);
-    --border-color: #cbd5e0;
-    --secondary-bg: #f1f5f9;
-    --comment-bg: #e2e8f0;
-    --text-muted: #4a5568;
-    --text-dark: #2d3748;
-    --text-darker: #1a202c;
-    --hover-bg: #e2e8f0;
-    --button-bg: #3182ce;
-    --button-hover: #2c5282;
-    --avatar-bg: #cbd5e0;
-    --error-bg: #fff5f5;
-    --error-color: #e53e3e;
-    --success-color: #38a169;
-  }
-
-  :global(body:not(.dark-mode) .control-toggle:hover),
-  :global(body:not(.dark-mode) .control-toggle.is-active),
-  :global(body:not(.dark-mode) .source-tab.active),
-  :global(body:not(.dark-mode) .action-button:hover),
-  :global(body:not(.dark-mode) .clickable-location:hover) {
-    color: #0f172a;
-  }
-
-  :global(body:not(.dark-mode) .control-toggle:hover),
-  :global(body:not(.dark-mode) .control-toggle.is-active) {
-    background: rgba(49, 130, 206, 0.18);
-    border-color: #1e40af;
-    box-shadow: 0 0 0 2px rgba(30, 64, 175, 0.12);
-  }
-
-  :global(body:not(.dark-mode) .action-button:hover),
-  :global(body:not(.dark-mode) .source-tab.active) {
-    background: rgba(49, 130, 206, 0.16);
-    border-color: #1e40af;
-  }
-
-  :global(body:not(.dark-mode) .post-badge) {
-    background: #ffffff;
-    color: #0f172a;
-    border-color: color-mix(in srgb, var(--badge-color) 70%, #0f172a);
-    box-shadow:
-      0 8px 20px rgba(15, 23, 42, 0.14),
-      inset 4px 0 0 var(--badge-color);
-  }
-
-  :global(body:not(.dark-mode) .post-badge .incident-icon) {
-    color: #0f172a;
-  }
-
-  :global(body:not(.dark-mode) .severity-inline-badge) {
-    background: color-mix(in srgb, var(--sev-color) 14%, #ffffff);
-    border-color: color-mix(in srgb, var(--sev-color) 42%, #cbd5e1);
-    color: color-mix(in srgb, var(--sev-color) 78%, #0f172a);
-    box-shadow:
-      0 8px 18px rgba(15, 23, 42, 0.08),
-      inset 0 1px 0 rgba(255, 255, 255, 0.75);
-  }
-
-  :global(body:not(.dark-mode) .severity-inline-badge .sev-score-box) {
-    color: #ffffff;
-    box-shadow:
-      0 4px 10px color-mix(in srgb, var(--sev-color) 24%, transparent);
-  }
-
-  :global(body:not(.dark-mode) .severity-inline-badge .sev-label) {
-    color: inherit;
-  }
-
-  :global(body:not(.dark-mode) .placeholder-content) {
-    color: #1e293b;
-    opacity: 1;
-  }
-
-  :global(body:not(.dark-mode) .incident-icon-small) {
-    color: #0f172a !important;
-    filter: none;
-  }
-
-  :global(body:not(.dark-mode) .stat-value) {
-    color: #0f172a;
-    text-shadow: none;
-  }
-
-  :global(body:not(.dark-mode) .stat-icon) {
-    color: #1e40af;
-    filter: none;
-  }
-
-  :global(body.dark-mode) {
-    --primary-color: #4299e1;
-    --primary-dark: #3182ce;
-    --primary-light: #63b3ed;
-    --primary-lightest: #1a365d;
-    --accent-color: #ed8936;
-    --accent-dark: #c05621;
-    --bg-color: #171923;
-    --bg-base: #000000;
-    --bg-surface: #0a0f18;
-    --bg-surface-elevated: #111824;
-    --text-color: #edf2f7;
-    --text-main: #f8fafc;
-    --text-inverse: #000000;
-    --card-bg: #2d3748;
-    --shadow-color: rgba(0, 0, 0, 0.3);
-    --border-color: #4a5568;
-    --secondary-bg: #2d3748;
-    --comment-bg: #1e2634;
-    --text-muted: #a0aec0;
-    --text-dark: #cbd5e0;
-    --text-darker: #e2e8f0;
-    --hover-bg: #4a5568;
-    --button-bg: #4299e1;
-    --button-hover: #3182ce;
-    --avatar-bg: #4a5568;
-    --error-bg: #2d1515;
-    --error-color: #fc8181;
-    --success-color: #48bb78;
-  }
-
   .container {
-    max-width: 1280px;
+    max-width: 1440px;
     margin: 0 auto;
-    padding: 1rem;
+    padding: 1.25rem 1.5rem 2rem;
     box-sizing: border-box;
     width: 100%;
     position: relative;
@@ -1655,7 +1555,7 @@
   .loading-container {
     display: flex;
     flex-wrap: wrap;
-    gap: 1.5rem;
+    gap: 1.25rem;
     justify-content: center;
     width: 100%;
     box-sizing: border-box;
@@ -1664,7 +1564,7 @@
   .feed {
     display: flex;
     flex-wrap: wrap;
-    gap: 1.5rem;
+    gap: 1.25rem;
     justify-content: center;
     width: 100%;
     box-sizing: border-box;
@@ -1672,14 +1572,57 @@
 
   .empty-state {
     text-align: center;
-    padding: 3rem 0;
+    max-width: 560px;
+    margin: 2rem auto;
+    padding: 4.5rem 2rem;
     color: var(--text-muted);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .stats-panel-shell {
+    position: relative;
+    z-index: 0;
+    margin-top: -1px;
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      grid-template-rows 380ms var(--ease-out),
+      opacity 220ms ease,
+      visibility 0s linear 380ms;
+    will-change: grid-template-rows, opacity;
+  }
+
+  .stats-panel-shell.expanded {
+    grid-template-rows: 1fr;
+    opacity: 1;
+    visibility: visible;
+    transition:
+      grid-template-rows 380ms var(--ease-out),
+      opacity 260ms ease 60ms,
+      visibility 0s;
+  }
+
+  .stats-panel-content {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  @starting-style {
+    .stats-panel-shell.expanded {
+      grid-template-rows: 0fr;
+      opacity: 0;
+    }
   }
 
   .empty-icon {
-    font-size: 3.5rem;
-    margin-bottom: 1.5rem;
-    opacity: 0.8;
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+    opacity: 0.75;
   }
 
   /* Scroll indicator */
@@ -1688,18 +1631,25 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 1rem 0;
+    max-width: 360px;
+    padding: 1rem 1.5rem;
     color: var(--text-muted);
     font-size: 0.9rem;
     opacity: 0.8;
     cursor: pointer;
     transition: all 0.2s ease;
-    margin: 1rem 0;
+    margin: 1.5rem auto;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--bg-surface);
+    box-shadow: var(--shadow-sm);
   }
 
   .scroll-indicator:hover {
     opacity: 1;
-    transform: translateY(-2px);
+    transform: translateY(-3px);
+    border-color: color-mix(in srgb, var(--accent-primary) 45%, var(--border-color));
+    box-shadow: var(--shadow-md);
   }
 
   .scroll-dots {
@@ -1741,10 +1691,8 @@
     padding: 2rem 0 1rem 0;
     color: var(--text-muted);
     font-size: 0.8rem;
-    font-family: var(--font-mono);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    border-top: 1px dashed var(--border-color);
+    letter-spacing: -0.01em;
+    border-top: 1px solid var(--border-color);
     display: flex;
     justify-content: center;
   }
@@ -1755,14 +1703,9 @@
     gap: 0.5rem;
     background: var(--bg-surface-elevated);
     border: 1px solid var(--border-color);
-    padding: 0.5rem 1.5rem;
-    border-radius: 2px;
-    box-shadow: inset 0 0 0 1px rgba(51, 102, 255, 0.05);
-  }
-
-  :global(body.dark-mode) .footer-content {
-    background: rgba(0, 0, 0, 0.5);
-    border-color: rgba(51, 102, 255, 0.3);
+    padding: 0.65rem 1.25rem;
+    border-radius: 999px;
+    box-shadow: var(--shadow-sm);
   }
 
   .footer-decorator {
@@ -1800,8 +1743,7 @@
   }
 
   .app-footer a:hover {
-    color: #fff;
-    text-shadow: 0 0 8px rgba(51, 102, 255, 0.6);
+    color: var(--primary-light);
   }
 
   .app-footer a:hover::after {
@@ -1812,7 +1754,7 @@
   /* Mobile responsive */
   @media (max-width: 768px) {
     .container {
-      padding: 0.5rem;
+      padding: 0.75rem;
     }
     .feed,
     .loading-container {
@@ -1822,17 +1764,13 @@
   }
 
   @media (max-width: 480px) {
-    .container {
-      padding: 0.25rem;
-    }
-
     .feed,
     .loading-container {
       gap: 0.5rem;
     }
 
     .container {
-      padding: 0.75rem;
+      padding: 0.55rem;
     }
 
     @media (max-width: 360px) {
@@ -1843,44 +1781,73 @@
   }
   
   /* Toolbar layout */
+  .toolbar-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    width: 100%;
+    margin: 0.85rem 0 1.2rem;
+  }
+
   .toolbar {
     display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    margin-bottom: 0.8rem;
+    flex-direction: row;
+    gap: 0;
+    width: fit-content;
+    max-width: 100%;
+    box-sizing: border-box;
+    grid-column: 2;
+    margin: 0;
     align-items: center;
     position: relative;
+    padding: 0.38rem;
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    background: var(--bg-surface);
+    box-shadow: var(--shadow-md);
   }
   
   .tabs-container {
-    width: 100%;
+    width: auto;
+    min-width: 0;
+    flex: 0 1 auto;
     display: flex;
     justify-content: center;
+    overflow: hidden;
   }
 
   .search-wrapper {
-    width: 100%;
-    max-width: 400px;
+    width: auto;
+    flex: 0 0 auto;
+    margin-left: .35rem;
+    padding-left: .35rem;
+    border-left: 1px solid var(--border-color);
   }
 
-  @media (min-width: 768px) {
+  .toolbar-view-toggle {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    grid-column: 3;
+    justify-self: end;
+  }
+
+  @media (max-width: 767px) {
+    .toolbar-row {
+      display: block;
+      margin: 0.85rem 0 1.2rem;
+    }
+
     .toolbar {
-      flex-direction: row;
-      justify-content: center;
-      align-items: center;
+      width: 100%;
     }
+
     .tabs-container {
-      width: auto;
-      flex: 0 1 auto;
+      flex: 1 1 auto;
     }
-    .search-wrapper {
-      width: 250px;
-      flex-shrink: 0;
-      position: absolute;
-      right: 0;
-      top: 50%;
-      transform: translateY(-50%);
-      margin: 0;
+
+    .toolbar-view-toggle {
+      height: 0;
     }
   }
 </style>

@@ -26,15 +26,23 @@ test("supports keyboard access to search, diagnostics, and comments", async ({ p
   await gotoApp(page);
 
   await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: /accessibility mode/i })).toBeFocused();
+
+  await page.keyboard.press("Tab");
   await expect(page.getByRole("button", { name: /switch to/i })).toBeFocused();
 
   await page.keyboard.press("Tab");
-  await expect(page.getByRole("button", { name: /system diagnostics/i })).toBeFocused();
+  await expect(page.getByRole("button", { name: /^stats$/i })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.getByText("24-Hour Activity")).toBeVisible();
 
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Tab");
-  await expect(page.getByPlaceholder("Search incidents...")).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("24-Hour Activity")).toBeHidden();
+
+  const searchInput = page.getByPlaceholder("Search incidents...");
+  for (let index = 0; index < 15; index += 1) {
+    await page.keyboard.press("Tab");
+    if (await searchInput.evaluate((input) => input === document.activeElement)) break;
+  }
+  await expect(searchInput).toBeFocused();
 });

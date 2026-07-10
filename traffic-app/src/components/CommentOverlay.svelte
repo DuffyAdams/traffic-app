@@ -19,7 +19,9 @@
     }
 
     function handleSubmit() {
+        if (!newComment.trim()) return;
         dispatch("submit", { comment: newComment });
+        newComment = "";
     }
 
     function handleKeyPress(e) {
@@ -98,14 +100,14 @@
         left: 0;
         width: 100%;
         height: calc(100% - 50px);
-        background-color: var(--bg-surface);
+        background: var(--bg-surface);
         border: 1px solid var(--border-color);
         border-bottom: none;
         display: flex;
         flex-direction: column;
         padding: 1.2rem;
         z-index: 10;
-        border-radius: 6px 6px 0 0;
+        border-radius: 20px 20px 0 0;
         box-sizing: border-box;
         will-change: opacity;
         backface-visibility: hidden;
@@ -127,7 +129,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 6px;
+        border-radius: 10px;
         padding: 0;
         transition: all 0.15s ease;
         outline: none;
@@ -140,9 +142,8 @@
 
     .comments-title {
         font-size: 1.1rem;
-        font-family: var(--font-mono);
-        color: var(--accent-primary);
-        font-weight: normal;
+        color: var(--text-main);
+        font-weight: 720;
         margin: 0 0 0.8rem 0;
         display: flex;
         align-items: center;
@@ -173,14 +174,12 @@
 
     .no-comments {
         color: var(--text-muted);
-        font-family: var(--font-mono);
-        text-transform: uppercase;
         text-align: center;
         padding: 1rem 0;
         background-color: var(--bg-surface-elevated);
-        border-radius: 6px;
+        border-radius: 14px;
         opacity: 0.8;
-        border: 1px dashed var(--border-color);
+        border: 1px solid var(--border-color);
     }
 
     .comment {
@@ -205,7 +204,7 @@
         height: 24px;
         background: var(--bg-surface-elevated);
         color: var(--accent-primary);
-        border-radius: 6px;
+        border-radius: 9px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -221,7 +220,6 @@
     }
 
     .comment-username {
-        font-family: var(--font-mono);
         color: var(--text-main);
         font-size: 0.8rem;
         white-space: nowrap;
@@ -229,14 +227,13 @@
 
     .comment-timestamp {
         font-size: 0.7rem;
-        font-family: var(--font-mono);
         color: var(--text-muted);
         position: relative;
         padding-left: 0.5rem;
     }
 
     .comment-timestamp::before {
-        content: "•";
+        content: "\2022";
         position: absolute;
         left: 0;
         color: var(--text-muted);
@@ -246,7 +243,7 @@
     .comment-content {
         background-color: rgba(51, 102, 255, 0.05);
         padding: 0.6rem 0.8rem;
-        border-radius: 6px;
+        border-radius: 4px 14px 14px 14px;
         border: 1px solid var(--border-color);
         font-size: 0.9rem;
         line-height: 1.4;
@@ -266,9 +263,8 @@
         flex: 1;
         padding: 0.7rem 1rem;
         border: 1px solid var(--border-color);
-        border-radius: 6px;
+        border-radius: 13px;
         font-size: 0.9rem;
-        font-family: var(--font-mono);
         background-color: var(--bg-surface-elevated);
         color: var(--text-main);
         transition: all 0.15s;
@@ -277,7 +273,7 @@
     .add-comment input:focus {
         outline: none;
         border-color: var(--accent-primary);
-        box-shadow: inset 0 0 0 1px var(--accent-primary);
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-primary) 12%, transparent);
     }
 
     .add-comment input::placeholder {
@@ -285,12 +281,10 @@
     }
 
     .add-comment button {
-        background: rgba(51, 102, 255, 0.1);
-        color: var(--accent-primary);
-        border: 1px solid var(--accent-primary);
-        border-radius: 6px;
-        font-family: var(--font-mono);
-        text-transform: uppercase;
+        background: var(--accent-primary);
+        color: var(--text-inverse);
+        border: 1px solid transparent;
+        border-radius: 13px;
         padding: 0.7rem 1.2rem;
         font-size: 0.9rem;
         cursor: pointer;
@@ -299,8 +293,8 @@
     }
 
     .add-comment button:hover {
-        background: var(--accent-primary);
-        color: #fff;
+        background: var(--primary-light);
+        transform: translateY(-1px);
     }
 
     .error-message {
@@ -310,7 +304,7 @@
         padding: 0.6rem 1rem;
         margin-top: 0.6rem;
         font-size: 0.85rem;
-        border-radius: 6px;
+        border-radius: 12px;
     }
 
     @keyframes fadeIn {

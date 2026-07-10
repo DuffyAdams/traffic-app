@@ -1,8 +1,9 @@
 <script>
-    import { onMount, onDestroy, mount, unmount } from "svelte";
+    import { onMount, mount, tick, unmount } from "svelte";
     import "maplibre-gl/dist/maplibre-gl.css";
 
     import IncidentMarker from "./IncidentMarker.svelte";
+    import { loadMapLibraries, PMTILES_URL } from "../utils/mapRuntime.js";
     import { formatTimestamp, formatTime } from "../utils/helpers.js";
     import { activeMarkerId, mapPanTo } from "../stores/appStore.js";
     import { t } from "../utils/i18n.js";
@@ -19,9 +20,11 @@
     let markers = {}; // Store marker references by ID
     let refreshInterval;
     let maplibregl = null;
-    let pmtiles = null;
-    let mapLibrariesPromise = null;
     let isDestroyed = false;
+    let resizeObserver;
+    let resizeFrame = 0;
+    let mapReady = false;
+    let mapLoadError = "";
 
     let showCHP = true;
     let showSDPD = true;
@@ -61,6 +64,20 @@
             incident.location ?? "",
             incident.source ?? "",
         ].join("|");
+    }
+
+    function getMarkerDataKey(incident) {
+        return JSON.stringify([
+            incident.latitude,
+            incident.longitude,
+            incident.description,
+            incident.location,
+            incident.neighborhood,
+            incident.type,
+            incident.source,
+            incident.severity,
+            incident.details,
+        ]);
     }
 
     function clamp(value, min, max) {
@@ -145,7 +162,7 @@
 
     async function fetchAllIncidents() {
         try {
-            const res = await fetch("/api/incidents?limit=150");
+            const res = await fetch("/api/incidents?limit=150&active_only=true");
             if (!res.ok) return;
             const data = await res.json();
             allIncidents = data
@@ -172,23 +189,6 @@
         }
     }
 
-    const PMTILES_URL = "/map_tiles/sandiego.pmtiles";
-
-    async function loadMapLibraries() {
-        if (!mapLibrariesPromise) {
-            mapLibrariesPromise = Promise.all([
-                import("maplibre-gl"),
-                import("pmtiles"),
-            ]).then(([maplibreModule, pmtilesModule]) => {
-                maplibregl = maplibreModule.default;
-                pmtiles = pmtilesModule;
-                return { maplibregl, pmtiles };
-            });
-        }
-
-        return mapLibrariesPromise;
-    }
-
     function startPolling() {
         if (!map || refreshInterval || !isVisible) return;
         fetchAllIncidents();
@@ -201,8 +201,40 @@
         refreshInterval = undefined;
     }
 
+    function scheduleMapResize() {
+        if (!map || resizeFrame) return;
+
+        void tick().then(() => {
+            if (!map || resizeFrame || isDestroyed) return;
+            resizeFrame = requestAnimationFrame(() => {
+                resizeFrame = 0;
+                if (!map || !mapContainer) return;
+                const bounds = mapContainer.getBoundingClientRect();
+                if (bounds.width === 0 || bounds.height === 0) return;
+                map.resize();
+                map.triggerRepaint();
+            });
+        });
+    }
+
+    function startResizeObserver() {
+        if (resizeObserver || !("ResizeObserver" in window) || !mapContainer) return;
+        resizeObserver = new ResizeObserver(scheduleMapResize);
+        resizeObserver.observe(mapContainer);
+    }
+
+    function stopResizeObserver() {
+        resizeObserver?.disconnect();
+        resizeObserver = undefined;
+        if (resizeFrame) {
+            cancelAnimationFrame(resizeFrame);
+            resizeFrame = 0;
+        }
+    }
+
     $: if (isVisible && map) {
         startPolling();
+        scheduleMapResize();
     } else {
         stopPolling();
     }
@@ -260,12 +292,10 @@
         isDestroyed = false;
 
         async function initializeMap() {
-            await loadMapLibraries();
+            mapLoadError = "";
+            const libraries = await loadMapLibraries();
+            maplibregl = libraries.maplibregl;
             if (isDestroyed || map || !mapContainer) return;
-
-        // Add PMTiles protocol
-            let protocol = new pmtiles.Protocol();
-            maplibregl.addProtocol("pmtiles", protocol.tile);
 
         // DEFCON-style dark command center map
         /** @type {import('maplibre-gl').StyleSpecification} */
@@ -811,9 +841,13 @@
                 maxPitch: 65,
                 renderWorldCopies: false,
                 hash: false,
+                fadeDuration: 0,
+                pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+                maxTileCacheZoomLevels: 3,
             });
 
             map.setTransformConstrain(softConstrain);
+            startResizeObserver();
 
             map.addControl(new maplibregl.NavigationControl(), "top-right");
 
@@ -833,7 +867,17 @@
             }
 
             map.on("load", () => {
+                mapReady = true;
+                mapLoadError = "";
+                scheduleMapResize();
                 console.log("MapLibre GL map loaded with PMTiles — DEFCON theme");
+            });
+
+            map.on("error", (event) => {
+                console.warn("MapTab: map resource failed to load", event?.error || event);
+                if (!mapReady) {
+                    mapLoadError = "Map tiles could not be loaded. Check your connection and try again.";
+                }
             });
 
             // Close the active marker if the user clicks anywhere on the map
@@ -846,18 +890,24 @@
             });
         }
 
-        void initializeMap();
+        void initializeMap().catch((error) => {
+            console.error("MapTab: failed to initialize map", error);
+            mapLoadError = "The map could not start. Check your connection and try again.";
+        });
 
         return () => {
             isDestroyed = true;
             stopPolling();
+            stopResizeObserver();
             if (map) {
                 // Remove all markers before destroying map
-                Object.values(markers).forEach((m) => m.marker.remove());
+                Object.values(markers).forEach((markerEntry) => {
+                    markerEntry.marker.remove();
+                    unmount(markerEntry.component);
+                });
+                markers = {};
                 map.remove();
-            }
-            if (maplibregl) {
-                maplibregl.removeProtocol("pmtiles");
+                map = undefined;
             }
         };
     });
@@ -878,6 +928,7 @@
 
         // Add or update markers
         incidentsToRender.forEach((inc) => {
+            const dataKey = getMarkerDataKey(inc);
             if (!markers[inc.renderKey]) {
                 // Create a container element for the Svelte component
                 const el = document.createElement("div");
@@ -893,18 +944,20 @@
                     .setLngLat([inc.longitude, inc.latitude])
                     .addTo(map);
 
-                markers[inc.renderKey] = { marker, component, element: el };
+                markers[inc.renderKey] = { marker, component, element: el, dataKey };
             } else {
-                // For Svelte 5: re-mount with updated props
                 const existing = markers[inc.renderKey];
                 existing.marker.setLngLat([inc.longitude, inc.latitude]);
-                // Unmount old, mount new with updated data
-                unmount(existing.component);
-                existing.element.innerHTML = "";
-                existing.component = mount(IncidentMarker, {
-                    target: existing.element,
-                    props: { incident: inc },
-                });
+                if (existing.dataKey !== dataKey) {
+                    // Unchanged polling results should not rebuild marker DOM.
+                    unmount(existing.component);
+                    existing.element.innerHTML = "";
+                    existing.component = mount(IncidentMarker, {
+                        target: existing.element,
+                        props: { incident: inc },
+                    });
+                    existing.dataKey = dataKey;
+                }
             }
         });
     }
@@ -935,11 +988,17 @@
 <div class="map-layout">
     <div class="map-wrapper">
         <div class="map-container" bind:this={mapContainer}></div>
+        {#if !mapReady}
+            <div class:error={Boolean(mapLoadError)} class="map-status" role="status">
+                {mapLoadError || "Loading map…"}
+            </div>
+        {/if}
         <div class="map-filters">
             <button
                 class="filter-btn"
                 class:active={showCHP}
                 on:click={() => toggleFilter("CHP")}
+                type="button"
             >
                 <span
                     class="filter-dot"
@@ -951,6 +1010,7 @@
                 class="filter-btn"
                 class:active={showSDPD && showSDSO}
                 on:click={() => toggleFilter("POLICE")}
+                type="button"
             >
                 <span
                     class="filter-dot"
@@ -962,6 +1022,7 @@
                 class="filter-btn"
                 class:active={showSDFD}
                 on:click={() => toggleFilter("SDFD")}
+                type="button"
             >
                 <span
                     class="filter-dot"
@@ -978,13 +1039,12 @@
         </div>
         <div class="log-list">
             {#each activeIncidents as incident (incident.renderKey)}
-                <!-- svelte-ignore a11y_click_events_have_key_events -->
-                <!-- svelte-ignore a11y_no_static_element_interactions -->
-                <div
+                <button
                     class="log-item"
                     class:selected={$activeMarkerId === incident.id || $activeMarkerId === incident.renderKey}
                     class:inactive={!incident.active}
                     on:click={() => panToIncident(incident)}
+                    type="button"
                     in:fade={{ duration: 200 }}
                 >
                     <div class="log-item-header">
@@ -1007,7 +1067,7 @@
                             ? incident.neighborhood
                             : incident.location}
                     </div>
-                </div>
+                </button>
             {/each}
             {#if activeIncidents.length === 0}
                 <div class="empty-log">NO ACTIVE INCIDENTS</div>
@@ -1019,7 +1079,9 @@
 <style>
     .map-layout {
         display: block;
-        height: calc(100vh - 160px);
+        height: min(72vh, 760px);
+        min-height: 500px;
+        margin-bottom: 1.25rem;
     }
 
     .map-wrapper {
@@ -1031,7 +1093,7 @@
         width: 100%;
         height: 100%;
         min-height: 400px;
-        border-radius: 4px;
+        border-radius: var(--radius-xl);
         border: 1px solid var(--border-color);
         overflow: hidden;
         position: relative;
@@ -1042,6 +1104,30 @@
                 rgba(8, 9, 10, 0.94) 58%,
                 #040506 100%
             );
+        box-shadow: var(--shadow-md);
+    }
+
+    .map-status {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        z-index: 2;
+        max-width: min(420px, calc(100% - 48px));
+        padding: 0.7rem 0.9rem;
+        transform: translate(-50%, -50%);
+        border: 1px solid rgba(136, 170, 255, 0.22);
+        border-radius: 12px;
+        color: var(--text-muted);
+        background: #151922;
+        box-shadow: var(--shadow-sm);
+        font-size: 0.82rem;
+        text-align: center;
+        pointer-events: none;
+    }
+
+    .map-status.error {
+        color: #fecaca;
+        border-color: rgba(248, 113, 113, 0.4);
     }
 
     @media (min-width: 1024px) {
@@ -1049,7 +1135,7 @@
             display: flex;
             flex-direction: row;
             gap: 1rem;
-            height: calc(100vh - 160px);
+            height: min(72vh, 760px);
             min-height: 400px;
         }
 
@@ -1069,7 +1155,7 @@
         top: 12px;
         left: 12px;
         display: flex;
-        gap: 6px;
+        gap: 7px;
         z-index: 1000;
         flex-wrap: wrap;
         max-width: calc(100% - 24px);
@@ -1079,28 +1165,28 @@
         display: flex;
         align-items: center;
         gap: 6px;
-        padding: 6px 12px;
-        background: rgba(8, 12, 18, 0.85);
-        border: 1px solid rgba(136, 170, 255, 0.25);
-        border-radius: 3px;
-        color: #667788;
-        font-family: "Share Tech Mono", monospace;
-        font-size: 0.7rem;
-        letter-spacing: 0.08em;
+        min-height: 38px;
+        padding: 7px 12px;
+        background: #1b1f28;
+        border: 1px solid rgba(255,255,255,.14);
+        border-radius: 12px;
+        color: #a5adba;
+        font-size: 0.72rem;
+        font-weight: 680;
         cursor: pointer;
         transition: all 0.15s ease;
-        backdrop-filter: blur(4px);
+        box-shadow: var(--shadow-sm);
     }
 
     .filter-btn.active {
-        color: #ddeeff;
+        color: #f4f7fb;
         border-color: rgba(136, 170, 255, 0.5);
-        background: rgba(8, 12, 18, 0.95);
+        background: #10141c;
     }
 
     .filter-btn:hover {
         border-color: rgba(136, 170, 255, 0.6);
-        background: rgba(15, 25, 40, 0.95);
+        background: #111d2c;
     }
 
     .filter-dot {
@@ -1111,13 +1197,16 @@
     }
 
     :global(.maplibregl-ctrl-group) {
-        background: rgba(0, 0, 0, 0.7) !important;
-        border: 1px solid #1a3a2a !important;
+        background: #1b1f28 !important;
+        border: 1px solid rgba(255,255,255,.14) !important;
+        border-radius: 13px !important;
+        overflow: hidden;
+        box-shadow: var(--shadow-sm) !important;
     }
 
     :global(.maplibregl-ctrl-group button) {
         background: transparent !important;
-        border-bottom: 1px solid #1a3a2a !important;
+        border-bottom: 1px solid rgba(255,255,255,.1) !important;
     }
 
     :global(.maplibregl-ctrl-group button:last-child) {
@@ -1140,13 +1229,14 @@
 
     /* Incident Log Styles */
     .incident-log {
-        background: #080a0e;
+        background: var(--bg-surface);
         border: 1px solid var(--border-color);
-        border-radius: 4px;
+        border-radius: var(--radius-xl);
         display: flex;
         flex-direction: column;
         height: 100%;
         overflow: hidden;
+        box-shadow: var(--shadow-md);
     }
 
     @media (max-width: 1023px) {
@@ -1169,9 +1259,9 @@
     }
 
     .log-header {
-        padding: 12px 16px;
-        background: rgba(15, 20, 28, 0.9);
-        border-bottom: 1px solid rgba(136, 170, 255, 0.15);
+        padding: 16px 18px;
+        background: var(--bg-surface-elevated);
+        border-bottom: 1px solid var(--border-color);
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -1179,19 +1269,18 @@
 
     .log-header h3 {
         margin: 0;
-        font-family: "Share Tech Mono", monospace;
-        font-size: 0.85rem;
-        color: #88aaff;
-        letter-spacing: 0.1em;
+        font-size: 0.87rem;
+        color: var(--text-main);
+        letter-spacing: -0.01em;
     }
 
     .log-list {
         flex: 1;
         overflow-y: auto;
-        padding: 6px;
+        padding: 8px;
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        gap: 6px;
     }
 
     .log-list::-webkit-scrollbar {
@@ -1208,25 +1297,28 @@
     }
 
     .log-item {
-        background: rgba(15, 22, 32, 0.6);
-        border: 1px solid rgba(136, 170, 255, 0.1);
-        border-radius: 3px;
-        padding: 6px 10px;
+        width: 100%;
+        color: inherit;
+        text-align: left;
+        background: var(--bg-surface-elevated);
+        border: 1px solid var(--border-color);
+        border-radius: 14px;
+        padding: 9px 11px;
         cursor: pointer;
         transition: all 0.2s ease;
         position: relative;
     }
 
     .log-item:hover {
-        background: rgba(22, 35, 55, 0.8);
+        background: var(--primary-lightest);
         border-color: rgba(136, 170, 255, 0.4);
         transform: translateX(4px);
     }
 
     .log-item.selected {
-        background: rgba(25, 45, 80, 0.9);
+        background: var(--primary-lightest);
         border-color: rgba(136, 170, 255, 0.8);
-        box-shadow: 0 0 15px rgba(51, 102, 255, 0.15);
+        box-shadow: 0 8px 22px rgba(20,30,50,.12);
         border-left: 3px solid #88aaff;
     }
 
@@ -1242,7 +1334,6 @@
         display: flex;
         justify-content: space-between;
         margin-bottom: 4px;
-        font-family: "Share Tech Mono", monospace;
         font-size: 0.7rem;
     }
 
@@ -1256,7 +1347,7 @@
 
     .log-desc {
         font-size: 0.75rem;
-        color: #ddeeff;
+        color: var(--text-main);
         margin-bottom: 2px;
         white-space: nowrap;
         overflow: hidden;
@@ -1265,7 +1356,7 @@
 
     .log-loc {
         font-size: 0.65rem;
-        color: #6688aa;
+        color: var(--text-muted);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -1275,8 +1366,13 @@
         text-align: center;
         padding: 2rem 0;
         color: #445566;
-        font-family: "Share Tech Mono", monospace;
         font-size: 0.8rem;
         letter-spacing: 0.1em;
+    }
+
+    @media (max-width: 640px) {
+        .map-layout { height: 68vh; min-height: 430px; }
+        .map-container { min-height: 430px; border-radius: 22px; }
+        .filter-btn { padding: 7px 10px; font-size: .66rem; }
     }
 </style>

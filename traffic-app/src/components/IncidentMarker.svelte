@@ -349,14 +349,13 @@
         width: 280px;
         max-height: 300px;
         overflow-y: auto;
-        background: rgba(8, 12, 18, 0.95);
+        background: #080c12;
         border: 1px solid rgba(136, 170, 255, 0.3);
         border-radius: 6px;
         padding: 10px;
         box-shadow:
             0 4px 12px rgba(0, 0, 0, 0.5),
             0 0 0 1px rgba(136, 170, 255, 0.1);
-        backdrop-filter: blur(4px);
         pointer-events: none; /* Let mouse remain on dot */
         color: #e0e0e0;
         font-family: "Share Tech Mono", monospace, ui-monospace, SFMono-Regular;

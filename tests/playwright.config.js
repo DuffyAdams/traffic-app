@@ -1,4 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const testsDir = path.dirname(fileURLToPath(import.meta.url));
+const appDir = path.resolve(testsDir, "../traffic-app");
 
 const useLiveBackend = process.env.PLAYWRIGHT_USE_LIVE_BACKEND === "1";
 const skipWebServer =
@@ -16,14 +21,14 @@ const webServer = skipWebServer
   : [
       {
         command: "node ./support/mock-api-server.mjs",
-        cwd: "/workspaces/traffic-app/tests",
+        cwd: testsDir,
         url: `${apiBaseURL}/health`,
         reuseExistingServer,
         timeout: 30_000,
       },
       {
         command: "npm run dev -- --host 127.0.0.1 --port 4173",
-        cwd: "/workspaces/traffic-app/traffic-app",
+        cwd: appDir,
         env: {
           ...process.env,
           VITE_PROD_URL: apiBaseURL,

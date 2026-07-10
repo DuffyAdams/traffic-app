@@ -42,10 +42,7 @@
                                           event.location,
                                           40,
                                       ).toUpperCase()
-                                    : "UNKNOWN"} :: {formatText(
-                                    event.description,
-                                    80,
-                                ).toUpperCase()}
+                                    : "LOCATION PENDING"}
                             </span>
                         </div>
                     {/each}
@@ -71,10 +68,7 @@
                                           event.location,
                                           40,
                                       ).toUpperCase()
-                                    : "UNKNOWN"} :: {formatText(
-                                    event.description,
-                                    80,
-                                ).toUpperCase()}
+                                    : "LOCATION PENDING"}
                             </span>
                         </div>
                     {/each}
@@ -88,19 +82,18 @@
     .ticker-wrapper {
         display: flex;
         align-items: center;
-        background: var(--bg-surface-elevated, #111824);
-        border: 1px solid var(--accent-primary, #4299e1);
-        border-radius: 4px;
-        margin-bottom: 0.5rem;
+        background: var(--bg-surface);
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+        margin-bottom: 0.8rem;
         overflow: hidden;
-        height: 36px;
-        box-shadow: inset 0 0 0 1px rgba(51, 102, 255, 0.2);
-        font-family: var(--font-mono, monospace);
+        height: 40px;
+        box-shadow: var(--shadow-sm);
     }
 
     .ticker-label {
-        background: var(--accent-primary, #4299e1);
-        color: var(--bg-base, #000);
+        background: var(--primary-lightest);
+        color: var(--accent-primary);
         padding: 0 1rem;
         height: 100%;
         display: flex;
@@ -108,17 +101,17 @@
         gap: 0.5rem;
         font-weight: bold;
         font-size: 0.8rem;
-        letter-spacing: 0.1em;
+        letter-spacing: 0.06em;
         white-space: nowrap;
         z-index: 2;
         position: relative;
-        box-shadow: 2px 0 5px rgba(0, 0, 0, 0.5);
+        border-right: 1px solid var(--border-color);
     }
 
     .blinking-dot {
         width: 6px;
         height: 6px;
-        background-color: var(--bg-base, #000);
+        background-color: var(--accent-primary);
         border-radius: 50%;
         animation: blink 1s infinite alternate;
     }
@@ -176,7 +169,7 @@
         align-items: center;
         gap: 0.75rem;
         font-size: 0.8rem;
-        letter-spacing: 0.05em;
+        letter-spacing: 0;
         white-space: nowrap;
         flex-shrink: 0;
     }
@@ -188,7 +181,7 @@
     .sig-alert {
         background: rgba(255, 51, 51, 0.15);
         padding: 0.15rem 0.6rem;
-        border-radius: 4px;
+        border-radius: 999px;
         border: 1px solid rgba(255, 51, 51, 0.3);
     }
 
@@ -197,7 +190,7 @@
     .sig-alert .ticker-desc {
         color: #ff4d4d !important;
         font-weight: 900 !important;
-        text-shadow: 0 0 8px rgba(255, 77, 77, 0.5);
+        text-shadow: none;
     }
 
     .ticker-type {

@@ -1,32 +1,20 @@
 <script context="module">
     import "maplibre-gl/dist/maplibre-gl.css";
+    import {
+        loadMapLibraries as loadSharedMapLibraries,
+        PMTILES_URL,
+    } from "../utils/mapRuntime.js";
 
-    const MAX_ACTIVE_MINI_MAPS = 8;
+    // Keep comfortably below common mobile WebGL context limits. The full map,
+    // charts, and browser UI may all need GPU resources at the same time.
+    const MAX_ACTIVE_MINI_MAPS = 4;
     let activeMiniMaps = [];
-    let protocolRegistered = false;
-    let mapLibPromise = null;
     let maplibregl = null;
-    let pmtiles = null;
 
     async function loadMapLibraries() {
-        if (!mapLibPromise) {
-            mapLibPromise = Promise.all([import("maplibre-gl"), import("pmtiles")]).then(
-                ([maplibreModule, pmtilesModule]) => {
-                    maplibregl = maplibreModule.default;
-                    pmtiles = pmtilesModule;
-                    return { maplibregl, pmtiles };
-                },
-            );
-        }
-
-        return mapLibPromise;
-    }
-
-    function ensureProtocol() {
-        if (protocolRegistered) return;
-        const protocol = new pmtiles.Protocol();
-        maplibregl.addProtocol("pmtiles", protocol.tile);
-        protocolRegistered = true;
+        const libraries = await loadSharedMapLibraries();
+        maplibregl = libraries.maplibregl;
+        return libraries;
     }
 
     function claimMiniMapSlot(instance) {
@@ -59,7 +47,6 @@
     export let active = false;
     export let deferActivation = false;
 
-    const PMTILES_URL = "/map_tiles/sandiego.pmtiles";
     const MINI_MAP_ZOOM = 14.35;
     const MINI_MAP_PITCH = 58;
     const MINI_MAP_BEARING = -22;
@@ -276,7 +263,6 @@
         mapReady = false;
 
         try {
-            ensureProtocol();
             map = new maplibregl.Map({
                 container: mapContainer,
                 style: getStyle(),
@@ -287,6 +273,9 @@
                 interactive: false,
                 attributionControl: false,
                 fadeDuration: 0,
+                pixelRatio: Math.min(window.devicePixelRatio || 1, 1.25),
+                maxTileCacheSize: 12,
+                maxTileCacheZoomLevels: 1,
             });
         } catch (error) {
             console.warn("IncidentMiniMap: failed to create map", error);

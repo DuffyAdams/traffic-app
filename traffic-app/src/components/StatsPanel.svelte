@@ -431,78 +431,81 @@
     .event-counters {
         display: flex;
         flex-direction: column;
-        gap: 1.25rem;
-        margin-bottom: 1.5rem;
-        padding: 1.5rem;
-        background: var(--bg-surface-elevated);
+        gap: 0.8rem;
+        margin-bottom: 1rem;
+        padding: 0.9rem;
+        background: var(--bg-surface);
         border: 1px solid var(--border-color);
-        border-radius: 6px;
+        border-top: 0;
+        border-radius: 0 0 var(--radius-xl) var(--radius-xl);
         color: var(--text-main);
         overflow: visible;
+        box-shadow: var(--shadow-md);
     }
 
     .top-row {
         display: flex;
-        gap: 1.25rem;
+        gap: 0.8rem;
         align-items: stretch;
     }
 
     .stats-grid {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 0.75rem;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.55rem;
         flex: 1;
     }
 
     .stat-card {
-        background: var(--bg-surface);
+        background: var(--bg-surface-elevated);
         border: 1px solid var(--border-color);
-        border-radius: 6px;
-        text-align: center;
-        padding: 0.75rem;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
+        border-radius: 15px;
+        text-align: left;
+        padding: 0.6rem 0.7rem;
+        display: grid;
+        grid-template-columns: 28px minmax(0, 1fr);
+        grid-template-rows: auto auto;
+        column-gap: 0.55rem;
+        align-content: center;
         align-items: center;
-        min-height: 70px;
-        transition: all 0.15s ease;
-    }
-
-    :global(body.dark-mode) .stat-card {
-        background: rgba(0, 0, 0, 0.5);
-        border: 1px solid var(--border-color);
+        min-height: 56px;
+        transition: transform .3s var(--ease-out), border-color .2s, background .2s;
     }
 
     .stat-card:hover {
-        border-color: var(--accent-primary);
-        background: rgba(51, 102, 255, 0.05);
+        border-color: color-mix(in srgb, var(--accent-primary) 35%, var(--border-color));
+        background: var(--primary-lightest);
+        transform: translateY(-2px);
     }
 
     .stat-icon {
-        font-size: 1.5rem;
-        margin-bottom: 0.5rem;
+        grid-row: 1 / 3;
+        color: var(--accent-primary);
         filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
     }
 
-    .stat-value {
-        font-size: 2rem;
-        font-family: var(--font-pixel);
-        font-weight: normal;
-        color: #fff;
-        text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.3);
+    .stat-icon :global(svg) {
+        width: 20px;
+        height: 20px;
     }
 
-    :global(body.dark-mode) .stat-value {
-        color: #fff;
+    .stat-value {
+        font-size: 1.45rem;
+        font-weight: 760;
+        letter-spacing: -.04em;
+        line-height: 1;
+        color: var(--text-main);
     }
 
     .stat-label {
         font-size: 0.75rem;
         font-weight: 500;
         opacity: 0.7;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin-top: 0.25rem;
+        letter-spacing: -0.01em;
+        line-height: 1.1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     .time-period-section {
@@ -510,50 +513,38 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        padding: 0.75rem 1rem;
-        background: var(--bg-surface);
+        padding: 0.55rem 0.65rem;
+        background: var(--bg-surface-elevated);
         border: 1px solid var(--border-color);
-        border-radius: 6px;
-        min-width: 180px;
-        gap: 0.5rem;
-    }
-
-    :global(body.dark-mode) .time-period-section {
-        background: rgba(0, 0, 0, 0.5);
-        border: 1px solid var(--border-color);
+        border-radius: 15px;
+        min-width: 270px;
+        gap: 0.35rem;
     }
 
     .section-label {
-        font-size: 0.8rem;
+        font-size: 0.72rem;
         font-weight: 600;
         opacity: 0.8;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
+        letter-spacing: -0.01em;
     }
 
     .time-buttons {
         display: flex;
-        gap: 0.4rem;
+        gap: 0.25rem;
         background: var(--bg-surface-elevated);
-        padding: 0.3rem;
-        border-radius: 6px;
-        border: 1px solid var(--border-color);
-    }
-
-    :global(body.dark-mode) .time-buttons {
-        background: rgba(0, 0, 0, 0.5);
+        padding: 0.2rem;
+        border-radius: 11px;
         border: 1px solid var(--border-color);
     }
 
     .time-button {
-        padding: 0.4rem 0.8rem;
+        padding: 0.35rem 0.65rem;
         background: transparent;
         border: 1px solid transparent;
-        border-radius: 4px;
+        border-radius: 8px;
         color: var(--text-muted);
-        font-size: 0.8rem;
-        font-family: var(--font-mono);
-        text-transform: uppercase;
+        font-size: 0.75rem;
+        font-weight: 650;
         cursor: pointer;
         transition: all 0.15s ease;
     }
@@ -575,56 +566,43 @@
     }
 
     .time-button.active {
-        background: rgba(51, 102, 255, 0.15);
-        color: #fff;
-        border-color: var(--accent-primary);
-    }
-
-    :global(body.dark-mode) .time-button.active {
-        background: rgba(51, 102, 255, 0.15);
-        color: #fff;
-        border-color: var(--accent-primary);
+        background: var(--primary-lightest);
+        color: var(--accent-primary);
+        border-color: color-mix(in srgb, var(--accent-primary) 38%, var(--border-color));
     }
 
     .activity-chart-section {
-        padding: 1rem 1.25rem;
+        padding: 0.75rem 0.9rem;
         background: var(--bg-surface);
         border: 1px solid var(--border-color);
-        border-radius: 6px;
+        border-radius: 16px;
         display: flex;
         flex-direction: column;
-        gap: 0.75rem;
-    }
-
-    :global(body.dark-mode) .activity-chart-section {
-        background: rgba(0, 0, 0, 0.5);
-        border: 1px solid var(--border-color);
+        gap: 0.5rem;
     }
 
     .activity-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        border-bottom: 1px dashed var(--border-color);
-        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--border-color);
+        padding-bottom: 0.4rem;
     }
 
     .section-title {
-        font-size: 1.1rem;
-        font-weight: normal;
-        font-family: var(--font-pixel);
-        color: var(--accent-primary);
+        font-size: 0.95rem;
+        font-weight: 720;
+        color: var(--text-main);
     }
 
     .status-indicator {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
-        background: rgba(10, 17, 34, 0.4);
+        gap: 0.35rem;
+        background: var(--bg-surface-elevated);
         border: 1px solid var(--border-color);
-        padding: 0.3rem 0.6rem;
-        border-radius: 6px;
-        box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+        padding: 0.25rem 0.5rem;
+        border-radius: 999px;
     }
 
     .status-dot {
@@ -636,8 +614,7 @@
     }
 
     .status-text {
-        font-family: var(--font-mono);
-        font-size: 0.75rem;
+        font-size: 0.68rem;
         font-weight: bold;
         letter-spacing: 0.05em;
         text-transform: uppercase;
@@ -648,11 +625,10 @@
         color: white;
         display: inline-flex;
         align-items: center;
-        font-family: var(--font-mono);
         font-weight: bold;
         font-size: 0.7rem;
         padding: 0.15rem 0.4rem;
-        border-radius: 4px;
+        border-radius: 999px;
         letter-spacing: 0.05em;
         box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
         animation: subtlePulseBadge 1.5s infinite alternate;
@@ -672,9 +648,9 @@
     .custom-chart-container {
         position: relative;
         width: 100%;
-        height: 140px;
-        margin-top: 5px;
-        margin-bottom: 30px;
+        height: 105px;
+        margin-top: 2px;
+        margin-bottom: 22px;
         display: flex;
         align-items: flex-end;
     }
@@ -711,7 +687,7 @@
     .bar {
         width: 100%;
         background-color: var(--accent-primary);
-        border-radius: 4px 4px 0 0;
+        border-radius: 6px 6px 2px 2px;
         transition:
             height 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275),
             background-color 0.3s;
@@ -731,57 +707,64 @@
             rgba(239, 68, 68, 0.4) 100%
         );
         background-color: #ef4444; /* fallback */
+        box-shadow:
+            0 -4px 12px rgba(239, 68, 68, 0.16),
+            0 0 7px rgba(239, 68, 68, 0.12);
         z-index: 2;
     }
 
     .spike-glow {
         position: absolute;
-        top: -4px;
-        left: 0;
-        right: 0;
+        top: -7px;
+        left: -3px;
+        right: -3px;
         bottom: 0;
         background: linear-gradient(
             180deg,
-            rgba(239, 68, 68, 0.8) 0%,
-            transparent 100%
+            rgba(239, 68, 68, 0.3) 0%,
+            rgba(239, 68, 68, 0.08) 48%,
+            transparent 82%
         );
-        filter: blur(4px);
+        border-radius: 10px 10px 4px 4px;
+        filter: blur(7px);
         pointer-events: none;
-        animation: glowPulse 2s infinite alternate;
+        animation: glowPulse 2.8s ease-in-out infinite alternate;
     }
 
     .spike-halo {
         position: absolute;
-        top: -15px;
-        left: -50%;
-        right: -50%;
-        height: 30px;
+        top: -19px;
+        left: -85%;
+        right: -85%;
+        height: 34px;
         background: radial-gradient(
-            circle,
-            rgba(239, 68, 68, 0.4) 0%,
-            transparent 70%
+            ellipse at center,
+            rgba(239, 68, 68, 0.16) 0%,
+            rgba(239, 68, 68, 0.05) 42%,
+            transparent 72%
         );
+        filter: blur(5px);
         pointer-events: none;
-        animation: haloPulse 2s infinite alternate;
+        animation: haloPulse 2.8s ease-in-out infinite alternate;
     }
 
     @keyframes glowPulse {
         0% {
-            opacity: 0.6;
+            opacity: 0.32;
         }
         100% {
-            opacity: 1;
+            opacity: 0.58;
         }
     }
 
     @keyframes haloPulse {
         0% {
-            transform: scale(0.8);
-            opacity: 0.4;
+            transform: scale(0.94);
+            opacity: 0.28;
         }
         100% {
-            transform: scale(1.1);
-            opacity: 0.8;
+            transform: scale(1.04);
+            opacity: 0.48;
         }
     }
 
@@ -792,11 +775,11 @@
         align-items: center;
         justify-content: center;
         position: absolute;
-        bottom: -25px;
+        bottom: -21px;
     }
 
     .x-label {
-        font-size: 0.65rem;
+        font-size: 0.6rem;
         color: rgba(140, 155, 186, 0.8);
         font-family: var(--font-mono);
         white-space: nowrap;
@@ -809,10 +792,10 @@
         left: 50%;
         transform: translateX(-50%);
         margin-bottom: 8px;
-        background: rgba(10, 17, 34, 0.95);
+        background: var(--bg-surface-elevated);
         border: 1px solid rgba(51, 102, 255, 0.3);
         padding: 6px 10px;
-        border-radius: 4px;
+        border-radius: 12px;
         z-index: 10;
         pointer-events: none;
         white-space: nowrap;
@@ -829,7 +812,7 @@
     .tooltip-value {
         font-family: var(--font-mono);
         font-size: 0.8rem;
-        color: #f8fafc;
+        color: var(--text-main);
         font-weight: bold;
     }
 
@@ -845,43 +828,39 @@
     .incident-breakdown-grid {
         display: grid;
         grid-template-columns: repeat(2, 1fr);
-        gap: 1rem;
+        gap: 0.65rem;
     }
 
     .breakdown-card {
         background: var(--bg-surface);
         border: 1px solid var(--border-color);
-        border-radius: 2px;
-        padding: 1rem;
-    }
-
-    :global(body.dark-mode) .breakdown-card {
-        background: rgba(0, 0, 0, 0.5);
-        border: 1px solid var(--border-color);
+        border-radius: 16px;
+        padding: 0.7rem;
+        min-width: 0;
     }
 
     .breakdown-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 0.6rem;
-        margin-bottom: 0.75rem;
-        padding-bottom: 0.6rem;
+        gap: 0.45rem;
+        margin-bottom: 0.45rem;
+        padding-bottom: 0.4rem;
         border-bottom: 1px solid var(--border-color);
     }
 
     .breakdown-title-section {
         display: flex;
         align-items: center;
-        gap: 0.6rem;
+        gap: 0.4rem;
     }
 
     .reset-button {
         background: var(--bg-surface-elevated);
         border: 1px solid var(--border-color);
         color: var(--text-muted);
-        border-radius: 4px;
-        padding: 4px;
+        border-radius: 8px;
+        padding: 5px;
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -896,17 +875,17 @@
     }
 
     .breakdown-icon {
-        font-size: 1.2rem;
+        font-size: 1rem;
         z-index: 2;
-        width: 24px;
-        height: 24px;
+        width: 20px;
+        height: 20px;
         display: flex;
         align-items: center;
         justify-content: center;
     }
 
     .breakdown-title {
-        font-size: 0.9rem;
+        font-size: 0.82rem;
         font-weight: 700;
         letter-spacing: -0.01em;
     }
@@ -914,8 +893,8 @@
     .breakdown-list {
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
-        max-height: 300px;
+        gap: 0.35rem;
+        max-height: 184px;
         overflow-y: auto;
         padding-right: 0.25rem;
         scrollbar-width: none; /* Firefox */
@@ -929,17 +908,17 @@
         display: flex;
         align-items: center;
         position: relative;
-        padding: 0.6rem 0.75rem;
+        padding: 0.4rem 0.55rem;
         background: var(--hover-bg);
         border: none;
-        border-radius: 2px;
+        border-radius: 10px;
         cursor: pointer;
         transition: all 0.2s ease;
-        min-height: 40px;
+        min-height: 34px;
         overflow: hidden;
         color: var(--text-color);
         text-align: left;
-        gap: 0.75rem;
+        gap: 0.5rem;
     }
 
     :global(body.dark-mode) .breakdown-item {
@@ -970,9 +949,9 @@
         position: absolute;
         left: 0;
         bottom: 0;
-        height: 4px;
+        height: 3px;
         background: var(--accent-primary);
-        border-radius: 0;
+        border-radius: 0 999px 999px 0;
         z-index: 0;
         transition: width 0.5s ease;
     }
@@ -991,6 +970,7 @@
     }
 
     .breakdown-name {
+        font-size: 0.82rem;
         font-weight: 500;
         color: var(--text-darker);
         white-space: nowrap;
@@ -1003,9 +983,9 @@
         font-weight: 600;
         color: var(--text-muted);
         background: rgba(0, 0, 0, 0.05); /* subtle pill background */
-        padding: 0.1rem 0.5rem;
-        border-radius: 2px;
-        font-size: 0.8rem;
+        padding: 0.08rem 0.4rem;
+        border-radius: 999px;
+        font-size: 0.72rem;
         z-index: 2;
     }
 
@@ -1013,28 +993,55 @@
         background: rgba(255, 255, 255, 0.15);
     }
 
+    @media (min-width: 1120px) {
+        .event-counters {
+            display: grid;
+            grid-template-columns: minmax(0, 1.45fr) minmax(520px, 1fr);
+            grid-template-areas:
+                "summary summary"
+                "activity breakdown";
+            align-items: stretch;
+        }
+
+        .top-row {
+            grid-area: summary;
+        }
+
+        .activity-chart-section {
+            grid-area: activity;
+        }
+
+        .incident-breakdown-grid {
+            grid-area: breakdown;
+        }
+    }
+
     @media (max-width: 768px) {
         .top-row {
             flex-direction: column;
-            gap: 0.75rem;
+            gap: 0.55rem;
         }
         .stats-grid {
-            grid-template-columns: repeat(2, 1fr);
-            gap: 0.5rem;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 0.4rem;
         }
         .stat-card {
-            padding: 0.75rem 0.5rem;
-            min-height: 75px;
+            padding: 0.5rem 0.55rem;
+            grid-template-columns: 22px minmax(0, 1fr);
+            column-gap: 0.35rem;
+            min-height: 52px;
         }
         .event-counters {
-            padding: 1rem;
-            border-radius: 2px;
+            padding: 0.75rem;
+            border-radius: 0 0 16px 16px;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
         }
         .time-period-section {
-            padding: 0.75rem;
+            flex-direction: row;
+            justify-content: space-between;
+            padding: 0.5rem;
             align-items: center;
-            border-radius: 2px;
+            border-radius: 14px;
         }
         .time-buttons {
             display: flex;
@@ -1044,18 +1051,18 @@
             gap: 0.25rem;
         }
         .time-button {
-            padding: 0.45rem 0.7rem;
-            font-size: 0.75rem;
+            padding: 0.35rem 0.6rem;
+            font-size: 0.72rem;
         }
         .incident-breakdown-grid {
             grid-template-columns: 1fr;
         }
         .breakdown-list {
-            max-height: 280px;
+            max-height: 190px;
         }
         .breakdown-item {
-            min-height: 40px;
-            padding: 0.6rem 0.75rem;
+            min-height: 34px;
+            padding: 0.4rem 0.55rem;
         }
         .event-counters {
             overflow: hidden;
@@ -1067,9 +1074,9 @@
 
     @media (max-width: 480px) {
         .event-counters {
-            padding: 1rem;
-            gap: 0.75rem;
-            border-radius: 2px;
+            padding: 0.65rem;
+            gap: 0.6rem;
+            border-radius: 0 0 14px 14px;
             margin-bottom: 0.75rem;
         }
         .stats-grid {
@@ -1077,70 +1084,72 @@
             gap: 0.4rem;
         }
         .stat-card {
-            padding: 0.6rem 0.4rem;
-            min-height: 70px;
-            border-radius: 2px;
+            padding: 0.5rem 0.6rem;
+            min-height: 52px;
+            border-radius: 11px;
         }
         .stat-value {
-            font-size: 1.4rem;
+            font-size: 1.2rem;
         }
         .stat-icon {
-            font-size: 1.2rem;
-            margin-bottom: 0.25rem;
+            font-size: 1rem;
         }
         .stat-label {
-            font-size: 0.65rem;
+            font-size: 0.62rem;
         }
         .time-period-section {
-            padding: 0.6rem;
-            border-radius: 2px;
+            flex-direction: column;
+            padding: 0.5rem;
+            border-radius: 12px;
         }
         .section-label {
             font-size: 0.7rem;
         }
         .time-button {
-            padding: 0.4rem 0.75rem;
-            font-size: 0.75rem;
+            flex: 1 1 0;
+            min-width: 0;
+            padding: 0.35rem 0.25rem;
+            font-size: 0.68rem;
+        }
+        .time-buttons {
+            flex-wrap: nowrap;
+            width: 100%;
         }
         .activity-chart-section {
-            padding: 0.75rem;
-            border-radius: 2px;
+            padding: 0.65rem;
+            border-radius: 12px;
         }
         .section-title {
             font-size: 0.9rem;
         }
         .breakdown-card {
-            padding: 0.75rem;
-            border-radius: 2px;
+            padding: 0.65rem;
+            border-radius: 12px;
             overflow: hidden;
         }
         .breakdown-list {
-            max-height: 260px;
+            max-height: 180px;
         }
         .breakdown-item {
-            padding: 0.55rem 0.7rem;
-            min-height: 38px;
-        }
-        .time-button {
-            flex: 1 1 calc(50% - 0.125rem);
-            min-width: 0;
+            padding: 0.4rem 0.5rem;
+            min-height: 34px;
         }
 
         @media (max-width: 360px) {
             .event-counters {
-                padding: 0.75rem;
+                padding: 0.55rem;
                 gap: 0.5rem;
-                border-radius: 2px;
+                border-radius: 0 0 12px 12px;
             }
             .stats-grid {
                 gap: 0.3rem;
             }
             .stat-card {
-                padding: 0.5rem 0.3rem;
-                min-height: 65px;
+                padding: 0.45rem 0.5rem;
+                min-height: 48px;
             }
             .stat-value {
-                font-size: 1.25rem;
+                font-size: 1.1rem;
             }
             .stat-icon {
                 font-size: 1rem;
@@ -1153,11 +1162,11 @@
                 font-size: 0.7rem;
             }
             .breakdown-list {
-                max-height: 240px;
+                max-height: 165px;
             }
             .breakdown-item {
-                padding: 0.5rem 0.65rem;
-                min-height: 36px;
+                padding: 0.35rem 0.45rem;
+                min-height: 32px;
             }
             .breakdown-name {
                 font-size: 0.85rem;

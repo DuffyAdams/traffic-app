@@ -1,5 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const reporterDir = path.dirname(fileURLToPath(import.meta.url));
 
 function normalizeError(result) {
   if (!result?.error) {
@@ -37,7 +40,7 @@ class DefectReporter {
   }
 
   onEnd(result) {
-    const outDir = path.resolve("/workspaces/traffic-app/tests/artifacts/defects");
+    const outDir = path.resolve(reporterDir, "../artifacts/defects");
     fs.mkdirSync(outDir, { recursive: true });
 
     const payload = {
