@@ -74,6 +74,38 @@ class IncidentUpdateTests(unittest.TestCase):
             ),
         )
 
+    def test_init_db_preserves_existing_caltrans_notification_incidents(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = os.path.join(temp_dir, "traffic-test.db")
+            with patch.object(db, "DB_FILE", db_path):
+                db.init_db()
+                with closing(sqlite3.connect(db_path)) as conn:
+                    conn.execute(
+                        """
+                        INSERT INTO incidents (
+                            incident_no, date, timestamp, type, source
+                        ) VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (
+                            "CALTRANS-1",
+                            "2026-07-17",
+                            "2026-07-17 12:00:00",
+                            "Request CalTrans Notify",
+                            "CHP",
+                        ),
+                    )
+                    conn.commit()
+
+                db.init_db()
+
+            with closing(sqlite3.connect(db_path)) as conn:
+                preserved_count = conn.execute(
+                    "SELECT COUNT(*) FROM incidents WHERE incident_no = ?",
+                    ("CALTRANS-1",),
+                ).fetchone()[0]
+
+        self.assertEqual(preserved_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

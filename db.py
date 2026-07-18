@@ -154,8 +154,6 @@ def _normalise_types(cur):
     for condition, new_type in mappings:
         cur.execute(f"UPDATE incidents SET type = ? WHERE {condition}", (new_type,))
 
-    cur.execute("DELETE FROM incidents WHERE type = 'Request CalTrans Notify'")
-
 
 # ---------------------------------------------------------------------------
 # Read
