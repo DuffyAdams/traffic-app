@@ -9,6 +9,7 @@ copying the .db file directly.
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 import sys
@@ -30,7 +31,9 @@ def main() -> int:
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M%S_UTC")
     backup_path = BACKUP_DIR / f"traffic_data_{timestamp}.db"
 
-    with sqlite3.connect(DB_FILE) as source, sqlite3.connect(backup_path) as target:
+    with closing(sqlite3.connect(DB_FILE)) as source, closing(
+        sqlite3.connect(backup_path)
+    ) as target:
         source.backup(target)
 
     print(f"Created backup: {backup_path}")

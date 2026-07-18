@@ -11,21 +11,28 @@ import sqlite3
 import threading
 import time
 import uuid
-from datetime import datetime, timedelta
 from threading import Lock
 
 import requests
-from dateutil.relativedelta import relativedelta
 from flask import abort, jsonify, request, send_from_directory
 
 from config import (
     app, DB_FILE, TARGET_DIR, COOKIE_NAME, COOKIE_MAX_AGE, COOKIE_SECURE, db_lock,
     API_READ_RATE_LIMIT, API_WRITE_RATE_LIMIT, TRUST_PROXY_HEADERS,
-    HTTP_TIMEOUT_SECONDS, now_pst, pst_timestamp_str,
+    HTTP_TIMEOUT_SECONDS, env_number, now_pst, pst_timestamp_str,
 )
+from api_support import BoundedTTLCache, KeyedLockPool, RateLimiter
 from db import read_incidents, with_user_like_state
 from logger import safe_print
 from runtime_metrics import get_runtime_metrics, record_api_request
+from sqlite_utils import sqlite_connection
+from traffic_stats import (
+    build_incident_stats_payload as _build_incident_stats_payload,
+    date_clause as _date_clause,
+    range_key as _range_key,
+    range_label as _range_label,
+    timestamp_clause as _timestamp_clause,
+)
 
 
 MAX_INCIDENT_LIMIT = 150
@@ -35,24 +42,48 @@ MAX_COMMENT_LENGTH = 500
 MAX_USERNAME_LENGTH = 40
 READ_CACHE_TTL = 20
 STATS_CACHE_TTL = 45
-STATIC_ASSET_MAX_AGE_SECONDS = int(os.environ.get("STATIC_ASSET_MAX_AGE_SECONDS", str(60 * 60 * 24 * 30)))
-API_EVENT_BATCH_SIZE = int(os.environ.get("API_EVENT_BATCH_SIZE", "50"))
-API_EVENT_FLUSH_SECONDS = float(os.environ.get("API_EVENT_FLUSH_SECONDS", "1.0"))
-API_EVENT_QUEUE_SIZE = int(os.environ.get("API_EVENT_QUEUE_SIZE", "10000"))
-STATS_TYPE_BREAKDOWN_LIMIT = int(os.environ.get("STATS_TYPE_BREAKDOWN_LIMIT", "40"))
+STATIC_ASSET_MAX_AGE_SECONDS = env_number(
+    "STATIC_ASSET_MAX_AGE_SECONDS", 60 * 60 * 24 * 30, int, minimum=0
+)
+API_EVENT_BATCH_SIZE = env_number("API_EVENT_BATCH_SIZE", 50, int, minimum=1)
+API_EVENT_FLUSH_SECONDS = env_number(
+    "API_EVENT_FLUSH_SECONDS", 1.0, float, minimum=0.1
+)
+API_EVENT_QUEUE_SIZE = env_number("API_EVENT_QUEUE_SIZE", 10_000, int, minimum=1)
+STATS_TYPE_BREAKDOWN_LIMIT = env_number(
+    "STATS_TYPE_BREAKDOWN_LIMIT", 40, int, minimum=1
+)
 ALLOWED_DATE_FILTERS = {None, "day", "daily", "week", "month", "year"}
 ALLOWED_SOURCES = {"CHP", "SDPD", "SDSO", "SDFD"}
-TRAFFIC_APP_PUBLIC_URL = os.environ.get("TRAFFIC_APP_PUBLIC_URL", "https://traffic-app.duffyadams.com")
-METRICS_PUBLIC_URL = os.environ.get("METRICS_PUBLIC_URL", "https://metrics.duffyadams.com")
+TRAFFIC_APP_PUBLIC_URL = os.environ.get(
+    "TRAFFIC_APP_PUBLIC_URL", "https://traffic-app.duffyadams.com"
+)
+METRICS_PUBLIC_URL = os.environ.get(
+    "METRICS_PUBLIC_URL", "https://metrics.duffyadams.com"
+)
 TRAFFIC_APP_PUBLIC_HOST = TRAFFIC_APP_PUBLIC_URL.split("://", 1)[-1].split("/", 1)[0]
 METRICS_PUBLIC_HOST = METRICS_PUBLIC_URL.split("://", 1)[-1].split("/", 1)[0]
-RESPONSE_CACHE_MAX_ENTRIES = int(os.environ.get("RESPONSE_CACHE_MAX_ENTRIES", "256"))
-RATE_LIMIT_MAX_BUCKETS = int(os.environ.get("RATE_LIMIT_MAX_BUCKETS", "4096"))
-INCIDENT_CACHE_ARGS = {"limit", "cursor", "type", "location", "source", "active_only", "date_filter"}
+RESPONSE_CACHE_MAX_ENTRIES = env_number(
+    "RESPONSE_CACHE_MAX_ENTRIES", 256, int, minimum=1
+)
+RATE_LIMIT_MAX_BUCKETS = env_number(
+    "RATE_LIMIT_MAX_BUCKETS", 4096, int, minimum=1
+)
+INCIDENT_CACHE_ARGS = {
+    "limit",
+    "cursor",
+    "type",
+    "location",
+    "source",
+    "active_only",
+    "date_filter",
+}
 STATS_CACHE_ARGS = {"source", "date_filter"}
 
 TRUSTED_PROXY_NETWORKS = []
-for raw_network in os.environ.get("TRUSTED_PROXY_CIDRS", "127.0.0.0/8,::1/128").split(","):
+for raw_network in os.environ.get(
+    "TRUSTED_PROXY_CIDRS", "127.0.0.0/8,::1/128"
+).split(","):
     raw_network = raw_network.strip()
     if not raw_network:
         continue
@@ -61,23 +92,13 @@ for raw_network in os.environ.get("TRUSTED_PROXY_CIDRS", "127.0.0.0/8,::1/128").
     except ValueError:
         safe_print(f"Ignoring invalid TRUSTED_PROXY_CIDRS entry: {raw_network}")
 
-_response_cache = {}
-_cache_lock = Lock()
-_singleflight_locks = {}
-_singleflight_guard = Lock()
-_rate_limit_hits = {}
-_rate_limit_lock = Lock()
+_response_cache = BoundedTTLCache(RESPONSE_CACHE_MAX_ENTRIES)
+_singleflight_pool = KeyedLockPool()
+_rate_limiter = RateLimiter(RATE_LIMIT_MAX_BUCKETS)
 _api_event_queue = queue.Queue(maxsize=API_EVENT_QUEUE_SIZE)
 _api_event_drop_count = 0
-
-
-def _get_singleflight_lock(key):
-    with _singleflight_guard:
-        lock = _singleflight_locks.get(key)
-        if lock is None:
-            lock = Lock()
-            _singleflight_locks[key] = lock
-        return lock
+_api_event_thread_started = False
+_api_event_thread_lock = Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -155,32 +176,11 @@ def _cache_key(prefix, allowed_args=None, *extra_parts):
 
 
 def _get_cached_response(key):
-    now = time.time()
-    with _cache_lock:
-        cached = _response_cache.get(key)
-        if not cached:
-            return None
-        expires_at, payload = cached
-        if expires_at <= now:
-            _response_cache.pop(key, None)
-            return None
-        return payload
-
-
-def _prune_response_cache(now):
-    expired = [key for key, (expires_at, _) in _response_cache.items() if expires_at <= now]
-    for key in expired:
-        _response_cache.pop(key, None)
-
-    while len(_response_cache) >= RESPONSE_CACHE_MAX_ENTRIES:
-        _response_cache.pop(next(iter(_response_cache)), None)
+    return _response_cache.get(key)
 
 
 def _set_cached_response(key, payload, ttl):
-    now = time.time()
-    with _cache_lock:
-        _prune_response_cache(now)
-        _response_cache[key] = (now + ttl, payload)
+    _response_cache.set(key, payload, ttl)
 
 
 def _api_event_worker():
@@ -202,10 +202,11 @@ def _api_event_worker():
 
         try:
             with db_lock:
-                with sqlite3.connect(DB_FILE, timeout=30) as conn:
+                with sqlite_connection(DB_FILE) as conn:
                     conn.cursor().executemany(
                         """
-                        INSERT INTO api_events (device_uuid, route, request_type, host, client_ip, timestamp)
+                        INSERT INTO api_events
+                            (device_uuid, route, request_type, host, client_ip, timestamp)
                         VALUES (?, ?, ?, ?, ?, ?)
                         """,
                         batch,
@@ -217,7 +218,21 @@ def _api_event_worker():
             batch.clear()
 
 
-threading.Thread(target=_api_event_worker, name="api-event-writer", daemon=True).start()
+def _ensure_api_event_worker():
+    """Start the analytics writer once, on the first event."""
+    global _api_event_thread_started
+
+    if _api_event_thread_started:
+        return
+    with _api_event_thread_lock:
+        if _api_event_thread_started:
+            return
+        threading.Thread(
+            target=_api_event_worker,
+            name="api-event-writer",
+            daemon=True,
+        ).start()
+        _api_event_thread_started = True
 
 
 @app.before_request
@@ -227,32 +242,13 @@ def _track_api_requests():
 
 
 def _clear_response_cache():
-    with _cache_lock:
-        _response_cache.clear()
+    _response_cache.clear()
 
 
 def _validate_incident_id(incident_id):
     if not incident_id or len(incident_id) > 80:
         abort(400, description="Invalid incident id")
     return incident_id
-
-
-def _parse_rate_limit(limit_spec):
-    count_part, _, period_part = limit_spec.partition(" per ")
-    try:
-        max_requests = int(count_part.strip())
-    except ValueError:
-        max_requests = 60
-
-    period = period_part.strip().lower()
-    if period.startswith("hour"):
-        window_seconds = 3600
-    elif period.startswith("second"):
-        window_seconds = 1
-    else:
-        window_seconds = 60
-
-    return max_requests, window_seconds
 
 
 def _is_trusted_proxy(remote_addr):
@@ -276,77 +272,9 @@ def _client_ip():
     return request.remote_addr or "unknown"
 
 
-def _prune_rate_limit_buckets(now):
-    stale_keys = [
-        key for key, hits in _rate_limit_hits.items()
-        if not hits or now - max(hits) >= 3600
-    ]
-    for key in stale_keys:
-        _rate_limit_hits.pop(key, None)
-
-    while len(_rate_limit_hits) > RATE_LIMIT_MAX_BUCKETS:
-        _rate_limit_hits.pop(next(iter(_rate_limit_hits)), None)
-
-
 def _enforce_rate_limit(bucket, limit_spec):
-    max_requests, window_seconds = _parse_rate_limit(limit_spec)
-    now = time.time()
-    key = (_client_ip(), bucket)
-
-    with _rate_limit_lock:
-        window = [
-            hit_at
-            for hit_at in _rate_limit_hits.get(key, [])
-            if now - hit_at < window_seconds
-        ]
-        if len(window) >= max_requests:
-            abort(429, description="Too many requests")
-        window.append(now)
-        _rate_limit_hits[key] = window
-        if len(_rate_limit_hits) > RATE_LIMIT_MAX_BUCKETS:
-            _prune_rate_limit_buckets(now)
-
-
-def _range_key(date_filter):
-    return date_filter or "day"
-
-
-def _range_label(date_filter):
-    labels = {
-        "day": "Today",
-        "daily": "Today",
-        "week": "Last 7 days",
-        "month": "Last 30 days",
-        "year": "Last 12 months",
-        None: "Today",
-    }
-    return labels.get(date_filter, "Today")
-
-
-def _range_start(now, date_filter):
-    selected = _range_key(date_filter)
-    if selected == "day":
-        return now.replace(hour=0, minute=0, second=0, microsecond=0)
-    if selected == "week":
-        return now - timedelta(days=7)
-    if selected == "month":
-        return now - timedelta(days=30)
-    if selected == "year":
-        return now - relativedelta(months=12)
-    return now.replace(hour=0, minute=0, second=0, microsecond=0)
-
-
-def _timestamp_clause(column, date_filter, now):
-    start = _range_start(now, date_filter)
-    return f"{column} >= ?", [start.strftime("%Y-%m-%d %H:%M:%S")]
-
-
-def _date_clause(column, date_filter, now):
-    selected = _range_key(date_filter)
-    if selected == "day":
-        return f"{column} = ?", [now.strftime("%Y-%m-%d")]
-    start = _range_start(now, date_filter)
-    return f"{column} >= ?", [start.strftime("%Y-%m-%d")]
+    if not _rate_limiter.allow(_client_ip(), bucket, limit_spec):
+        abort(429, description="Too many requests")
 
 
 def _record_api_event(device_uuid, route_name, request_type="read"):
@@ -354,6 +282,8 @@ def _record_api_event(device_uuid, route_name, request_type="read"):
 
     if not device_uuid:
         return
+
+    _ensure_api_event_worker()
 
     host = (request.host or "").split(":", 1)[0]
     event = (
@@ -461,108 +391,23 @@ def get_incident_stats():
         response = jsonify(cached_payload)
         return _finalize_api_response(response, device_uuid, "incident_stats")
 
-    with _get_singleflight_lock(cache_key):
+    with _singleflight_pool.hold(cache_key):
         cached_payload = _get_cached_response(cache_key)
         if cached_payload is not None:
             response = jsonify(cached_payload)
             return _finalize_api_response(response, device_uuid, "incident_stats")
 
-        payload = _build_incident_stats_payload(date_filter, sources, now)
+        payload = _build_incident_stats_payload(
+            date_filter,
+            sources,
+            now,
+            db_file=DB_FILE,
+            type_breakdown_limit=STATS_TYPE_BREAKDOWN_LIMIT,
+        )
         _set_cached_response(cache_key, payload, STATS_CACHE_TTL)
 
     response = jsonify(payload)
     return _finalize_api_response(response, device_uuid, "incident_stats")
-
-
-def _build_incident_stats_payload(date_filter, sources, now):
-    with sqlite3.connect(DB_FILE, timeout=30) as conn:
-        cur = conn.cursor()
-
-        where_clauses, query_params = [], []
-
-        if sources:
-            placeholders = ",".join("?" for _ in sources)
-            where_clauses.append(f"source IN ({placeholders})")
-            query_params.extend(sources)
-
-        if _range_key(date_filter) == "day":
-            where_clauses.append("date = ?")
-            query_params.append(now.strftime("%Y-%m-%d"))
-        elif _range_key(date_filter) == "week":
-            where_clauses.append("timestamp >= ?")
-            query_params.append((now - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S"))
-        elif _range_key(date_filter) == "month":
-            where_clauses.append("timestamp >= ?")
-            query_params.append((now - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S"))
-        elif _range_key(date_filter) == "year":
-            where_clauses.append("timestamp >= ?")
-            query_params.append(
-                (now - relativedelta(months=12)).strftime("%Y-%m-%d %H:%M:%S")
-            )
-
-        def make_query(select_part, extra=None):
-            clauses = where_clauses[:]
-            params = query_params[:]
-            if extra:
-                clauses.append(extra)
-            where = " WHERE " + " AND ".join(clauses) if clauses else ""
-            return f"{select_part}{where}", params
-
-        today = now.strftime("%Y-%m-%d")
-        events_today = _count_with_source(cur, sources, "date = ?", [today])
-        events_last_hour = _count_with_source(
-            cur,
-            sources,
-            "timestamp >= ?",
-            [(now - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")],
-        )
-        q, p = make_query("SELECT COUNT(*) FROM incidents", "active = 1")
-        cur.execute(q, p)
-        events_active = cur.fetchone()[0]
-
-        q, p = make_query("SELECT COUNT(*) FROM incidents")
-        cur.execute(q, p)
-        total_incidents = cur.fetchone()[0]
-
-        q, p = make_query(
-            "SELECT type, COUNT(*) as count FROM incidents",
-            "type IS NOT NULL AND type != ''",
-        )
-        cur.execute(
-            q + " GROUP BY type ORDER BY count DESC LIMIT ?",
-            [*p, STATS_TYPE_BREAKDOWN_LIMIT],
-        )
-        incidents_by_type = {row[0]: row[1] for row in cur.fetchall()}
-
-        q, p = make_query(
-            "SELECT location, COUNT(*) as count FROM incidents",
-            "location IS NOT NULL AND location != ''",
-        )
-        cur.execute(q + " GROUP BY location ORDER BY count DESC LIMIT 10", p)
-        top_locations = {row[0]: row[1] for row in cur.fetchall()}
-
-        chart_data = _build_chart_data(cur, sources, _range_key(date_filter), now)
-        historical_avg = _historical_hour_average(cur, sources, now)
-
-    runtime_snapshot = get_runtime_metrics()
-    payload = {
-        "rangeKey": _range_key(date_filter),
-        "rangeLabel": _range_label(date_filter),
-        "eventsToday": events_today,
-        "eventsLastHour": events_last_hour,
-        "eventsActive": events_active,
-        "totalIncidents": total_incidents,
-        "incidentsByType": incidents_by_type,
-        "topLocations": top_locations,
-        "hourlyData": chart_data,
-        "historicalCurrentHourAverage": historical_avg,
-        "generatedAt": now.isoformat(),
-        "apiRequestsServed": runtime_snapshot["apiRequestsServed"],
-        "averageScrapeTime": runtime_snapshot["averageScrapeTime"],
-        "lastSuccessfulScrape": runtime_snapshot["lastSuccessfulScrape"],
-        "lastSuccessfulScrapeAt": runtime_snapshot["lastSuccessfulScrapeAt"],
-    }
-    return payload
 
 
 @app.route("/api/dashboard_metrics")
@@ -579,7 +424,7 @@ def get_dashboard_metrics():
     traffic_host = TRAFFIC_APP_PUBLIC_HOST
     metrics_host = METRICS_PUBLIC_HOST
 
-    with sqlite3.connect(DB_FILE, timeout=30) as conn:
+    with sqlite_connection(DB_FILE) as conn:
         cur = conn.cursor()
 
         total_incidents = _count_query(cur, "SELECT COUNT(*) FROM incidents")
@@ -673,106 +518,6 @@ def get_dashboard_metrics():
     return _finalize_api_response(response, device_uuid, "dashboard_metrics")
 
 
-def _count_with_source(cur, sources, extra_cond, extra_params):
-    clauses = ([f"source IN ({','.join('?' for _ in sources)})"] if sources else []) + [extra_cond]
-    params  = (list(sources) if sources else []) + extra_params
-    cur.execute(f"SELECT COUNT(*) FROM incidents WHERE {' AND '.join(clauses)}", params)
-    return cur.fetchone()[0]
-
-
-def _source_clause(sources):
-    if not sources:
-        return [], []
-    return [f"source IN ({','.join('?' for _ in sources)})"], list(sources)
-
-
-def _bucket_counts(cur, sources, start_dt, end_dt, bucket_format):
-    clauses, params = _source_clause(sources)
-    clauses += ["timestamp >= ?", "timestamp < ?"]
-    params += [
-        start_dt.strftime("%Y-%m-%d %H:%M:%S"),
-        end_dt.strftime("%Y-%m-%d %H:%M:%S"),
-    ]
-
-    cur.execute(
-        f"""
-        SELECT strftime(?, timestamp) AS bucket, COUNT(*) AS count
-        FROM incidents
-        WHERE {' AND '.join(clauses)}
-        GROUP BY bucket
-        """,
-        [bucket_format, *params],
-    )
-    return {row[0]: row[1] for row in cur.fetchall()}
-
-
-def _hour_offset_counts(cur, sources, start_dt, end_dt):
-    clauses, params = _source_clause(sources)
-    clauses += ["timestamp >= ?", "timestamp < ?"]
-    params += [
-        start_dt.strftime("%Y-%m-%d %H:%M:%S"),
-        end_dt.strftime("%Y-%m-%d %H:%M:%S"),
-    ]
-
-    cur.execute(
-        f"""
-        SELECT CAST((strftime('%s', timestamp) - strftime('%s', ?)) / 3600 AS INTEGER) AS bucket,
-               COUNT(*) AS count
-        FROM incidents
-        WHERE {' AND '.join(clauses)}
-        GROUP BY bucket
-        """,
-        [start_dt.strftime("%Y-%m-%d %H:%M:%S"), *params],
-    )
-    return {row[0]: row[1] for row in cur.fetchall() if row[0] is not None}
-
-
-def _build_chart_data(cur, sources, date_filter, now):
-    if date_filter == "year":
-        base = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        starts = [base - relativedelta(months=11 - i) for i in range(12)]
-        counts = _bucket_counts(cur, sources, starts[0], base + relativedelta(months=1), "%Y-%m")
-        return [counts.get(start.strftime("%Y-%m"), 0) for start in starts]
-    elif date_filter == "month":
-        base = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        starts = [base - timedelta(days=29 - i) for i in range(30)]
-        counts = _bucket_counts(cur, sources, starts[0], base + timedelta(days=1), "%Y-%m-%d")
-        return [counts.get(start.strftime("%Y-%m-%d"), 0) for start in starts]
-    elif date_filter == "week":
-        base = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        starts = [base - timedelta(days=6 - i) for i in range(7)]
-        counts = _bucket_counts(cur, sources, starts[0], base + timedelta(days=1), "%Y-%m-%d")
-        return [counts.get(start.strftime("%Y-%m-%d"), 0) for start in starts]
-    else:  # default: last 24h by hour
-        start24 = now - timedelta(hours=24)
-        counts = _hour_offset_counts(cur, sources, start24, now)
-        return [counts.get(i, 0) for i in range(24)]
-
-
-def _historical_hour_average(cur, sources, now):
-    hour_str     = now.strftime("%H")
-    dow_str      = now.strftime("%w")
-
-    clauses = [f"source IN ({','.join('?' for _ in sources)})"] if sources else []
-    params  = list(sources) if sources else []
-    clauses += ["strftime('%w', timestamp) = ?", "strftime('%H', timestamp) = ?"]
-    params  += [dow_str, hour_str]
-
-    cur.execute(f"SELECT COUNT(*) FROM incidents WHERE {' AND '.join(clauses)}", params)
-    total = cur.fetchone()[0] or 0
-
-    day_clauses = [f"source IN ({','.join('?' for _ in sources)})"] if sources else []
-    day_params  = (list(sources) if sources else []) + [dow_str]
-    day_clauses.append("strftime('%w', timestamp) = ?")
-
-    cur.execute(
-        f"SELECT COUNT(DISTINCT date(timestamp)) FROM incidents WHERE {' AND '.join(day_clauses)}",
-        day_params,
-    )
-    unique_days = cur.fetchone()[0] or 1
-    return total / unique_days
-
-
 # ---------------------------------------------------------------------------
 # Map files
 # ---------------------------------------------------------------------------
@@ -794,31 +539,48 @@ def like_incident(incident_id):
     device_uuid = _get_or_create_uuid(request)
 
     with db_lock:
-        with sqlite3.connect(DB_FILE, timeout=30) as conn:
+        with sqlite_connection(DB_FILE) as conn:
             cur = conn.cursor()
             cur.execute("SELECT 1 FROM incidents WHERE incident_no = ?", (incident_id,))
             if not cur.fetchone():
                 abort(404, description="Incident not found")
             if request.method == "DELETE":
-                cur.execute("DELETE FROM likes WHERE incident_no = ? AND device_uuid = ?",
-                            (incident_id, device_uuid))
+                cur.execute(
+                    "DELETE FROM likes WHERE incident_no = ? AND device_uuid = ?",
+                    (incident_id, device_uuid),
+                )
                 if cur.rowcount:
-                    cur.execute("UPDATE incidents SET likes = MAX(likes - 1, 0) WHERE incident_no = ?",
-                                (incident_id,))
+                    cur.execute(
+                        """
+                        UPDATE incidents
+                        SET likes = MAX(likes - 1, 0)
+                        WHERE incident_no = ?
+                        """,
+                        (incident_id,),
+                    )
             else:
-                cur.execute("SELECT 1 FROM likes WHERE incident_no = ? AND device_uuid = ?",
-                            (incident_id, device_uuid))
+                cur.execute(
+                    "SELECT 1 FROM likes WHERE incident_no = ? AND device_uuid = ?",
+                    (incident_id, device_uuid),
+                )
                 if cur.fetchone():
                     return jsonify({"error": "You already liked this post."}), 400
                 timestamp = pst_timestamp_str()
-                cur.execute("INSERT INTO likes (incident_no, device_uuid, timestamp) VALUES (?, ?, ?)",
-                            (incident_id, device_uuid, timestamp))
-                cur.execute("UPDATE incidents SET likes = likes + 1 WHERE incident_no = ?",
-                            (incident_id,))
+                cur.execute(
+                    """
+                    INSERT INTO likes (incident_no, device_uuid, timestamp)
+                    VALUES (?, ?, ?)
+                    """,
+                    (incident_id, device_uuid, timestamp),
+                )
+                cur.execute(
+                    "UPDATE incidents SET likes = likes + 1 WHERE incident_no = ?",
+                    (incident_id,),
+                )
             conn.commit()
             _clear_response_cache()
 
-    with sqlite3.connect(DB_FILE, timeout=30) as conn:
+    with sqlite_connection(DB_FILE) as conn:
         cur = conn.cursor()
         cur.execute("SELECT likes FROM incidents WHERE incident_no = ?", (incident_id,))
         result = cur.fetchone()
@@ -855,7 +617,7 @@ def comment_incident(incident_id):
         username = username[:MAX_USERNAME_LENGTH]
 
     with db_lock:
-        with sqlite3.connect(DB_FILE, timeout=30) as conn:
+        with sqlite_connection(DB_FILE) as conn:
             conn.execute("PRAGMA foreign_keys = ON")
             cur = conn.cursor()
             try:
@@ -871,17 +633,32 @@ def comment_incident(incident_id):
                     return jsonify({"error": "You can only leave 2 comments per post."}), 400
 
                 cur.execute(
-                    "INSERT INTO comments (incident_no, device_uuid, username, comment, timestamp) VALUES (?, ?, ?, ?, ?)",
+                    """
+                    INSERT INTO comments
+                        (incident_no, device_uuid, username, comment, timestamp)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
                     (incident_id, device_uuid, username, new_comment, timestamp),
                 )
                 conn.commit()
                 _clear_response_cache()
                 cur.execute(
-                    "SELECT username, comment, timestamp FROM comments WHERE incident_no = ? ORDER BY timestamp ASC",
+                    """
+                    SELECT username, comment, timestamp
+                    FROM comments
+                    WHERE incident_no = ?
+                    ORDER BY timestamp ASC
+                    """,
                     (incident_id,),
                 )
-                comments = [{"username": r[0] or "Anonymous", "comment": r[1], "timestamp": r[2]}
-                            for r in cur.fetchall()]
+                comments = [
+                    {
+                        "username": row[0] or "Anonymous",
+                        "comment": row[1],
+                        "timestamp": row[2],
+                    }
+                    for row in cur.fetchall()
+                ]
             except sqlite3.IntegrityError:
                 conn.rollback()
                 return jsonify({"error": "Could not process comment."}), 400
@@ -928,6 +705,11 @@ def healthz():
 @app.route("/<path:path>")
 def serve_app(path):
     if path and os.path.exists(os.path.join(app.static_folder, path)):
-        max_age = STATIC_ASSET_MAX_AGE_SECONDS if path.startswith(("assets/", "map_tiles/", "fonts/")) else None
+        cacheable_prefixes = ("assets/", "map_tiles/", "fonts/")
+        max_age = (
+            STATIC_ASSET_MAX_AGE_SECONDS
+            if path.startswith(cacheable_prefixes)
+            else None
+        )
         return send_from_directory(app.static_folder, path, max_age=max_age)
     return send_from_directory(app.static_folder, "index.html", max_age=0)

@@ -9,6 +9,7 @@ import requests
 from config import SDSO_API_URL, HEADERS, HTTP_TIMEOUT_SECONDS
 from config import ensure_pst, now_pst
 from logger import safe_print
+from scrapers import ScraperError
 
 # ── Module-level cache to throttle SDSO requests (max once per 5 min) ──────
 _last_fetch: float = 0
@@ -32,7 +33,11 @@ def scrape_sdso_incidents():
         response = requests.get(SDSO_API_URL, headers=HEADERS, timeout=HTTP_TIMEOUT_SECONDS)
         response.raise_for_status()
         data   = response.json()
+        if not isinstance(data, dict):
+            raise ScraperError("SDSO response was not an object")
         events = data.get("Events", [])
+        if not isinstance(events, list):
+            raise ScraperError("SDSO response contained an invalid Events value")
 
         incidents = []
         for item in events:
@@ -78,6 +83,7 @@ def scrape_sdso_incidents():
         _cache      = incidents
         return incidents
 
-    except Exception as e:
-        safe_print(f"Error scraping SDSO: {e}")
-        return []
+    except ScraperError:
+        raise
+    except Exception as exc:
+        raise ScraperError(f"SDSO scrape failed: {exc}") from exc

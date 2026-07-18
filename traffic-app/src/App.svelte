@@ -17,13 +17,14 @@
     generateRandomUsername,
     debounce,
     retryWithBackoff,
-    formatTimestamp,
-    buildIncidentImagePath,
   } from "./utils/helpers.js";
 
   // Import stores
   import { addToast } from "./stores/appStore.js";
-  import { compareText, formatDateKey, t } from "./utils/i18n.js";
+  import { compareText, t } from "./utils/i18n.js";
+  import { getCachedEntry, setCachedEntry } from "./utils/cache.js";
+  import { buildIncidentsUrl, buildStatsUrl } from "./utils/apiUrls.js";
+  import { buildPostFromIncident, fuzzyMatch } from "./utils/incidents.js";
   import { loadMapLibraries } from "./utils/mapRuntime.js";
 
   /**
@@ -120,7 +121,6 @@
 
   /** @typedef {CustomEvent<{ postId: string }>} PostIdEvent */
   /** @typedef {CustomEvent<{ post: Post }>} PostShareEvent */
-  /** @typedef {CustomEvent<{ postId: string, comment: string }>} PostCommentEvent */
   /** @typedef {CustomEvent<string>} StringDetailEvent */
 
   // State variables
@@ -176,66 +176,6 @@
   /** @type {Promise<typeof import("./components/PostTable.svelte").default> | null} */
   let postTableLoadPromise = null;
   const ACCESSIBILITY_MODE_STORAGE_KEY = "accessibilityMode";
-
-  /**
-   * @param {string} query
-   * @param {string} text
-   */
-  function fuzzyMatch(query, text) {
-      if (!query) return true;
-      if (!text) return false;
-      const q = query.toLowerCase();
-      const t = text.toLowerCase();
-      if (t.includes(q)) return true;
-      
-      const words = q.split(/\s+/).filter(Boolean);
-      return words.every((word) => t.includes(word));
-  }
-
-  /**
-   * @param {Incident} incident
-   * @param {Partial<Post>} [existingPost={}]
-   * @returns {Post}
-   */
-  function buildPostFromIncident(incident, existingPost = {}) {
-    const timestamp = incident.timestamp || existingPost.timestamp || "";
-    const date = formatDateKey(timestamp);
-
-    return {
-      id: incident.incident_no ?? existingPost.id,
-      compositeId: `${incident.incident_no}-${date}`,
-      details: Array.isArray(incident.Details) ? incident.Details : [],
-      timestamp,
-      time: formatTimestamp(timestamp),
-      description: incident.description || t("fallback.descriptionUnavailable"),
-      showFullDescription: existingPost.showFullDescription ?? false,
-      location: incident.location || t("fallback.unknownLocation"),
-      neighborhood: incident.neighborhood || "",
-      latitude: incident.latitude ?? null,
-      longitude: incident.longitude ?? null,
-      image: buildIncidentImagePath(incident.map_filename),
-      likes:
-        typeof incident.likes === "number"
-          ? incident.likes
-          : existingPost.likes ?? 0,
-      comments: Array.isArray(incident.comments)
-        ? incident.comments
-        : existingPost.comments ?? [],
-      newComment: existingPost.newComment ?? "",
-      showComments: existingPost.showComments ?? false,
-      type: incident.type || t("fallback.trafficIncident"),
-      likeError: existingPost.likeError ?? "",
-      commentError: existingPost.commentError ?? "",
-      likeErrorAnimation: existingPost.likeErrorAnimation ?? false,
-      active: Boolean(incident.active),
-      liking: existingPost.liking ?? false,
-      severity: incident.severity ?? null,
-      likedByUser:
-        typeof incident.liked_by_user === "boolean"
-          ? incident.liked_by_user
-          : existingPost.likedByUser ?? false,
-    };
-  }
 
   /** @type {Post[]} */
   let displayPosts = [];
@@ -359,42 +299,6 @@
   let statsController = null;
   let currentRequestId = 0;
   let currentStatsRequestId = 0;
-
-  /**
-   * @template T
-   * @param {Map<string, { data: T, timestamp: number }>} cache
-   * @param {string} key
-   * @param {number} ttl
-   * @returns {T | null}
-   */
-  function getCachedEntry(cache, key, ttl) {
-    const entry = cache.get(key);
-    if (!entry) return null;
-    if (Date.now() - entry.timestamp > ttl) {
-      cache.delete(key);
-      return null;
-    }
-    cache.delete(key);
-    cache.set(key, entry);
-    return entry.data;
-  }
-
-  /**
-   * @template T
-   * @param {Map<string, { data: T, timestamp: number }>} cache
-   * @param {string} key
-   * @param {T} data
-   * @param {number} maxEntries
-   */
-  function setCachedEntry(cache, key, data, maxEntries) {
-    cache.delete(key);
-    cache.set(key, { data, timestamp: Date.now() });
-    while (cache.size > maxEntries) {
-      const oldestKey = cache.keys().next().value;
-      if (oldestKey === undefined) break;
-      cache.delete(oldestKey);
-    }
-  }
 
   function clearIncidentCaches() {
     apiCache.clear();
@@ -555,26 +459,14 @@
         loadingMore = true;
       }
 
-      let url = `/api/incidents?limit=${postsPerPage}`;
-      if (currentPage > 1 && lastCursor) {
-        url += `&cursor=${encodeURIComponent(lastCursor)}`;
-      }
-      if (selectedTypes.size > 0) {
-        for (const type of selectedTypes) {
-          url += `&type=${encodeURIComponent(type)}`;
-        }
-      }
-      if (selectedLocations.size > 0) {
-        for (const loc of selectedLocations) {
-          url += `&location=${encodeURIComponent(loc)}`;
-        }
-      }
-      if (showActiveOnly) {
-        url += `&active_only=true`;
-      }
-      if (activeSource && activeSource !== "all" && activeSource !== "map") {
-        url += `&source=${encodeURIComponent(activeSource)}`;
-      }
+      const url = buildIncidentsUrl({
+        limit: postsPerPage,
+        cursor: currentPage > 1 ? lastCursor : null,
+        types: selectedTypes,
+        locations: selectedLocations,
+        activeOnly: showActiveOnly,
+        source: activeSource,
+      });
 
       const cacheKey = url;
       const cachedData = getCachedEntry(apiCache, cacheKey, API_CACHE_TTL_MS);
@@ -676,13 +568,6 @@
         }
         return true;
       })
-      .map((incident) => {
-        const date = incident.timestamp
-          ? formatDateKey(incident.timestamp)
-          : "";
-        incident.compositeId = `${incident.incident_no}-${date}`;
-        return incident;
-      })
       .filter((incident) => {
         const duplicateKey = `${incident.incident_no}-${incident.timestamp}-${incident.location}`;
         if (seenCompositeKeys.has(duplicateKey)) {
@@ -691,9 +576,7 @@
         seenCompositeKeys.add(duplicateKey);
         return true;
       })
-      .map((incident) => ({
-        ...buildPostFromIncident(incident),
-      }));
+      .map((incident) => buildPostFromIncident(incident));
 
     const filteredPosts = showActiveOnly
       ? newProcessedPosts.filter((p) => p.active)
@@ -765,10 +648,7 @@
     const signal = controller.signal;
 
     try {
-      let url = "/api/incident_stats?date_filter=" + timeFilter;
-      if (activeSource && activeSource !== "all" && activeSource !== "map") {
-        url += `&source=${encodeURIComponent(activeSource)}`;
-      }
+      const url = buildStatsUrl(timeFilter, activeSource);
 
       const cacheKey = url;
       const cachedStats = getCachedEntry(
@@ -1136,10 +1016,10 @@
   }
 
   /**
-   * @param {PostCommentEvent} event
+   * @param {{ postId: string, comment: string }} submission
    */
-  function handlePostSubmitComment(event) {
-    submitComment(event.detail.postId, event.detail.comment);
+  function handleCommentSubmission(submission) {
+    submitComment(submission.postId, submission.comment);
   }
 
   /**
@@ -1458,7 +1338,7 @@
           on:toggleComments={handlePostToggleComments}
           on:share={handlePostShare}
           on:toggleDescription={handlePostToggleDescription}
-          on:submitComment={handlePostSubmitComment}
+          onSubmitComment={handleCommentSubmission}
           on:goToMap={() => setSourceFilter("map")}
         />
       {/if}
@@ -1475,7 +1355,7 @@
             on:toggleComments={handlePostToggleComments}
             on:share={handlePostShare}
             on:toggleDescription={handlePostToggleDescription}
-            on:submitComment={handlePostSubmitComment}
+            onSubmitComment={handleCommentSubmission}
             on:goToMap={() => setSourceFilter("map")}
           />
         {/each}

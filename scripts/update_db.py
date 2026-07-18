@@ -1,10 +1,11 @@
+from contextlib import closing
+from pathlib import Path
 import sqlite3
-import os
 
-DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "traffic_data.db")
+DB_FILE = Path(__file__).resolve().parents[1] / "traffic_data.db"
 
 def unify_collision_types():
-    with sqlite3.connect(DB_FILE) as conn:
+    with closing(sqlite3.connect(DB_FILE)) as conn:
         cur = conn.cursor()
 
         # 1) normalize 'Trfc Collision...' into 'Traffic Collision'
@@ -16,7 +17,7 @@ def unify_collision_types():
         cur.execute("SELECT changes()")
         trfc_fixed = cur.fetchone()[0]
 
-        # 2) normalize anything starting with or containing 'Object Flying' into 'Debris From Vehicle'
+        # Normalize legacy "Object Flying" labels into "Debris From Vehicle".
         cur.execute("""
             UPDATE incidents
             SET type = 'Debris From Vehicle'

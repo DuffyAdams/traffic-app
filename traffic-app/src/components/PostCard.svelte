@@ -26,6 +26,7 @@
     export let postsPerPage = 30;
     export let searchQuery = "";
     export let suspendMiniMaps = false;
+    export let onSubmitComment = () => {};
 
     const dispatch = createEventDispatcher();
 
@@ -104,10 +105,10 @@
         dispatch("toggleDescription", { postId: post.id });
     }
 
-    function handleCommentSubmit(event) {
-        dispatch("submitComment", {
+    function handleCommentSubmit(comment) {
+        onSubmitComment({
             postId: post.id,
-            comment: event.detail.comment,
+            comment,
         });
     }
 
@@ -321,8 +322,8 @@
                     comments={post.comments}
                     newComment={post.newComment}
                     commentError={post.commentError}
-                    on:close={handleCommentClose}
-                    on:submit={handleCommentSubmit}
+                    onClose={handleCommentClose}
+                    onSubmit={handleCommentSubmit}
                 />
             {/if}
         </div>

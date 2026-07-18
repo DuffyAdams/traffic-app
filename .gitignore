@@ -21,6 +21,7 @@ traffic_data.db
 traffic_data.db-wal
 traffic_data.db-shm
 backups/
+tests/*.db
 
 # Large binary / map tile files
 

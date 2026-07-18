@@ -6,6 +6,7 @@ All other modules import from here to avoid circular dependencies.
 
 import os
 import threading
+import warnings
 from datetime import datetime
 
 import pytz
@@ -18,27 +19,61 @@ from geocoding import GeocodingCache
 
 load_dotenv()
 
+
+def env_bool(name, default=False):
+    """Read a boolean environment variable with validation."""
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return default
+    normalized = raw_value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    warnings.warn(f"Ignoring invalid boolean value for {name}: {raw_value!r}")
+    return default
+
+
+def env_number(name, default, cast, minimum=None):
+    """Read and bound an integer or float environment variable."""
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return default
+    try:
+        value = cast(raw_value)
+    except (TypeError, ValueError):
+        warnings.warn(f"Ignoring invalid numeric value for {name}: {raw_value!r}")
+        return default
+    return max(minimum, value) if minimum is not None else value
+
 # ── Paths ────────────────────────────────────────────────────────────────────
 BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
 TARGET_DIR   = os.path.join(BASE_DIR, "traffic-app", "maps")
-DB_FILE      = os.path.join(BASE_DIR, "traffic_data.db")
+DB_FILE      = os.environ.get("TRAFFIC_DB_FILE", os.path.join(BASE_DIR, "traffic_data.db"))
 MAP_GENERATOR = os.path.join(BASE_DIR, "generate_map.py")
 
 os.makedirs(TARGET_DIR, exist_ok=True)
 
 # ── Feature flags ────────────────────────────────────────────────────────────
-TESTMODE = os.environ.get("TESTMODE", "False").lower() == "true"
+TESTMODE = env_bool("TESTMODE")
 
 # LLM enrichment: Mistral handles the immediate response, then Gemini refines
 # incidents together after a short collection window.
-BATCH_LLM_ENABLED = os.environ.get("BATCH_LLM_ENABLED", "True").lower() == "true"
-BATCH_LLM_MODEL = os.environ.get(
-    "BATCH_LLM_MODEL", "google/gemini-2.5-flash-lite"
+BATCH_LLM_ENABLED = env_bool("BATCH_LLM_ENABLED", True)
+DEFAULT_BATCH_LLM_MODEL = "google/gemini-2.5-flash-lite"
+DEFAULT_IMMEDIATE_LLM_MODEL = "mistralai/mistral-nemo"
+BATCH_LLM_MODEL = (
+    os.environ.get("BATCH_LLM_MODEL", DEFAULT_BATCH_LLM_MODEL).strip()
+    or DEFAULT_BATCH_LLM_MODEL
 )
-BATCH_LLM_INTERVAL_SECONDS = max(
-    1, int(os.environ.get("BATCH_LLM_INTERVAL_SECONDS", "300"))
+IMMEDIATE_LLM_MODEL = (
+    os.environ.get("IMMEDIATE_LLM_MODEL", DEFAULT_IMMEDIATE_LLM_MODEL).strip()
+    or DEFAULT_IMMEDIATE_LLM_MODEL
 )
-BATCH_LLM_MAX_ITEMS = max(1, int(os.environ.get("BATCH_LLM_MAX_ITEMS", "100")))
+BATCH_LLM_INTERVAL_SECONDS = env_number(
+    "BATCH_LLM_INTERVAL_SECONDS", 300, int, minimum=1
+)
+BATCH_LLM_MAX_ITEMS = env_number("BATCH_LLM_MAX_ITEMS", 100, int, minimum=1)
 
 # San Diego traffic sources use the local Pacific clock, including daylight time.
 PACIFIC = pytz.timezone("America/Los_Angeles")
@@ -73,7 +108,7 @@ SDPD_SCRAPE_URL = "https://webapps.sandiego.gov/sdpdonline"
 SDFD_API_URL    = "https://webapps.sandiego.gov/SDFireDispatch/api/v1/Incidents"
 SDSO_API_URL    = os.environ.get("SDSO_API_URL")
 HEALTHCHECK_URL = os.environ.get("HEALTHCHECK_URL", "")
-HTTP_TIMEOUT_SECONDS = float(os.environ.get("HTTP_TIMEOUT_SECONDS", "12"))
+HTTP_TIMEOUT_SECONDS = env_number("HTTP_TIMEOUT_SECONDS", 12.0, float, minimum=0.1)
 
 # ── HTTP headers shared by all scrapers ─────────────────────────────────────
 HEADERS = {
@@ -90,7 +125,7 @@ PARAMS = {"ddlComCenter": "BCCC"}
 # ── Cookie settings ──────────────────────────────────────────────────────────
 COOKIE_NAME    = "traffic_app_uuid"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 365  # 1 year
-COOKIE_SECURE  = os.environ.get("COOKIE_SECURE", str(not TESTMODE)).lower() == "true"
+COOKIE_SECURE  = env_bool("COOKIE_SECURE", not TESTMODE)
 
 # ── Public API guardrails ────────────────────────────────────────────────────
 ALLOWED_ORIGINS = [
@@ -104,14 +139,23 @@ ALLOWED_ORIGINS = [
 API_DEFAULT_RATE_LIMIT = os.environ.get("API_DEFAULT_RATE_LIMIT", "300 per minute")
 API_READ_RATE_LIMIT    = os.environ.get("API_READ_RATE_LIMIT", "120 per minute")
 API_WRITE_RATE_LIMIT   = os.environ.get("API_WRITE_RATE_LIMIT", "20 per minute")
-_default_trust_proxy = "true" if os.environ.get("TRAFFIC_APP_HOST", "127.0.0.1") in {"127.0.0.1", "localhost", "::1"} else "false"
-TRUST_PROXY_HEADERS    = os.environ.get("TRUST_PROXY_HEADERS", _default_trust_proxy).lower() == "true"
+_default_trust_proxy = os.environ.get("TRAFFIC_APP_HOST", "127.0.0.1") in {
+    "127.0.0.1",
+    "localhost",
+    "::1",
+}
+TRUST_PROXY_HEADERS = env_bool(
+    "TRUST_PROXY_HEADERS", _default_trust_proxy
+)
 
 # ── OpenAI / OpenRouter client ───────────────────────────────────────────────
 GPT_KEY = os.getenv("GPT_KEY")
+LLM_API_CONFIGURED = bool(GPT_KEY)
 llm_client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
-    api_key=GPT_KEY,
+    # The SDK requires a non-empty value during construction. Calls are
+    # explicitly gated on LLM_API_CONFIGURED in llm.py.
+    api_key=GPT_KEY or "not-configured",
 )
 
 # ── Geocoding cache (shared across modules) ──────────────────────────────────

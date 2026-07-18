@@ -21,6 +21,7 @@
     export let posts = [];
     export let expandedPostId = null;
     export let searchQuery = "";
+    export let onSubmitComment = () => {};
 
     const dispatch = createEventDispatcher();
 
@@ -79,7 +80,7 @@
     }
 
     function handleCommentSubmit(postId, comment) {
-        dispatch("submitComment", { postId, comment });
+        onSubmitComment({ postId, comment });
     }
 
     function handleCommentClose(postId) {
@@ -261,9 +262,9 @@
                         comments={post.comments}
                         newComment={post.newComment}
                         commentError={post.commentError}
-                        on:close={() => handleCommentClose(post.id)}
-                        on:submit={(event) =>
-                            handleCommentSubmit(post.id, event.detail.comment)}
+                        onClose={() => handleCommentClose(post.id)}
+                        onSubmit={(comment) =>
+                            handleCommentSubmit(post.id, comment)}
                     />
                 {/if}
             </div>

@@ -6,7 +6,14 @@ Uses OpenRouter with a primary + fallback model strategy.
 
 import json
 
-from config import BATCH_LLM_MODEL, llm_client, print_lock, TESTMODE
+from config import (
+    BATCH_LLM_MODEL,
+    IMMEDIATE_LLM_MODEL,
+    LLM_API_CONFIGURED,
+    TESTMODE,
+    llm_client,
+    print_lock,
+)
 from logger import safe_print
 
 # Track total LLM calls (thread-safe via print_lock)
@@ -27,21 +34,27 @@ def generate_description(data):
     with print_lock:
         _call_count += 1
         count = _call_count
-    safe_print(f"GPT API Calls: {count}")
+    safe_print(f"Immediate LLM calls: {count}")
 
     is_sig_alert = bool(data.get("Type")) and "SIG" in data.get("Type", "").upper()
 
     if TESTMODE:
         return (f"Mock incident summary for {data.get('Location')}.", 5 if is_sig_alert else 2)
+    if not LLM_API_CONFIGURED:
+        return ("Traffic incident reported.", 5 if is_sig_alert else None)
 
+    details = data.get("Details") or []
+    if isinstance(details, str):
+        details = [details]
     prompt = (
         f"Neighborhood: {data.get('Neighborhood')}\n"
         f"Location: {data.get('Location')} - {data.get('Location Desc.')}\n"
         f"Type: {data.get('Type')}\n"
-        f"Details: {', '.join(data.get('Details', []))}"
+        f"Details: {', '.join(str(detail) for detail in details)}"
     )
     system_prompt = (
-        "You are a traffic incident analyst. Respond ONLY with a valid JSON object, no markdown or extra text.\n"
+        "You are a traffic incident analyst. Respond ONLY with a valid JSON "
+        "object, no markdown or extra text.\n"
         "The JSON must have exactly two keys:\n"
         '  "summary": a factual, tweet-length summary (under 200 chars) with related emojis. '
         "No warnings, advice, hashtags, or extra commentary.\n"
@@ -78,7 +91,7 @@ def generate_batch_descriptions(incidents):
         _batch_call_count += 1
         count = _batch_call_count
     safe_print(
-        f"Gemini batch API calls: {count} "
+        f"Batch LLM API calls: {count} "
         f"({len(incidents)} incident{'s' if len(incidents) != 1 else ''})"
     )
 
@@ -96,6 +109,8 @@ def generate_batch_descriptions(incidents):
             }
             for item in payload
         ]
+    if not LLM_API_CONFIGURED:
+        raise RuntimeError("GPT_KEY is required for batch LLM refinement")
 
     system_prompt = (
         "You are a senior San Diego traffic incident analyst. Refine every incident "
@@ -113,7 +128,7 @@ def generate_batch_descriptions(incidents):
             {"role": "system", "content": system_prompt},
             {
                 "role": "user",
-                "content": "Refine this five-minute traffic batch:\n" + json.dumps(payload),
+                "content": "Refine this traffic incident batch:\n" + json.dumps(payload),
             },
         ],
         temperature=0.2,
@@ -154,7 +169,7 @@ def generate_batch_descriptions(incidents):
     usage = getattr(response, "usage", None)
     if usage:
         safe_print(
-            "Gemini batch tokens: "
+            "Batch LLM tokens: "
             f"{getattr(usage, 'prompt_tokens', 0)} input, "
             f"{getattr(usage, 'completion_tokens', 0)} output"
         )
@@ -166,13 +181,13 @@ def generate_batch_descriptions(incidents):
 # ---------------------------------------------------------------------------
 
 def _call_llm(system_prompt, user_message):
-    """Call Mistral Nemo for incident description generation."""
+    """Call the configured immediate-summary model."""
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user",   "content": user_message},
     ]
     return llm_client.chat.completions.create(
-        model="mistralai/mistral-nemo", messages=messages
+        model=IMMEDIATE_LLM_MODEL, messages=messages
     )
 
 
@@ -219,12 +234,20 @@ def _parse_batch_response(response, payload):
     except (json.JSONDecodeError, KeyError, TypeError) as exc:
         raise ValueError(f"Invalid batch JSON: {raw[:200]}") from exc
 
+    if not isinstance(results, list):
+        raise ValueError("Batch response incidents must be a list")
+
     expected = {item["item_id"]: item for item in payload}
     validated = {}
     for result in results:
+        if not isinstance(result, dict):
+            raise ValueError("Batch result must be an object")
         try:
             item_id = int(result["item_id"])
-            summary = str(result["summary"]).strip()
+            raw_summary = result["summary"]
+            if not isinstance(raw_summary, str):
+                raise TypeError("summary must be a string")
+            summary = raw_summary.strip()
             severity = int(result["severity"])
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("Batch result contains invalid fields") from exc

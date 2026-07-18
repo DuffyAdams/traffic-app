@@ -14,6 +14,7 @@ from bs4 import BeautifulSoup
 from config import CHP_SCRAPE_URL, HEADERS, PARAMS, HTTP_TIMEOUT_SECONDS
 from config import ensure_pst, now_pst
 from logger import safe_print
+from scrapers import ScraperError
 
 # ── Pre-compiled patterns ──────────────────────────────────────────────────
 _VIEWSTATE_PATTERN = re.compile(
@@ -31,15 +32,13 @@ def scrape_chp_incidents():
         soup     = BeautifulSoup(response.text, "html.parser")
         table    = soup.find("table", id="gvIncidents")
         if not table:
-            safe_print("CHP: No incident table found.")
-            return []
+            raise ScraperError("CHP incident table was not present")
 
         headers   = [th.get_text(strip=True) for th in table.find_all("th")]
         rows      = table.find_all("tr")[1:]  # Skip header
         viewstate = _get_viewstate(response.text)
         if not viewstate:
-            safe_print("CHP: No __VIEWSTATE found.")
-            return []
+            raise ScraperError("CHP response did not contain __VIEWSTATE")
 
         incidents_list = []
         with ThreadPoolExecutor(max_workers=5) as executor:
@@ -53,9 +52,10 @@ def scrape_chp_incidents():
                     incidents_list.append(result)
 
         return incidents_list
-    except Exception as e:
-        safe_print("Error scraping CHP incidents:", e)
-        return []
+    except ScraperError:
+        raise
+    except Exception as exc:
+        raise ScraperError(f"CHP scrape failed: {exc}") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -80,7 +80,13 @@ def _get_incident_details(row_index, viewstate):
             "ddlSearches":          "Choose One",
             "ddlResources":         "Choose One",
         }
-        post = requests.post(CHP_SCRAPE_URL, params=PARAMS, headers=HEADERS, data=data, timeout=HTTP_TIMEOUT_SECONDS)
+        post = requests.post(
+            CHP_SCRAPE_URL,
+            params=PARAMS,
+            headers=HEADERS,
+            data=data,
+            timeout=HTTP_TIMEOUT_SECONDS,
+        )
         post.raise_for_status()
         return _extract_traffic_info(post.text)
     except requests.exceptions.RequestException as e:

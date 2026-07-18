@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 import sys
 
@@ -33,7 +34,9 @@ def pick_backup(path_arg: str | None) -> Path:
 
 def restore_from_backup(backup_path: Path) -> None:
     DB_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(backup_path) as source, sqlite3.connect(DB_FILE) as target:
+    with closing(sqlite3.connect(backup_path)) as source, closing(
+        sqlite3.connect(DB_FILE)
+    ) as target:
         source.backup(target)
 
 

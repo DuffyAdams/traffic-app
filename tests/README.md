@@ -2,7 +2,7 @@
 
 This `tests/` workspace now contains two kinds of tests:
 
-- Existing Python unit tests at the root of `tests/`
+- Deterministic Python unit tests at the root of `tests/`
 - A Playwright project for UI, REST API, accessibility, edge-case, and release-readiness coverage
 
 ## What it covers
@@ -32,6 +32,16 @@ npx playwright install
 ```
 
 ## Run
+
+From the repository root, run the Python suite:
+
+```bash
+python -m unittest discover -s tests -p "test_*.py" -v
+```
+
+The Python suite uses temporary SQLite databases and mocks external behavior; live ArcGIS diagnostics live under `scripts/check_arcgis_*.py` instead.
+
+From this directory, run the browser suite:
 
 ```bash
 npm test

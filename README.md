@@ -37,9 +37,12 @@ The repo has three main pieces:
 ## Architecture
 
 - Backend: Flask app in [traffic_scraper.py](traffic_scraper.py), route handlers in [routes.py](routes.py), background scrape loop in [monitor.py](monitor.py)
+- API infrastructure: bounded TTL caching, keyed request coalescing, and rate limiting in [api_support.py](api_support.py)
+- Statistics queries and chart buckets: [traffic_stats.py](traffic_stats.py)
 - Frontend: Svelte 5 plus Vite in [traffic-app](traffic-app)
 - Metrics UI: static dashboard in [metrics-app](metrics-app)
 - Database: SQLite file at `traffic_data.db`
+- SQLite lifecycle: deterministic commit, rollback, and connection cleanup in [sqlite_utils.py](sqlite_utils.py)
 - Geocoding: cached Nominatim and ArcGIS lookups in [geocoding.py](geocoding.py)
 - LLM summaries: OpenRouter-backed client in [llm.py](llm.py)
 
@@ -152,6 +155,7 @@ The app initializes SQLite automatically on startup and creates these tables as 
 Scrape and enrichment behavior:
 
 - Source scrapers run concurrently every 15 seconds.
+- A failed source is isolated from stale-incident cleanup, so an upstream outage cannot clear that source's live incidents.
 - New incidents are inserted quickly, then description refreshes continue in the background.
 - Immediate descriptions use `mistralai/mistral-nemo`. Incidents are persisted in
   a restart-safe queue and refined in non-empty five-minute batches by
@@ -166,6 +170,7 @@ Batch refinement can be tuned with environment variables:
 - `BATCH_LLM_MODEL` defaults to `google/gemini-2.5-flash-lite`.
 - `BATCH_LLM_INTERVAL_SECONDS` defaults to `300`.
 - `BATCH_LLM_MAX_ITEMS` defaults to `100`.
+- `IMMEDIATE_LLM_MODEL` defaults to `mistralai/mistral-nemo`.
 
 ## Scripts
 
@@ -182,9 +187,7 @@ Stop the backend before running a restore so the live SQLite file is not being w
 
 ## Testing
 
-The repo currently has a mix of Python test scripts and a separate Playwright workspace.
-
-Python-side coverage in `tests/` includes geocoding and incident-stats logic, but some of those files are ad hoc scripts rather than a clean, unified automated suite.
+Python tests use the standard-library `unittest` runner and cover API support primitives, batch enrichment, incident persistence, geocoding, statistics, and source-failure handling. They do not make live network calls.
 
 Playwright coverage in [tests/README.md](tests/README.md) covers:
 
@@ -197,6 +200,9 @@ Playwright coverage in [tests/README.md](tests/README.md) covers:
 Common commands:
 
 ```bash
+cd /home/ubuntu/projects/san-diego-traffic-watch
+python3 -m unittest discover -s tests -p "test_*.py" -v
+
 cd /home/ubuntu/projects/san-diego-traffic-watch/tests
 npm test
 npm run test:ui
@@ -223,6 +229,7 @@ The main service expects:
 ```text
 san-diego-traffic-watch/
 ├── config.py
+├── api_support.py
 ├── db.py
 ├── geocoding.py
 ├── llm.py
@@ -230,6 +237,8 @@ san-diego-traffic-watch/
 ├── monitor.py
 ├── routes.py
 ├── runtime_metrics.py
+├── sqlite_utils.py
+├── traffic_stats.py
 ├── traffic_scraper.py
 ├── scrapers/
 ├── scripts/

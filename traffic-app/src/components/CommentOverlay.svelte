@@ -1,5 +1,4 @@
 <script>
-    import { createEventDispatcher } from "svelte";
     import { fly } from "svelte/transition";
     import { formatCommentTimestamp } from "../utils/helpers.js";
     import { t } from "../utils/i18n.js";
@@ -11,16 +10,16 @@
     export let comments = [];
     export let newComment = "";
     export let commentError = "";
-
-    const dispatch = createEventDispatcher();
+    export let onClose = () => {};
+    export let onSubmit = () => {};
 
     function handleClose() {
-        dispatch("close");
+        onClose();
     }
 
     function handleSubmit() {
         if (!newComment.trim()) return;
-        dispatch("submit", { comment: newComment });
+        onSubmit(newComment.trim());
         newComment = "";
     }
 

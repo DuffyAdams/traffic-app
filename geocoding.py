@@ -4,25 +4,29 @@ Geocoding module for traffic scraper.
 Provides normalized street handling, SQLite caching, and San Diego bounding box validation.
 """
 
-import re
-import time
 import hashlib
+import json
+import re
 import sqlite3
 import threading
-from typing import Optional, Dict, Tuple
+import time
+from datetime import datetime, timezone
+from typing import Dict, Optional
+
 from geopy.geocoders import Nominatim, ArcGIS
+from sqlite_utils import sqlite_connection
 
 # Thread lock for cache operations
 _cache_lock = threading.Lock()
 
 # Thread lock and timing for Nominatim rate limiting
 _nominatim_lock = threading.Lock()
-_last_request_time = 0
+_last_request_time = 0.0
 
 # San Diego County bounding box
 SD_BOUNDS = {
     "min_lat": 32.5,
-    "max_lat": 33.55,
+    "max_lat": 33.49,
     "min_lon": -117.65,
     "max_lon": -116.0
 }
@@ -94,7 +98,7 @@ def is_in_san_diego(lat: float, lon: float) -> bool:
 def _query_hash(query: str) -> str:
     """Generate a hash for a normalized query string."""
     normalized = query.lower().strip()
-    return hashlib.md5(normalized.encode()).hexdigest()
+    return hashlib.md5(normalized.encode(), usedforsecurity=False).hexdigest()
 
 
 class GeocodingCache:
@@ -106,7 +110,7 @@ class GeocodingCache:
     
     def _init_table(self):
         """Create cache tables if they don't exist."""
-        with sqlite3.connect(self.db_path, timeout=30) as conn:
+        with sqlite_connection(self.db_path) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS geocode_cache (
                     query_hash TEXT PRIMARY KEY,
@@ -117,7 +121,10 @@ class GeocodingCache:
                     created_at TEXT
                 )
             """)
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_geocode_cache_query ON geocode_cache(query)")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_geocode_cache_query "
+                "ON geocode_cache(query)"
+            )
             
             # Table for reverse geocoding results
             conn.execute("""
@@ -138,7 +145,7 @@ class GeocodingCache:
         """
         qhash = _query_hash(query)
         with _cache_lock:
-            with sqlite3.connect(self.db_path, timeout=30) as conn:
+            with sqlite_connection(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
                 cur.execute(
@@ -161,7 +168,7 @@ class GeocodingCache:
         chash = hashlib.md5(coords_str.encode()).hexdigest()
         
         with _cache_lock:
-            with sqlite3.connect(self.db_path, timeout=30) as conn:
+            with sqlite_connection(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
                 cur.execute(
@@ -170,45 +177,41 @@ class GeocodingCache:
                 )
                 row = cur.fetchone()
                 if row:
-                    import json
                     return json.loads(row["address_json"])
         return None
     
     def set_reverse(self, lat: float, lon: float, address: Dict):
         """Store a reverse geocoding result in cache."""
         coords_str = f"{lat:.5f},{lon:.5f}"
-        chash = hashlib.md5(coords_str.encode()).hexdigest()
-        from config import now_pst
-        import json
-        now = now_pst().isoformat()
+        chash = hashlib.md5(coords_str.encode(), usedforsecurity=False).hexdigest()
+        created_at = datetime.now(timezone.utc).isoformat()
         
         with _cache_lock:
-            with sqlite3.connect(self.db_path, timeout=30) as conn:
+            with sqlite_connection(self.db_path) as conn:
                 conn.execute(
                     """
                     INSERT OR REPLACE INTO reverse_geocode_cache 
                     (coords_hash, latitude, longitude, address_json, created_at)
                     VALUES (?, ?, ?, ?, ?)
                     """,
-                    (chash, lat, lon, json.dumps(address), now)
+                    (chash, lat, lon, json.dumps(address), created_at)
                 )
                 conn.commit()
     
     def set(self, query: str, lat: float, lon: float, precision: str):
         """Store a geocoding result in cache."""
         qhash = _query_hash(query)
-        from config import now_pst
-        now = now_pst().isoformat()
+        created_at = datetime.now(timezone.utc).isoformat()
         
         with _cache_lock:
-            with sqlite3.connect(self.db_path, timeout=30) as conn:
+            with sqlite_connection(self.db_path) as conn:
                 conn.execute(
                     """
                     INSERT OR REPLACE INTO geocode_cache 
                     (query_hash, query, latitude, longitude, precision, created_at)
                     VALUES (?, ?, ?, ?, ?, ?)
                     """,
-                    (qhash, query, lat, lon, precision, now)
+                    (qhash, query, lat, lon, precision, created_at)
                 )
                 conn.commit()
 
@@ -305,7 +308,10 @@ def geocode_location(
     if cache:
         cached = cache.get(normalized)
         if cached:
-            debug_print(f"CACHE HIT: '{normalized}' -> ({cached['Latitude']}, {cached['Longitude']})")
+            debug_print(
+                f"CACHE HIT: '{normalized}' -> "
+                f"({cached['Latitude']}, {cached['Longitude']})"
+            )
             return cached
     
     # Build query variations
@@ -320,25 +326,31 @@ def geocode_location(
             # Global rate limiting for Nominatim
             with _nominatim_lock:
                 global _last_request_time
-                elapsed = time.time() - _last_request_time
+                elapsed = time.monotonic() - _last_request_time
                 if elapsed < 1.1:
                     time.sleep(1.1 - elapsed)
                 
                 location = geolocator.geocode(query, addressdetails=True)
-                _last_request_time = time.time()
+                _last_request_time = time.monotonic()
             
             if location:
                 lat, lon = location.latitude, location.longitude
                 
                 # Validate: must be in San Diego bounding box
                 if not is_in_san_diego(lat, lon):
-                    debug_print(f"GEOCODE: Rejected '{query}' - outside San Diego bounds ({lat}, {lon})")
+                    debug_print(
+                        f"GEOCODE: Rejected '{query}' - outside San Diego bounds "
+                        f"({lat}, {lon})"
+                    )
                     continue
                 
                 # Also validate address string contains California or San Diego
                 addr = location.address or ""
                 if "California" not in addr and "San Diego" not in addr:
-                    debug_print(f"GEOCODE: Rejected '{query}' - address doesn't mention CA/SD: {addr[:80]}")
+                    debug_print(
+                        f"GEOCODE: Rejected '{query}' - address doesn't mention "
+                        f"CA/SD: {addr[:80]}"
+                    )
                     continue
                 
                 debug_print(f"GEOCODE: Success '{query}' -> ({lat}, {lon}) [precision={precision}]")
@@ -371,15 +383,24 @@ def geocode_location(
                     lat, lon = location.latitude, location.longitude
                     
                     if not is_in_san_diego(lat, lon):
-                        debug_print(f"GEOCODE (ArcGIS): Rejected '{query}' - outside San Diego bounds ({lat}, {lon})")
+                        debug_print(
+                            f"GEOCODE (ArcGIS): Rejected '{query}' - outside "
+                            f"San Diego bounds ({lat}, {lon})"
+                        )
                         continue
                     
                     addr = location.address or ""
                     if "California" not in addr and "San Diego" not in addr and "CA" not in addr:
-                        debug_print(f"GEOCODE (ArcGIS): Rejected '{query}' - address doesn't mention CA/SD: {addr[:80]}")
+                        debug_print(
+                            f"GEOCODE (ArcGIS): Rejected '{query}' - address "
+                            f"doesn't mention CA/SD: {addr[:80]}"
+                        )
                         continue
                         
-                    debug_print(f"GEOCODE (ArcGIS): Success '{query}' -> ({lat}, {lon}) [precision={precision}]")
+                    debug_print(
+                        f"GEOCODE (ArcGIS): Success '{query}' -> ({lat}, {lon}) "
+                        f"[precision={precision}]"
+                    )
                     
                     result = {
                         "Latitude": lat,
@@ -401,7 +422,12 @@ def geocode_location(
 
 
 # Convenience function for reverse geocoding (unchanged logic)
-def reverse_geocode(lat: float, lon: float, cache: Optional[GeocodingCache] = None, debug_print=None) -> Optional[Dict]:
+def reverse_geocode(
+    lat: float,
+    lon: float,
+    cache: Optional[GeocodingCache] = None,
+    debug_print=None,
+) -> Optional[Dict]:
     """Reverse geocode coordinates to get address info."""
     if debug_print is None:
         debug_print = print
@@ -418,12 +444,12 @@ def reverse_geocode(lat: float, lon: float, cache: Optional[GeocodingCache] = No
         # Global rate limiting for Nominatim
         with _nominatim_lock:
             global _last_request_time
-            elapsed = time.time() - _last_request_time
+            elapsed = time.monotonic() - _last_request_time
             if elapsed < 1.1:
                 time.sleep(1.1 - elapsed)
             
             location = geolocator.reverse((lat, lon), exactly_one=True)
-            _last_request_time = time.time()
+            _last_request_time = time.monotonic()
             
         if location and location.raw.get("address"):
             address = location.raw.get("address")

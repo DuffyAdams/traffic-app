@@ -1,9 +1,9 @@
 import sqlite3
 import os
 import sys
-import subprocess
 import threading
 import json
+from contextlib import closing
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Project root is one directory above scripts/ — needed for imports and paths
@@ -11,28 +11,11 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
 # Import shared geocoding module (lives at project root)
-from geocoding import GeocodingCache, geocode_location, normalize_street  # noqa: E402
-from config import now_pst
-
-BASE_DIR      = PROJECT_ROOT
-DB_FILE       = os.path.join(BASE_DIR, "traffic_data.db")
-TARGET_DIR    = os.path.join(BASE_DIR, "traffic-app", "maps")
-MAP_GENERATOR = os.path.join(BASE_DIR, "generate_map.py")
+from geocoding import GeocodingCache, geocode_location  # noqa: E402
+DB_FILE = os.path.join(PROJECT_ROOT, "traffic_data.db")
 
 # Initialize shared geocoding cache
 geo_cache = GeocodingCache(DB_FILE)
-
-def run_map_generator(incident_no, lat, lon):
-    filename_date_str = now_pst().strftime("%Y%m%d_%H%M%S_%f")
-    filename = os.path.join(TARGET_DIR, f"map_{incident_no}_{filename_date_str}.png")
-    cmd = [sys.executable, MAP_GENERATOR, str(lon), str(lat), filename]
-    try:
-        subprocess.run(cmd, check=True)
-        return os.path.basename(filename)
-    except Exception as e:
-        print(f"Map gen error: {e}")
-    return None
-
 
 db_lock = threading.Lock()
 
@@ -66,34 +49,32 @@ def process_incident(row):
         lon = result["Longitude"]
         precision = result.get("precision", "unknown")
         
-        map_file = run_map_generator(incident_no, lat, lon)
-        if map_file:
-            with db_lock:
-                with sqlite3.connect(DB_FILE, timeout=30) as conn:
-                    conn.execute("""
-                        UPDATE incidents 
-                        SET latitude = ?, longitude = ?, map_filename = ?, geocode_precision = ? 
-                        WHERE incident_no = ?
-                    """, (lat, lon, map_file, precision, incident_no))
-                    conn.commit()
-            print(f"Updated {incident_no} [precision={precision}]")
+        with db_lock:
+            with closing(sqlite3.connect(DB_FILE, timeout=30)) as conn:
+                conn.execute(
+                    """
+                    UPDATE incidents
+                    SET latitude = ?, longitude = ?, geocode_precision = ?
+                    WHERE incident_no = ?
+                    """,
+                    (lat, lon, precision, incident_no),
+                )
+                conn.commit()
+        print(f"Updated {incident_no} [precision={precision}]")
     else:
         print(f"Could not geocode {incident_no}: {query}")
 
 def catchup():
-    conn = sqlite3.connect(DB_FILE, timeout=30)
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-    
-    # Find incidents needing geocoding (SDPD, SDFD sources)
-    cur.execute("""
-        SELECT incident_no, source, location, details 
-        FROM incidents 
-        WHERE (latitude IS NULL OR map_filename IS NULL OR map_filename = '') 
-        AND source IN ('SDPD', 'SDFD')
-    """)
-    rows = cur.fetchall()
-    conn.close()
+    with closing(sqlite3.connect(DB_FILE, timeout=30)) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT incident_no, source, location, details
+            FROM incidents
+            WHERE (latitude IS NULL OR longitude IS NULL)
+              AND source IN ('SDPD', 'SDFD')
+            """
+        ).fetchall()
     
     print(f"Found {len(rows)} incidents needing geocoding.")
     
@@ -101,8 +82,7 @@ def catchup():
         return
 
     # Use a thread pool to process incidents in parallel.
-    # We use multiple threads to allow map generation and geocoding to overlap.
-    # geocoding.py handles the Nominatim rate limit internally.
+    # geocoding.py serializes Nominatim calls to honor its rate limit.
     max_workers = 5
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [executor.submit(process_incident, row) for row in rows]

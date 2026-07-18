@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 from config import SDPD_SCRAPE_URL, HEADERS, HTTP_TIMEOUT_SECONDS
 from config import ensure_pst, now_pst
 from logger import safe_print
+from scrapers import ScraperError
 
 
 def _looks_like_datetime(value):
@@ -64,11 +65,14 @@ def scrape_sdpd_incidents():
         soup  = BeautifulSoup(response.text, "html.parser")
         table = soup.find("table", id="myDataTable")
         if not table:
-            safe_print("SDPD: No table found.")
-            return []
+            raise ScraperError("SDPD incident table was not present")
+
+        body = table.find("tbody")
+        if body is None:
+            raise ScraperError("SDPD incident table did not contain a body")
 
         incidents = []
-        for row in table.find("tbody").find_all("tr"):
+        for row in body.find_all("tr"):
             cols = [ele.text.strip() for ele in row.find_all("td")]
             parsed = _extract_sdpd_columns(cols)
             if not parsed:
@@ -103,6 +107,7 @@ def scrape_sdpd_incidents():
         safe_print(f"SDPD: Found {len(incidents)} incidents.")
         return incidents
 
-    except Exception as e:
-        safe_print(f"Error scraping SDPD: {e}")
-        return []
+    except ScraperError:
+        raise
+    except Exception as exc:
+        raise ScraperError(f"SDPD scrape failed: {exc}") from exc

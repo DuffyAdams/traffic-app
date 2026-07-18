@@ -48,7 +48,9 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 2 : undefined,
+  // The mock API exposes a global reset endpoint, so parallel spec files can
+  // otherwise erase one another's mutations mid-test.
+  workers: useLiveBackend ? undefined : 1,
   outputDir: "./test-results",
   reporter: [
     ["list"],

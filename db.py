@@ -6,23 +6,56 @@ Database initialisation and all CRUD operations for the traffic app.
 import json
 import re
 import sqlite3
-from datetime import datetime
 
-from config import DB_FILE, db_lock, now_pst, pst_date_str, pst_timestamp_str
+from config import DB_FILE, db_lock, pst_date_str, pst_timestamp_str
 from logger import safe_print
 from llm import generate_description
+from sqlite_utils import sqlite_connection
 
 
 TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
+
+INDEX_STATEMENTS = (
+    "CREATE INDEX IF NOT EXISTS idx_incidents_timestamp ON incidents(timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_incidents_active ON incidents(active)",
+    "CREATE INDEX IF NOT EXISTS idx_incidents_date ON incidents(date)",
+    "CREATE INDEX IF NOT EXISTS idx_incidents_no_date ON incidents(incident_no, date)",
+    "CREATE INDEX IF NOT EXISTS idx_incidents_source_timestamp "
+    "ON incidents(source, timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_incidents_source_active "
+    "ON incidents(source, active)",
+    "CREATE INDEX IF NOT EXISTS idx_incidents_source_date ON incidents(source, date)",
+    "CREATE INDEX IF NOT EXISTS idx_incidents_batch_queue "
+    "ON incidents(batch_enriched_at, batch_queued_at)",
+    "CREATE INDEX IF NOT EXISTS idx_incidents_pagination "
+    "ON incidents(timestamp DESC, incident_no DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_incidents_dow_hour "
+    "ON incidents(strftime('%w', timestamp), strftime('%H', timestamp))",
+    "CREATE INDEX IF NOT EXISTS idx_incidents_dow_date "
+    "ON incidents(strftime('%w', timestamp), date(timestamp))",
+    "CREATE INDEX IF NOT EXISTS idx_incidents_source_dow_hour "
+    "ON incidents(source, strftime('%w', timestamp), strftime('%H', timestamp))",
+    "CREATE INDEX IF NOT EXISTS idx_incidents_source_dow_date "
+    "ON incidents(source, strftime('%w', timestamp), date(timestamp))",
+    "CREATE INDEX IF NOT EXISTS idx_comments_incident_time "
+    "ON comments(incident_no, timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_likes_incident_device "
+    "ON likes(incident_no, device_uuid)",
+    "CREATE INDEX IF NOT EXISTS idx_api_events_timestamp ON api_events(timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_api_events_host_timestamp "
+    "ON api_events(host, timestamp)",
+    "CREATE INDEX IF NOT EXISTS idx_api_events_device_time "
+    "ON api_events(device_uuid, timestamp)",
+)
 
 
 # ---------------------------------------------------------------------------
 # Schema & migrations
 # ---------------------------------------------------------------------------
 
-def init_db():
-    """Initialize SQLite database schema and run any pending migrations."""
-    with sqlite3.connect(DB_FILE, timeout=30) as conn:
+def init_db(db_file=None):
+    """Initialize a SQLite database schema and run pending migrations."""
+    with sqlite_connection(db_file or DB_FILE) as conn:
         conn.execute("PRAGMA journal_mode=WAL")   # Better concurrent read/write
         conn.execute("PRAGMA synchronous=NORMAL")  # Balanced durability/speed
         conn.execute("PRAGMA foreign_keys = ON")
@@ -94,34 +127,19 @@ def init_db():
         _normalise_types(cur)
 
         # ── Indexes ────────────────────────────────────────────────────────
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_timestamp ON incidents(timestamp)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_active    ON incidents(active)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_date      ON incidents(date)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_no_date   ON incidents(incident_no, date)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_source_timestamp ON incidents(source, timestamp)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_source_active    ON incidents(source, active)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_source_date      ON incidents(source, date)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_batch_queue      ON incidents(batch_enriched_at, batch_queued_at)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_pagination       ON incidents(timestamp DESC, incident_no DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_dow_hour         ON incidents(strftime('%w', timestamp), strftime('%H', timestamp))")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_dow_date         ON incidents(strftime('%w', timestamp), date(timestamp))")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_source_dow_hour  ON incidents(source, strftime('%w', timestamp), strftime('%H', timestamp))")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_source_dow_date  ON incidents(source, strftime('%w', timestamp), date(timestamp))")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_comments_incident_time     ON comments(incident_no, timestamp)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_likes_incident_device      ON likes(incident_no, device_uuid)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_api_events_timestamp       ON api_events(timestamp)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_api_events_host_timestamp  ON api_events(host, timestamp)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_api_events_device_time     ON api_events(device_uuid, timestamp)")
+        for statement in INDEX_STATEMENTS:
+            cur.execute(statement)
 
         conn.commit()
 
 
 def _add_column(cur, table, column, definition):
-    """Safely add a column; ignore if it already exists."""
-    try:
+    """Add a column when it is absent without masking migration failures."""
+    existing_columns = {
+        row[1] for row in cur.execute(f"PRAGMA table_info({table})").fetchall()
+    }
+    if column not in existing_columns:
         cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
-    except sqlite3.OperationalError:
-        pass  # Column already exists
 
 
 def _normalise_types(cur):
@@ -154,7 +172,7 @@ def read_incidents(
     device_uuid=None,
 ):
     """Fetch incidents with optional filtering, cursor-based pagination, and embedded comments."""
-    with sqlite3.connect(DB_FILE, timeout=30) as conn:
+    with sqlite_connection(DB_FILE) as conn:
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
 
@@ -218,7 +236,7 @@ def _attach_comments(cur, incidents):
         inc["comments"] = by_incident.get(inc["incident_no"], [])
         try:
             inc["Details"] = json.loads(inc["details"]) if inc["details"] else []
-        except Exception:
+        except (json.JSONDecodeError, TypeError):
             inc["Details"] = []
 
 
@@ -252,7 +270,7 @@ def with_user_like_state(incidents, device_uuid):
     if not incident_copies:
         return incident_copies
 
-    with sqlite3.connect(DB_FILE, timeout=30) as conn:
+    with sqlite_connection(DB_FILE) as conn:
         cur = conn.cursor()
         _attach_user_like_state(cur, incident_copies, device_uuid)
 
@@ -261,7 +279,7 @@ def with_user_like_state(incidents, device_uuid):
 
 def incident_exists(incident_no, date):
     """Return True if an incident already exists in the DB."""
-    with sqlite3.connect(DB_FILE, timeout=30) as conn:
+    with sqlite_connection(DB_FILE) as conn:
         cur = conn.cursor()
         cur.execute(
             "SELECT 1 FROM incidents WHERE incident_no = ? AND date = ?",
@@ -282,7 +300,7 @@ def fetch_existing_incidents(keys):
 
     existing = {}
     with db_lock:
-        with sqlite3.connect(DB_FILE, timeout=30) as conn:
+        with sqlite_connection(DB_FILE) as conn:
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
 
@@ -369,7 +387,7 @@ def save_or_update_incident(
     # ── Fetch existing record only when a caller did not prefetch it ───────
     if existing_record is None:
         with db_lock:
-            with sqlite3.connect(DB_FILE, timeout=30) as conn:
+            with sqlite_connection(DB_FILE) as conn:
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
                 cur.execute(
@@ -392,7 +410,7 @@ def save_or_update_incident(
 
     # ── Apply DB update/insert ─────────────────────────────────────────────
     with db_lock:
-        with sqlite3.connect(DB_FILE, timeout=30) as conn:
+        with sqlite_connection(DB_FILE) as conn:
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
 
@@ -408,30 +426,40 @@ def save_or_update_incident(
                         "THEN ? ELSE batch_queued_at END, batch_enriched_at = NULL"
                     )
                     params.extend([details_json, new_description, pst_timestamp_str()])
-                if new_timestamp != existing_data.get("timestamp"):
-                    updates.append("timestamp = ?")
-                    params.append(new_timestamp)
-                if date != existing_data.get("date"):
-                    updates.append("date = ?")
-                    params.append(date)
-                if latitude and latitude != existing_data.get("latitude"):
-                    updates.append("latitude = ?")
-                    params.append(latitude)
-                if longitude and longitude != existing_data.get("longitude"):
-                    updates.append("longitude = ?")
-                    params.append(longitude)
-                if geocode_precision != "unknown" and geocode_precision != existing_data.get("geocode_precision"):
-                    updates.append("geocode_precision = ?")
-                    params.append(geocode_precision)
-                if new_map_filename and new_map_filename != existing_data.get("map_filename"):
-                    updates.append("map_filename = ?")
-                    params.append(new_map_filename)
-                if active_status != existing_data.get("active"):
-                    updates.append("active = ?")
-                    params.append(active_status)
+
+                mutable_values = {
+                    "timestamp": new_timestamp,
+                    "city": city,
+                    "neighborhood": neighborhood,
+                    "location": location,
+                    "location_desc": location_desc,
+                    "type": type_field,
+                    "active": active_status,
+                    "source": source,
+                }
+                for column, value in mutable_values.items():
+                    if value != existing_data.get(column):
+                        updates.append(f"{column} = ?")
+                        params.append(value)
+
+                optional_values = {
+                    "latitude": latitude,
+                    "longitude": longitude,
+                    "map_filename": new_map_filename or None,
+                    "geocode_precision": (
+                        geocode_precision if geocode_precision != "unknown" else None
+                    ),
+                }
+                for column, value in optional_values.items():
+                    if value is not None and value != existing_data.get(column):
+                        updates.append(f"{column} = ?")
+                        params.append(value)
 
                 if updates:
-                    query = f"UPDATE incidents SET {', '.join(updates)} WHERE incident_no = ? AND date = ?"
+                    query = (
+                        f"UPDATE incidents SET {', '.join(updates)} "
+                        "WHERE incident_no = ? AND date = ?"
+                    )
                     params.extend([str(incident_no), existing_data.get("date", date)])
                     cur.execute(query, tuple(params))
                     conn.commit()
@@ -453,10 +481,13 @@ def save_or_update_incident(
                 cur.execute(
                     """
                     INSERT INTO incidents
-                    (incident_no, date, timestamp, city, neighborhood, location, location_desc, type,
-                     details, description, latitude, longitude, map_filename, likes, comments,
-                     active, source, geocode_precision, severity, batch_queued_at,
-                     batch_enriched_at)
+                    (
+                        incident_no, date, timestamp, city, neighborhood,
+                        location, location_desc, type, details, description,
+                        latitude, longitude, map_filename, likes, comments,
+                        active, source, geocode_precision, severity,
+                        batch_queued_at, batch_enriched_at
+                    )
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (

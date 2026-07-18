@@ -18,9 +18,10 @@ routes.py     - Flask API endpoints
 traffic_scraper.py  - you are here (entry point only)
 """
 
+import os
 import threading
 
-from config import app, BASE_DIR, DB_FILE, MAP_GENERATOR, TARGET_DIR
+from config import app, BASE_DIR, DB_FILE
 from logger import safe_print
 from db import init_db
 from monitor import monitor_traffic_data
@@ -31,37 +32,33 @@ import routes  # noqa: F401
 
 def run_scraper_and_server():
     """Initialise the database, start the scraper thread, then serve Flask."""
-    import os
-
     init_db()
 
-    scraper_thread = threading.Thread(target=monitor_traffic_data, daemon=True)
+    scraper_thread = threading.Thread(
+        target=monitor_traffic_data,
+        name="traffic-monitor",
+        daemon=True,
+    )
     scraper_thread.start()
 
     host = os.environ.get("TRAFFIC_APP_HOST", "0.0.0.0")
     port = int(os.environ.get("TRAFFIC_APP_PORT", "5002"))
 
     safe_print("Starting Flask server...")
-    try:
-        app.run(debug=False, host=host, port=port, threaded=True)
-    except Exception as e:
-        safe_print(f"Server error: {e}")
-        os._exit(1)
-    except SystemExit:
-        os._exit(1)
+    app.run(debug=False, host=host, port=port, threaded=True)
 
 
-if __name__ == "__main__":
-    import os
-
+def main():
+    """Start the production scraper and API process."""
     safe_print("Traffic Alert System Starting...")
     safe_print(f"Base directory: {BASE_DIR}")
-    safe_print(f"Map directory:  {TARGET_DIR}")
     safe_print(f"SQLite DB:      {DB_FILE}")
-    if not os.path.exists(MAP_GENERATOR):
-        safe_print(f"WARNING: Map generator not found at {MAP_GENERATOR}")
 
     try:
         run_scraper_and_server()
     except KeyboardInterrupt:
-        os._exit(0)
+        safe_print("Traffic Alert System stopped.")
+
+
+if __name__ == "__main__":
+    main()

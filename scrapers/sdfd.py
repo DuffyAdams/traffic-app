@@ -9,6 +9,7 @@ import requests
 from config import SDFD_API_URL, HEADERS, HTTP_TIMEOUT_SECONDS
 from config import ensure_pst, now_pst
 from logger import safe_print
+from scrapers import ScraperError
 
 
 def scrape_sdfd_incidents():
@@ -18,6 +19,8 @@ def scrape_sdfd_incidents():
         response = requests.get(SDFD_API_URL, headers=HEADERS, timeout=HTTP_TIMEOUT_SECONDS)
         response.raise_for_status()
         data = response.json()
+        if not isinstance(data, list):
+            raise ScraperError("SDFD response was not an incident list")
 
         incidents = []
         for item in data:
@@ -67,6 +70,7 @@ def scrape_sdfd_incidents():
         safe_print(f"SDFD: Found {len(incidents)} incidents.")
         return incidents
 
-    except Exception as e:
-        safe_print(f"Error scraping SDFD: {e}")
-        return []
+    except ScraperError:
+        raise
+    except Exception as exc:
+        raise ScraperError(f"SDFD scrape failed: {exc}") from exc
