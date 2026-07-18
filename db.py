@@ -48,6 +48,8 @@ def init_db():
                 comments          TEXT DEFAULT '[]',
                 active            INTEGER DEFAULT 1,
                 source            TEXT DEFAULT 'CHP',
+                batch_queued_at   TEXT DEFAULT NULL,
+                batch_enriched_at TEXT DEFAULT NULL,
                 PRIMARY KEY (incident_no, date)
             )
         """)
@@ -85,6 +87,8 @@ def init_db():
         _add_column(cur, "incidents", "source",           "TEXT DEFAULT 'CHP'")
         _add_column(cur, "incidents", "geocode_precision", "TEXT DEFAULT 'unknown'")
         _add_column(cur, "incidents", "severity",          "INTEGER DEFAULT NULL")
+        _add_column(cur, "incidents", "batch_queued_at",   "TEXT DEFAULT NULL")
+        _add_column(cur, "incidents", "batch_enriched_at", "TEXT DEFAULT NULL")
 
         # ── Type normalisation ─────────────────────────────────────────────
         _normalise_types(cur)
@@ -97,6 +101,7 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_source_timestamp ON incidents(source, timestamp)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_source_active    ON incidents(source, active)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_source_date      ON incidents(source, date)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_batch_queue      ON incidents(batch_enriched_at, batch_queued_at)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_pagination       ON incidents(timestamp DESC, incident_no DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_dow_hour         ON incidents(strftime('%w', timestamp), strftime('%H', timestamp))")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_incidents_dow_date         ON incidents(strftime('%w', timestamp), date(timestamp))")
@@ -396,8 +401,13 @@ def save_or_update_incident(
                 updates, params = [], []
 
                 if details_json != existing_data.get("details", ""):
-                    updates.append("details = ?, description = ?")
-                    params.extend([details_json, new_description])
+                    updates.append(
+                        "details = ?, description = ?, "
+                        "batch_queued_at = CASE "
+                        "WHEN batch_queued_at IS NULL OR batch_enriched_at IS NOT NULL "
+                        "THEN ? ELSE batch_queued_at END, batch_enriched_at = NULL"
+                    )
+                    params.extend([details_json, new_description, pst_timestamp_str()])
                 if new_timestamp != existing_data.get("timestamp"):
                     updates.append("timestamp = ?")
                     params.append(new_timestamp)
@@ -445,14 +455,16 @@ def save_or_update_incident(
                     INSERT INTO incidents
                     (incident_no, date, timestamp, city, neighborhood, location, location_desc, type,
                      details, description, latitude, longitude, map_filename, likes, comments,
-                     active, source, geocode_precision, severity)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     active, source, geocode_precision, severity, batch_queued_at,
+                     batch_enriched_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         str(incident_no), date, new_timestamp, city, neighborhood,
                         location, location_desc, type_field, details_json, new_description,
                         latitude, longitude, new_map_filename, 0, "[]",
                         active_status, source, geocode_precision, new_severity,
+                        pst_timestamp_str(), None,
                     ),
                 )
                 conn.commit()

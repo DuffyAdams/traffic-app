@@ -29,6 +29,17 @@ os.makedirs(TARGET_DIR, exist_ok=True)
 # ── Feature flags ────────────────────────────────────────────────────────────
 TESTMODE = os.environ.get("TESTMODE", "False").lower() == "true"
 
+# LLM enrichment: Mistral handles the immediate response, then Gemini refines
+# incidents together after a short collection window.
+BATCH_LLM_ENABLED = os.environ.get("BATCH_LLM_ENABLED", "True").lower() == "true"
+BATCH_LLM_MODEL = os.environ.get(
+    "BATCH_LLM_MODEL", "google/gemini-2.5-flash-lite"
+)
+BATCH_LLM_INTERVAL_SECONDS = max(
+    1, int(os.environ.get("BATCH_LLM_INTERVAL_SECONDS", "300"))
+)
+BATCH_LLM_MAX_ITEMS = max(1, int(os.environ.get("BATCH_LLM_MAX_ITEMS", "100")))
+
 # San Diego traffic sources use the local Pacific clock, including daylight time.
 PACIFIC = pytz.timezone("America/Los_Angeles")
 # Backward-compatible alias for existing imports; now DST-aware.

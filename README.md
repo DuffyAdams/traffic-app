@@ -21,6 +21,8 @@ The repo has three main pieces:
 - Stores incidents, likes, comments, geocoding cache entries, and API analytics events in SQLite with WAL mode enabled.
 - Geocodes non-coordinate incidents with cached lookups, Nominatim first, and ArcGIS fallback constrained to the San Diego region.
 - Generates incident summaries and 1 to 5 severity scores through OpenRouter via the OpenAI SDK.
+- Shows new incidents immediately with Mistral Nemo summaries, then refines each
+  five-minute incident batch with Gemini 2.5 Flash-Lite using strict structured output.
 - Supports per-device likes and up to two comments per incident using a persistent UUID cookie.
 - Serves incident statistics, operational dashboard metrics, and health checks over JSON endpoints.
 - Renders interactive frontend maps with MapLibre plus local PMTiles assets instead of remote static map images.
@@ -151,9 +153,19 @@ Scrape and enrichment behavior:
 
 - Source scrapers run concurrently every 15 seconds.
 - New incidents are inserted quickly, then description refreshes continue in the background.
+- Immediate descriptions use `mistralai/mistral-nemo`. Incidents are persisted in
+  a restart-safe queue and refined in non-empty five-minute batches by
+  `google/gemini-2.5-flash-lite`.
 - CHP incidents usually arrive with coordinates already present.
 - SDPD, SDFD, and SDSO incidents are geocoded when coordinates are missing.
 - `generate_map.py` is now a legacy no-op; the frontend renders mini-maps client-side from coordinates and local PMTiles data.
+
+Batch refinement can be tuned with environment variables:
+
+- `BATCH_LLM_ENABLED` defaults to `True`.
+- `BATCH_LLM_MODEL` defaults to `google/gemini-2.5-flash-lite`.
+- `BATCH_LLM_INTERVAL_SECONDS` defaults to `300`.
+- `BATCH_LLM_MAX_ITEMS` defaults to `100`.
 
 ## Scripts
 

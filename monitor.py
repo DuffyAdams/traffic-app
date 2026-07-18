@@ -11,23 +11,28 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import requests
 
 from config import (
-    DB_FILE, MAP_GENERATOR, TARGET_DIR, TESTMODE, HEALTHCHECK_URL, db_lock,
-    HTTP_TIMEOUT_SECONDS, now_pst, pst_date_str,
+    BATCH_LLM_ENABLED, BATCH_LLM_INTERVAL_SECONDS, BATCH_LLM_MAX_ITEMS,
+    BATCH_LLM_MODEL, DB_FILE, MAP_GENERATOR, TARGET_DIR, TESTMODE,
+    HEALTHCHECK_URL, db_lock, HTTP_TIMEOUT_SECONDS, now_pst, pst_date_str,
+    pst_timestamp_str,
 )
 from runtime_metrics import record_scrape_success
 from logger import safe_print
 from db import fetch_existing_incidents, save_or_update_incident
-from llm import generate_description
+from llm import generate_batch_descriptions, generate_description
 from geocoding import geocode_location as geo_geocode_location
 from config import geo_cache
 
 
 _description_executor = ThreadPoolExecutor(max_workers=2)
+_batch_executor = ThreadPoolExecutor(max_workers=1)
+_batch_future = None
+_batch_retry_after = 0.0
 
 
 def geocode_location(location_query):
@@ -160,7 +165,12 @@ def _refresh_incident_description(incident):
         with db_lock:
             with sqlite3.connect(DB_FILE, timeout=30) as conn:
                 conn.cursor().execute(
-                    "UPDATE incidents SET description = ?, severity = ? WHERE incident_no = ? AND date = ?",
+                    """
+                    UPDATE incidents
+                    SET description = ?, severity = ?
+                    WHERE incident_no = ? AND date = ?
+                      AND batch_enriched_at IS NULL
+                    """,
                     (description, severity, str(incident_no), incident_date),
                 )
                 conn.commit()
@@ -243,6 +253,10 @@ def monitor_traffic_data(interval=15):
                 # ── Mark stale incidents inactive ──────────────────────────
                 _mark_inactive(active_ids)
 
+                # Refine all incidents collected during the last five minutes
+                # without delaying this scrape cycle or the public feed.
+                _submit_batch_refinement_if_due()
+
                 # ── Healthcheck ping ───────────────────────────────────────
                 _ping_healthcheck(success=True)
                 record_scrape_success(time.perf_counter() - cycle_start)
@@ -297,8 +311,19 @@ def _generate_final_descriptions(active_ids):
             with db_lock:
                 with sqlite3.connect(DB_FILE, timeout=30) as conn:
                     conn.cursor().execute(
-                        "UPDATE incidents SET description = ?, severity = ? WHERE incident_no = ? AND date = ?",
-                        (final_desc, final_sev, record["incident_no"], record["date"]),
+                        """
+                        UPDATE incidents
+                        SET description = ?, severity = ?, batch_queued_at = ?,
+                            batch_enriched_at = NULL
+                        WHERE incident_no = ? AND date = ?
+                        """,
+                        (
+                            final_desc,
+                            final_sev,
+                            pst_timestamp_str(),
+                            record["incident_no"],
+                            record["date"],
+                        ),
                     )
                     conn.commit()
         except Exception as ex:
@@ -307,6 +332,109 @@ def _generate_final_descriptions(active_ids):
     with ThreadPoolExecutor(max_workers=5) as executor:
         for _ in as_completed([executor.submit(_process_final, r) for r in newly_inactive]):
             pass
+
+
+# ---------------------------------------------------------------------------
+# Five-minute Gemini batch refinement
+# ---------------------------------------------------------------------------
+
+def _submit_batch_refinement_if_due():
+    """Start one eligible Gemini batch without blocking the monitor loop."""
+    global _batch_future, _batch_retry_after
+
+    if not BATCH_LLM_ENABLED:
+        return
+
+    if _batch_future is not None:
+        if not _batch_future.done():
+            return
+        try:
+            _batch_future.result()
+        except Exception as exc:
+            safe_print(f"Gemini batch refinement failed: {exc}")
+            _batch_retry_after = time.monotonic() + min(
+                BATCH_LLM_INTERVAL_SECONDS, 300
+            )
+        finally:
+            _batch_future = None
+
+    if time.monotonic() < _batch_retry_after:
+        return
+
+    cutoff = pst_timestamp_str(
+        now_pst() - timedelta(seconds=BATCH_LLM_INTERVAL_SECONDS)
+    )
+    with db_lock:
+        with sqlite3.connect(DB_FILE, timeout=30) as conn:
+            conn.row_factory = sqlite3.Row
+            oldest = conn.execute(
+                """
+                SELECT MIN(batch_queued_at)
+                FROM incidents
+                WHERE batch_queued_at IS NOT NULL
+                  AND batch_enriched_at IS NULL
+                """
+            ).fetchone()[0]
+            if not oldest or oldest > cutoff:
+                return
+
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM incidents
+                WHERE batch_queued_at IS NOT NULL
+                  AND batch_enriched_at IS NULL
+                ORDER BY batch_queued_at, timestamp, incident_no
+                LIMIT ?
+                """,
+                (BATCH_LLM_MAX_ITEMS,),
+            ).fetchall()
+
+    if not rows:
+        return
+
+    records = [dict(row) for row in rows]
+    safe_print(
+        f"Submitting {len(records)} incidents to {BATCH_LLM_MODEL} "
+        "for five-minute batch refinement."
+    )
+    _batch_future = _batch_executor.submit(_refine_description_batch, records)
+
+
+def _refine_description_batch(records):
+    """Generate and atomically apply a validated batch of smarter summaries."""
+    results = generate_batch_descriptions(records)
+    enriched_at = pst_timestamp_str()
+    updated = 0
+
+    with db_lock:
+        with sqlite3.connect(DB_FILE, timeout=30) as conn:
+            cur = conn.cursor()
+            for result in results:
+                record = records[result["item_id"] - 1]
+                cur.execute(
+                    """
+                    UPDATE incidents
+                    SET description = ?, severity = ?, batch_enriched_at = ?
+                    WHERE incident_no = ? AND date = ?
+                      AND batch_queued_at = ?
+                      AND batch_enriched_at IS NULL
+                    """,
+                    (
+                        result["summary"],
+                        result["severity"],
+                        enriched_at,
+                        record["incident_no"],
+                        record["date"],
+                        record["batch_queued_at"],
+                    ),
+                )
+                updated += cur.rowcount
+            conn.commit()
+
+    safe_print(
+        f"Gemini batch refinement applied to {updated}/{len(records)} incidents."
+    )
 
 
 def _mark_inactive(active_ids):
