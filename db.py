@@ -25,8 +25,8 @@ INDEX_STATEMENTS = (
     "CREATE INDEX IF NOT EXISTS idx_incidents_source_active "
     "ON incidents(source, active)",
     "CREATE INDEX IF NOT EXISTS idx_incidents_source_date ON incidents(source, date)",
-    "CREATE INDEX IF NOT EXISTS idx_incidents_batch_queue "
-    "ON incidents(batch_enriched_at, batch_queued_at)",
+    "CREATE INDEX IF NOT EXISTS idx_incidents_llm_pending "
+    "ON incidents(active, llm_pending_at)",
     "CREATE INDEX IF NOT EXISTS idx_incidents_pagination "
     "ON incidents(timestamp DESC, incident_no DESC)",
     "CREATE INDEX IF NOT EXISTS idx_incidents_dow_hour "
@@ -83,6 +83,7 @@ def init_db(db_file=None):
                 source            TEXT DEFAULT 'CHP',
                 batch_queued_at   TEXT DEFAULT NULL,
                 batch_enriched_at TEXT DEFAULT NULL,
+                llm_pending_at    TEXT DEFAULT NULL,
                 PRIMARY KEY (incident_no, date)
             )
         """)
@@ -122,6 +123,26 @@ def init_db(db_file=None):
         _add_column(cur, "incidents", "severity",          "INTEGER DEFAULT NULL")
         _add_column(cur, "incidents", "batch_queued_at",   "TEXT DEFAULT NULL")
         _add_column(cur, "incidents", "batch_enriched_at", "TEXT DEFAULT NULL")
+        _add_column(cur, "incidents", "llm_pending_at",    "TEXT DEFAULT NULL")
+
+        # Carry unfinished work from the removed Gemini batch queue into the
+        # provider-neutral per-incident Mistral retry queue exactly once.
+        cur.execute(
+            """
+            UPDATE incidents
+            SET llm_pending_at = COALESCE(llm_pending_at, batch_queued_at)
+            WHERE batch_queued_at IS NOT NULL
+              AND batch_enriched_at IS NULL
+              AND active = 1
+            """
+        )
+        cur.execute(
+            """
+            UPDATE incidents
+            SET batch_queued_at = NULL, batch_enriched_at = NULL
+            WHERE batch_queued_at IS NOT NULL OR batch_enriched_at IS NOT NULL
+            """
+        )
 
         # ── Type normalisation ─────────────────────────────────────────────
         _normalise_types(cur)
@@ -418,12 +439,11 @@ def save_or_update_incident(
 
                 if details_json != existing_data.get("details", ""):
                     updates.append(
-                        "details = ?, description = ?, "
-                        "batch_queued_at = CASE "
-                        "WHEN batch_queued_at IS NULL OR batch_enriched_at IS NOT NULL "
-                        "THEN ? ELSE batch_queued_at END, batch_enriched_at = NULL"
+                        "details = ?, description = ?, llm_pending_at = ?"
                     )
-                    params.extend([details_json, new_description, pst_timestamp_str()])
+                    params.extend(
+                        [details_json, new_description, pst_timestamp_str()]
+                    )
 
                 mutable_values = {
                     "timestamp": new_timestamp,
@@ -484,16 +504,18 @@ def save_or_update_incident(
                         location, location_desc, type, details, description,
                         latitude, longitude, map_filename, likes, comments,
                         active, source, geocode_precision, severity,
-                        batch_queued_at, batch_enriched_at
+                        batch_queued_at, batch_enriched_at, llm_pending_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         str(incident_no), date, new_timestamp, city, neighborhood,
                         location, location_desc, type_field, details_json, new_description,
                         latitude, longitude, new_map_filename, 0, "[]",
                         active_status, source, geocode_precision, new_severity,
-                        pst_timestamp_str(), None,
+                        None,
+                        None,
+                        pst_timestamp_str() if not generate_description_on_insert else None,
                     ),
                 )
                 conn.commit()

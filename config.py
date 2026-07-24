@@ -57,23 +57,9 @@ os.makedirs(TARGET_DIR, exist_ok=True)
 # ── Feature flags ────────────────────────────────────────────────────────────
 TESTMODE = env_bool("TESTMODE")
 
-# LLM enrichment: Mistral handles the immediate response, then Gemini refines
-# incidents together after a short collection window.
-BATCH_LLM_ENABLED = env_bool("BATCH_LLM_ENABLED", True)
-DEFAULT_BATCH_LLM_MODEL = "google/gemini-2.5-flash-lite"
+# LLM enrichment: use Mistral for incident summaries.
 DEFAULT_IMMEDIATE_LLM_MODEL = "mistralai/mistral-nemo"
-BATCH_LLM_MODEL = (
-    os.environ.get("BATCH_LLM_MODEL", DEFAULT_BATCH_LLM_MODEL).strip()
-    or DEFAULT_BATCH_LLM_MODEL
-)
-IMMEDIATE_LLM_MODEL = (
-    os.environ.get("IMMEDIATE_LLM_MODEL", DEFAULT_IMMEDIATE_LLM_MODEL).strip()
-    or DEFAULT_IMMEDIATE_LLM_MODEL
-)
-BATCH_LLM_INTERVAL_SECONDS = env_number(
-    "BATCH_LLM_INTERVAL_SECONDS", 300, int, minimum=1
-)
-BATCH_LLM_MAX_ITEMS = env_number("BATCH_LLM_MAX_ITEMS", 100, int, minimum=1)
+IMMEDIATE_LLM_MODEL = DEFAULT_IMMEDIATE_LLM_MODEL
 
 # San Diego traffic sources use the local Pacific clock, including daylight time.
 PACIFIC = pytz.timezone("America/Los_Angeles")

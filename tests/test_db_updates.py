@@ -74,6 +74,44 @@ class IncidentUpdateTests(unittest.TestCase):
             ),
         )
 
+    def test_legacy_pending_batch_work_migrates_only_for_active_incidents(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = os.path.join(temp_dir, "traffic-test.db")
+            with patch.object(db, "DB_FILE", db_path):
+                db.init_db()
+                with closing(sqlite3.connect(db_path)) as conn:
+                    conn.executemany(
+                        """
+                        INSERT INTO incidents (
+                            incident_no, date, active, batch_queued_at,
+                            batch_enriched_at
+                        ) VALUES (?, '2026-07-17', ?, '2026-07-17 12:00:00', NULL)
+                        """,
+                        [("ACTIVE-1", 1), ("INACTIVE-1", 0)],
+                    )
+                    conn.commit()
+
+                db.init_db()
+                db.init_db()
+
+            with closing(sqlite3.connect(db_path)) as conn:
+                rows = conn.execute(
+                    """
+                    SELECT incident_no, llm_pending_at, batch_queued_at,
+                           batch_enriched_at
+                    FROM incidents
+                    ORDER BY incident_no
+                    """
+                ).fetchall()
+
+        self.assertEqual(
+            rows,
+            [
+                ("ACTIVE-1", "2026-07-17 12:00:00", None, None),
+                ("INACTIVE-1", None, None, None),
+            ],
+        )
+
     def test_init_db_preserves_existing_caltrans_notification_incidents(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = os.path.join(temp_dir, "traffic-test.db")

@@ -6,17 +6,13 @@ incident persistence, and description generation.
 
 import json
 import sqlite3
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import timedelta
 
 import requests
 
 from config import (
-    BATCH_LLM_ENABLED,
-    BATCH_LLM_INTERVAL_SECONDS,
-    BATCH_LLM_MAX_ITEMS,
-    BATCH_LLM_MODEL,
     DB_FILE,
     HEALTHCHECK_URL,
     HTTP_TIMEOUT_SECONDS,
@@ -25,20 +21,18 @@ from config import (
     geo_cache,
     now_pst,
     pst_date_str,
-    pst_timestamp_str,
 )
 from db import fetch_existing_incidents, save_or_update_incident
 from geocoding import geocode_location as geo_geocode_location
-from llm import generate_batch_descriptions, generate_description
+from llm import generate_description
 from logger import safe_print
 from runtime_metrics import record_scrape_success
 from sqlite_utils import sqlite_connection
 
 
 _description_executor = ThreadPoolExecutor(max_workers=2)
-_batch_executor = ThreadPoolExecutor(max_workers=1)
-_batch_future = None
-_batch_retry_after = 0.0
+_refresh_inflight = set()
+_refresh_inflight_lock = threading.Lock()
 
 
 def geocode_location(location_query):
@@ -60,6 +54,13 @@ def process_and_save_incident(incident, existing_record=None):
 
         inc_exists = existing_record is not None
         needs_geocoding = not inc_exists
+        incoming_details = incident.get("Details", [])
+        if isinstance(incoming_details, str):
+            incoming_details = [incoming_details]
+        details_changed = bool(
+            inc_exists
+            and json.dumps(incoming_details) != existing_record.get("details", "")
+        )
 
         if not inc_exists:
             # Write the row immediately so the feed can surface it without waiting
@@ -69,7 +70,7 @@ def process_and_save_incident(incident, existing_record=None):
                 existing_record=None,
                 generate_description_on_insert=False,
             )
-            _description_executor.submit(_refresh_incident_description, dict(incident))
+            _schedule_description_refresh(dict(incident))
 
         if inc_exists and (
             existing_record.get("latitude") is None
@@ -86,6 +87,8 @@ def process_and_save_incident(incident, existing_record=None):
             existing_record=existing_record if inc_exists else None,
             generate_description_on_insert=False,
         )
+        if details_changed:
+            _schedule_description_refresh(dict(incident))
         return str(incident_no)
     except Exception as e:
         inc_id = incident.get("No.", "unknown") if isinstance(incident, dict) else "unknown"
@@ -135,14 +138,100 @@ def _geocode_incident(incident):
         incident.update(coords)
 
 
+def _normalise_details(details):
+    """Return details in the same list form persisted by ``db.py``."""
+    if isinstance(details, str):
+        return [details]
+    return details if isinstance(details, list) else []
+
+
+def _refresh_key(incident):
+    incident_no = incident.get("No.") or incident.get("Incident No.")
+    incident_date = incident.get("Date", pst_date_str())
+    details_json = json.dumps(_normalise_details(incident.get("Details", [])))
+    return str(incident_no or ""), incident_date, details_json
+
+
+def _schedule_description_refresh(incident):
+    """Schedule one Mistral refresh while deduplicating in-flight work."""
+    key = _refresh_key(incident)
+    if not key[0]:
+        return False
+
+    with _refresh_inflight_lock:
+        if key in _refresh_inflight:
+            return False
+        _refresh_inflight.add(key)
+
+    try:
+        future = _description_executor.submit(
+            _refresh_incident_description, dict(incident)
+        )
+    except Exception:
+        with _refresh_inflight_lock:
+            _refresh_inflight.discard(key)
+        raise
+
+    def release(_future):
+        with _refresh_inflight_lock:
+            _refresh_inflight.discard(key)
+
+    future.add_done_callback(release)
+    return True
+
+
+def _recover_pending_mistral_refreshes(limit=100):
+    """Resubmit persisted per-incident Mistral work after failures/restarts."""
+    with db_lock:
+        with sqlite_connection(DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT incident_no, date, timestamp, location, location_desc,
+                       type, details, source
+                FROM incidents
+                WHERE active = 1 AND llm_pending_at IS NOT NULL
+                ORDER BY llm_pending_at, timestamp, incident_no
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+
+    for row in rows:
+        record = dict(row)
+        try:
+            details = json.loads(record.get("details") or "[]")
+        except (TypeError, json.JSONDecodeError):
+            details = [str(record.get("details") or "")]
+        _schedule_description_refresh(
+            {
+                "No.": record["incident_no"],
+                "Date": record["date"],
+                "Timestamp": record.get("timestamp") or "",
+                "Location": record.get("location") or "",
+                "Location Desc.": record.get("location_desc") or "",
+                "Type": record.get("type") or "",
+                "Details": details,
+                "Source": record.get("source") or "CHP",
+            }
+        )
+
+
 def _refresh_incident_description(incident):
-    """Generate a summary for a newly inserted incident without blocking ingest."""
+    """Generate a durable Mistral summary without blocking incident ingest."""
     try:
         incident_no = incident.get("No.") or incident.get("Incident No.")
         if not incident_no:
             return
 
-        description, severity = generate_description(incident)
+        details = _normalise_details(incident.get("Details", []))
+        details_json = json.dumps(details)
+        incident_snapshot = dict(incident)
+        incident_snapshot["Details"] = json.loads(details_json)
+
+        description, severity = generate_description(
+            incident_snapshot, raise_on_error=True
+        )
         incident_date = incident.get("Date", pst_date_str())
 
         with db_lock:
@@ -150,11 +239,17 @@ def _refresh_incident_description(incident):
                 conn.cursor().execute(
                     """
                     UPDATE incidents
-                    SET description = ?, severity = ?
+                    SET description = ?, severity = ?, llm_pending_at = NULL
                     WHERE incident_no = ? AND date = ?
-                      AND batch_enriched_at IS NULL
+                        AND details = ? AND active = 1
                     """,
-                    (description, severity, str(incident_no), incident_date),
+                    (
+                        description,
+                        severity,
+                        str(incident_no),
+                        incident_date,
+                        details_json,
+                    ),
                 )
                 conn.commit()
     except Exception as e:
@@ -263,7 +358,7 @@ def run_monitor_cycle(scrapers=None):
 
     _generate_final_descriptions(active_ids_by_source)
     _mark_inactive(active_ids_by_source)
-    _submit_batch_refinement_if_due()
+    _recover_pending_mistral_refreshes()
     return time.perf_counter() - cycle_start
 
 
@@ -331,14 +426,13 @@ def _generate_final_descriptions(active_ids_by_source):
                     conn.cursor().execute(
                         """
                         UPDATE incidents
-                        SET description = ?, severity = ?, batch_queued_at = ?,
-                            batch_enriched_at = NULL
+                        SET description = ?, severity = ?, active = 0,
+                            llm_pending_at = NULL
                         WHERE incident_no = ? AND date = ?
                         """,
                         (
                             final_desc,
                             final_sev,
-                            pst_timestamp_str(),
                             record["incident_no"],
                             record["date"],
                         ),
@@ -350,110 +444,6 @@ def _generate_final_descriptions(active_ids_by_source):
     with ThreadPoolExecutor(max_workers=5) as executor:
         for _ in as_completed([executor.submit(_process_final, r) for r in newly_inactive]):
             pass
-
-
-# ---------------------------------------------------------------------------
-# Deferred batch refinement
-# ---------------------------------------------------------------------------
-
-def _submit_batch_refinement_if_due():
-    """Start one eligible LLM batch without blocking the monitor loop."""
-    global _batch_future, _batch_retry_after
-
-    if not BATCH_LLM_ENABLED:
-        return
-
-    if _batch_future is not None:
-        if not _batch_future.done():
-            return
-        try:
-            _batch_future.result()
-        except Exception as exc:
-            safe_print(f"Batch LLM refinement failed: {exc}")
-            _batch_retry_after = time.monotonic() + min(
-                BATCH_LLM_INTERVAL_SECONDS, 300
-            )
-        finally:
-            _batch_future = None
-
-    if time.monotonic() < _batch_retry_after:
-        return
-
-    cutoff = pst_timestamp_str(
-        now_pst() - timedelta(seconds=BATCH_LLM_INTERVAL_SECONDS)
-    )
-    with db_lock:
-        with sqlite_connection(DB_FILE) as conn:
-            conn.row_factory = sqlite3.Row
-            oldest = conn.execute(
-                """
-                SELECT MIN(batch_queued_at)
-                FROM incidents
-                WHERE batch_queued_at IS NOT NULL
-                  AND batch_enriched_at IS NULL
-                """
-            ).fetchone()[0]
-            if not oldest or oldest > cutoff:
-                return
-
-            rows = conn.execute(
-                """
-                SELECT *
-                FROM incidents
-                WHERE batch_queued_at IS NOT NULL
-                  AND batch_enriched_at IS NULL
-                  AND batch_queued_at <= ?
-                ORDER BY batch_queued_at, timestamp, incident_no
-                LIMIT ?
-                """,
-                (cutoff, BATCH_LLM_MAX_ITEMS),
-            ).fetchall()
-
-    if not rows:
-        return
-
-    records = [dict(row) for row in rows]
-    safe_print(
-        f"Submitting {len(records)} incidents to {BATCH_LLM_MODEL} "
-        "for batch refinement."
-    )
-    _batch_future = _batch_executor.submit(_refine_description_batch, records)
-
-
-def _refine_description_batch(records):
-    """Generate and atomically apply a validated batch of smarter summaries."""
-    results = generate_batch_descriptions(records)
-    enriched_at = pst_timestamp_str()
-    updated = 0
-
-    with db_lock:
-        with sqlite_connection(DB_FILE) as conn:
-            cur = conn.cursor()
-            for result in results:
-                record = records[result["item_id"] - 1]
-                cur.execute(
-                    """
-                    UPDATE incidents
-                    SET description = ?, severity = ?, batch_enriched_at = ?
-                    WHERE incident_no = ? AND date = ?
-                      AND batch_queued_at = ?
-                      AND batch_enriched_at IS NULL
-                    """,
-                    (
-                        result["summary"],
-                        result["severity"],
-                        enriched_at,
-                        record["incident_no"],
-                        record["date"],
-                        record["batch_queued_at"],
-                    ),
-                )
-                updated += cur.rowcount
-            conn.commit()
-
-    safe_print(
-        f"Batch LLM refinement applied to {updated}/{len(records)} incidents."
-    )
 
 
 def _mark_inactive(active_ids_by_source):
