@@ -3,14 +3,14 @@
   import { fade } from "svelte/transition";
 
   // Import components
-  import Header from "./components/Header.svelte";
-  import HeadlineTicker from "./components/HeadlineTicker.svelte";
-  import SkeletonCard from "./components/SkeletonCard.svelte";
-  import PostCard from "./components/PostCard.svelte";
-  import ToastContainer from "./components/ToastContainer.svelte";
-  import ViewToggle from "./components/ViewToggle.svelte";
-  import SourceTabs from "./components/SourceTabs.svelte";
-  import SearchBar from "./components/SearchBar.svelte";
+  import Header from "./components/ui/Header.svelte";
+  import HeadlineTicker from "./components/feed/HeadlineTicker.svelte";
+  import SkeletonCard from "./components/feed/SkeletonCard.svelte";
+  import PostCard from "./components/feed/PostCard.svelte";
+  import ToastContainer from "./components/ui/ToastContainer.svelte";
+  import ViewToggle from "./components/ui/ViewToggle.svelte";
+  import SourceTabs from "./components/ui/SourceTabs.svelte";
+  import SearchBar from "./components/ui/SearchBar.svelte";
 
   // Import utilities
   import {
@@ -162,18 +162,18 @@
   let miniMapSuspendScrollTop = 0;
   /** @type {Set<string>} */
   let seenCompositeKeys = new Set();
-  /** @type {typeof import("./components/MapTab.svelte").default | null} */
+  /** @type {typeof import("./components/map/MapTab.svelte").default | null} */
   let MapTabComponent = null;
-  /** @type {Promise<typeof import("./components/MapTab.svelte").default> | null} */
+  /** @type {Promise<typeof import("./components/map/MapTab.svelte").default> | null} */
   let mapTabLoadPromise = null;
   let mapResourcesPreloadPromise = null;
-  /** @type {typeof import("./components/StatsPanel.svelte").default | null} */
+  /** @type {typeof import("./components/stats/StatsPanel.svelte").default | null} */
   let StatsPanelComponent = null;
-  /** @type {Promise<typeof import("./components/StatsPanel.svelte").default> | null} */
+  /** @type {Promise<typeof import("./components/stats/StatsPanel.svelte").default> | null} */
   let statsPanelLoadPromise = null;
-  /** @type {typeof import("./components/PostTable.svelte").default | null} */
+  /** @type {typeof import("./components/feed/PostTable.svelte").default | null} */
   let PostTableComponent = null;
-  /** @type {Promise<typeof import("./components/PostTable.svelte").default> | null} */
+  /** @type {Promise<typeof import("./components/feed/PostTable.svelte").default> | null} */
   let postTableLoadPromise = null;
   const ACCESSIBILITY_MODE_STORAGE_KEY = "accessibilityMode";
 
@@ -216,7 +216,7 @@
   async function ensureMapTabLoaded() {
     if (MapTabComponent) return MapTabComponent;
     if (!mapTabLoadPromise) {
-      mapTabLoadPromise = import("./components/MapTab.svelte").then(
+      mapTabLoadPromise = import("./components/map/MapTab.svelte").then(
         (module) => {
           MapTabComponent = module.default;
           return MapTabComponent;
@@ -239,7 +239,7 @@
   async function ensureStatsPanelLoaded() {
     if (StatsPanelComponent) return StatsPanelComponent;
     if (!statsPanelLoadPromise) {
-      statsPanelLoadPromise = import("./components/StatsPanel.svelte").then(
+      statsPanelLoadPromise = import("./components/stats/StatsPanel.svelte").then(
         (module) => {
           StatsPanelComponent = module.default;
           return StatsPanelComponent;
@@ -252,7 +252,7 @@
   async function ensurePostTableLoaded() {
     if (PostTableComponent) return PostTableComponent;
     if (!postTableLoadPromise) {
-      postTableLoadPromise = import("./components/PostTable.svelte").then(
+      postTableLoadPromise = import("./components/feed/PostTable.svelte").then(
         (module) => {
           PostTableComponent = module.default;
           return PostTableComponent;

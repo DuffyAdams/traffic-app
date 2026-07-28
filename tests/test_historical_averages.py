@@ -6,9 +6,8 @@ from contextlib import closing
 from datetime import timedelta
 from unittest.mock import patch
 
-import db
-import routes
-from config import now_pst
+from backend import db, routes
+from backend.config import now_pst
 
 
 class HistoricalAverageTests(unittest.TestCase):

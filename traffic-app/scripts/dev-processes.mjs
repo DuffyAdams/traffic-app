@@ -25,7 +25,7 @@ function stopChildren() {
   }
 }
 
-start(pythonCommand, ["traffic_scraper.py"], {
+start(pythonCommand, ["-m", "backend"], {
   cwd: projectDir,
   env: { ...process.env, TESTMODE: "true" },
 });

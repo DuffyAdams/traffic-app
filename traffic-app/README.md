@@ -16,7 +16,11 @@ The dev server proxies `/api` and `/maps` to `http://127.0.0.1:5002` by default.
 ## Source layout
 
 - `src/App.svelte`: application orchestration and page-level state
-- `src/components/`: feed, map, statistics, interaction, and accessibility components
+- `src/components/feed/`: incident feed cards, tables, comments, and loading states
+- `src/components/map/`: full and compact map views
+- `src/components/shared/`: components reused across multiple features
+- `src/components/stats/`: incident statistics and activity charts
+- `src/components/ui/`: page-level controls and feedback
 - `src/stores/`: shared toast and map-selection state
 - `src/utils/apiUrls.js`: API query construction
 - `src/utils/cache.js`: bounded client-side cache helpers

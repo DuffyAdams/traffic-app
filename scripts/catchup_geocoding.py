@@ -1,17 +1,14 @@
 import sqlite3
 import os
-import sys
 import threading
 import json
 from contextlib import closing
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# Project root is one directory above scripts/ — needed for imports and paths
+# Project root is one directory above scripts/.
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, PROJECT_ROOT)
 
-# Import shared geocoding module (lives at project root)
-from geocoding import GeocodingCache, geocode_location  # noqa: E402
+from backend.geocoding import GeocodingCache, geocode_location
 DB_FILE = os.path.join(PROJECT_ROOT, "traffic_data.db")
 
 # Initialize shared geocoding cache

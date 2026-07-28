@@ -9,7 +9,7 @@ EnvironmentFile=/home/ubuntu/projects/san-diego-traffic-watch/.env
 Environment=TRAFFIC_APP_HOST=127.0.0.1
 Environment=TRAFFIC_APP_PORT=5002
 Environment=TZ=America/Los_Angeles
-ExecStart=/home/ubuntu/projects/san-diego-traffic-watch/venv/bin/python /home/ubuntu/projects/san-diego-traffic-watch/traffic_scraper.py
+ExecStart=/home/ubuntu/projects/san-diego-traffic-watch/venv/bin/python -m backend
 Restart=always
 RestartSec=5
 User=ubuntu

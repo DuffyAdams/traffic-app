@@ -12,7 +12,7 @@ Environment=TRAFFIC_APP_PUBLIC_URL=https://beta.duffyadams.com
 Environment=TRAFFIC_APP_ALLOWED_ORIGINS=https://beta.duffyadams.com,http://localhost:5173,http://127.0.0.1:5173
 Environment=COOKIE_SECURE=true
 Environment=TZ=America/Los_Angeles
-ExecStart=/home/ubuntu/projects/san-diego-traffic-watch/venv/bin/python /home/ubuntu/projects/san-diego-traffic-watch-beta/scripts/run_beta_server.py
+ExecStart=/home/ubuntu/projects/san-diego-traffic-watch/venv/bin/python -m backend.beta
 Restart=always
 RestartSec=5
 User=ubuntu

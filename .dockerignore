@@ -15,4 +15,3 @@ llm.md
 TODO
 system_prompt.txt
 *.env
-!cred.env

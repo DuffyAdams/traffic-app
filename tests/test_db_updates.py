@@ -5,7 +5,7 @@ import unittest
 from contextlib import closing
 from unittest.mock import patch
 
-import db
+from backend import db
 
 
 class IncidentUpdateTests(unittest.TestCase):

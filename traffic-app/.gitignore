@@ -32,3 +32,4 @@ dist-ssr
 *cred.env
 maps/
 traffic_data.db
+venv/

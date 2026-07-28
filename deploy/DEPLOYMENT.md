@@ -20,5 +20,5 @@ The HTTP server block redirects to HTTPS and leaves an ACME challenge path avail
 
 ## systemd
 
-The service file starts `traffic_scraper.py` directly and keeps it running.
+The service file starts the backend package with `python -m backend` and keeps it running.
 It expects the virtual environment at `/home/ubuntu/projects/san-diego-traffic-watch/venv`.

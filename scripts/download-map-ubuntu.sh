@@ -8,14 +8,14 @@ echo "Extracting pmtiles..."
 tar -xzf go-pmtiles.tar.gz
 chmod +x pmtiles
 
-echo "Creating public/maps directory if it doesn't exist..."
-mkdir -p traffic-app/public/maps
+echo "Creating public/map_tiles directory if it doesn't exist..."
+mkdir -p traffic-app/public/map_tiles
 
 echo "Extracting San Diego PMTiles..."
 DATE=$(date +%Y%m%d)
-./pmtiles extract "https://build.protomaps.com/${DATE}.pmtiles" traffic-app/public/maps/sandiego.pmtiles --bbox=-117.6,32.5,-116.7,33.5
+./pmtiles extract "https://build.protomaps.com/${DATE}.pmtiles" traffic-app/public/map_tiles/sandiego.pmtiles --bbox=-117.6,32.5,-116.7,33.5
 
 echo "Cleanup..."
 rm go-pmtiles.tar.gz pmtiles
 
-echo "Done! San Diego map data downloaded to traffic-app/public/maps/sandiego.pmtiles."
+echo "Done! San Diego map data downloaded to traffic-app/public/map_tiles/sandiego.pmtiles."

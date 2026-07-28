@@ -8,9 +8,9 @@ San Diego Traffic Watch is a Flask plus Svelte application that ingests live pub
 
 ## Overview
 
-The repo has three main pieces:
+The repository has three main pieces:
 
-- `traffic_scraper.py` starts the Flask app and the continuous background scraper loop.
+- `backend/` contains the Flask API, persistence, enrichment, source scrapers, and continuous monitoring loop.
 - `traffic-app/` contains the Svelte frontend that is built into `traffic-app/dist` and served by Flask in production.
 - `metrics-app/` is a separate static dashboard that reads from the same backend APIs for operational visibility.
 
@@ -35,15 +35,16 @@ The repo has three main pieces:
 
 ## Architecture
 
-- Backend: Flask app in [traffic_scraper.py](traffic_scraper.py), route handlers in [routes.py](routes.py), background scrape loop in [monitor.py](monitor.py)
-- API infrastructure: bounded TTL caching, keyed request coalescing, and rate limiting in [api_support.py](api_support.py)
-- Statistics queries and chart buckets: [traffic_stats.py](traffic_stats.py)
+- Backend entry point: [backend/__main__.py](backend/__main__.py)
+- Flask routes and background monitoring: [backend/routes.py](backend/routes.py) and [backend/monitor.py](backend/monitor.py)
+- API infrastructure: bounded TTL caching, keyed request coalescing, and rate limiting in [backend/api_support.py](backend/api_support.py)
+- Statistics queries and chart buckets: [backend/stats.py](backend/stats.py)
 - Frontend: Svelte 5 plus Vite in [traffic-app](traffic-app)
 - Metrics UI: static dashboard in [metrics-app](metrics-app)
 - Database: SQLite file at `traffic_data.db`
-- SQLite lifecycle: deterministic commit, rollback, and connection cleanup in [sqlite_utils.py](sqlite_utils.py)
-- Geocoding: cached Nominatim and ArcGIS lookups in [geocoding.py](geocoding.py)
-- LLM summaries: OpenRouter-backed client in [llm.py](llm.py)
+- SQLite lifecycle: deterministic commit, rollback, and connection cleanup in [backend/sqlite_utils.py](backend/sqlite_utils.py)
+- Geocoding: cached Nominatim and ArcGIS lookups in [backend/geocoding.py](backend/geocoding.py)
+- LLM summaries: OpenRouter-backed client in [backend/llm.py](backend/llm.py)
 
 ## Requirements
 
@@ -86,7 +87,7 @@ Use this when you want the API and scraper loop without the Vite dev server:
 ```bash
 cd /home/ubuntu/projects/san-diego-traffic-watch
 source venv/bin/activate
-TESTMODE=true python3 traffic_scraper.py
+TESTMODE=true python3 -m backend
 ```
 
 The Flask app serves on `http://127.0.0.1:5002` if you set `TRAFFIC_APP_HOST=127.0.0.1`.
@@ -118,7 +119,7 @@ cd /home/ubuntu/projects/san-diego-traffic-watch/traffic-app
 npm run build
 cd ..
 source venv/bin/activate
-python3 traffic_scraper.py
+python3 -m backend
 ```
 
 ## API Surface
@@ -161,7 +162,7 @@ Scrape and enrichment behavior:
   bulk-model refinement is used.
 - CHP incidents usually arrive with coordinates already present.
 - SDPD, SDFD, and SDSO incidents are geocoded when coordinates are missing.
-- `generate_map.py` is now a legacy no-op; the frontend renders mini-maps client-side from coordinates and local PMTiles data.
+- The frontend renders mini-maps client-side from coordinates and local PMTiles data. The legacy `/maps` endpoint remains available for older database rows.
 
 Incident summaries use `mistralai/mistral-nemo`.
 
@@ -169,12 +170,12 @@ Incident summaries use `mistralai/mistral-nemo`.
 
 Operational helper scripts live in [scripts](scripts):
 
-- `python3 scripts/backup_db.py`: create a consistent WAL-safe backup in `backups/` and retain the newest three copies
-- `python3 scripts/restore_db.py`: restore the newest backup
-- `python3 scripts/restore_db.py backups/traffic_data_<timestamp>.db`: restore a specific backup
-- `python3 scripts/catchup_geocoding.py`: backfill coordinates for older incidents that still need geocoding
-- `python3 scripts/add_mock_data.py`: seed historical mock incidents for dashboard or UI testing
-- `python3 scripts/update_db.py`: normalize older incident type values in the database
+- `python3 -m scripts.backup_db`: create a consistent WAL-safe backup in `backups/` and retain the newest three copies
+- `python3 -m scripts.restore_db`: restore the newest backup
+- `python3 -m scripts.restore_db backups/traffic_data_<timestamp>.db`: restore a specific backup
+- `python3 -m scripts.catchup_geocoding`: backfill coordinates for older incidents that still need geocoding
+- `python3 -m scripts.add_mock_data`: seed historical mock incidents for dashboard or UI testing
+- `python3 -m scripts.update_db`: normalize older incident type values in the database
 
 Stop the backend before running a restore so the live SQLite file is not being written during the copy.
 
@@ -221,25 +222,20 @@ The main service expects:
 
 ```text
 san-diego-traffic-watch/
-├── config.py
-├── api_support.py
-├── db.py
-├── geocoding.py
-├── llm.py
-├── logger.py
-├── monitor.py
-├── routes.py
-├── runtime_metrics.py
-├── sqlite_utils.py
-├── traffic_stats.py
-├── traffic_scraper.py
-├── scrapers/
+├── backend/
+│   ├── __main__.py
+│   ├── config.py
+│   ├── db.py
+│   ├── monitor.py
+│   ├── routes.py
+│   ├── scrapers/
+│   └── ...
 ├── scripts/
 ├── deploy/
 ├── metrics-app/
 ├── tests/
 ├── traffic-app/
-│   ├── src/
+│   ├── src/components/{feed,map,shared,stats,ui}/
 │   ├── public/
 │   ├── dist/
 │   └── package.json

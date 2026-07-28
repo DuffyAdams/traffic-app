@@ -17,6 +17,9 @@ __pycache__/
 *.pyo
 
 # Database
+*.db
+*.db-wal
+*.db-shm
 traffic_data.db
 traffic_data.db-wal
 traffic_data.db-shm
@@ -32,6 +35,7 @@ pmtiles.zip
 *.geojson
 
 # IDE
+.DS_Store
 .vscode/
 
 # Dev notes / artifacts

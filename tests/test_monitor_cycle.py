@@ -5,8 +5,7 @@ import unittest
 from contextlib import closing
 from unittest.mock import patch
 
-import db
-import monitor
+from backend import db, monitor
 
 
 class MonitorCycleTests(unittest.TestCase):

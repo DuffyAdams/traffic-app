@@ -8,9 +8,7 @@ from contextlib import closing
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-import config
-import db
-import llm
+from backend import config, db, llm
 
 
 class MistralOnlyPipelineTests(unittest.TestCase):
@@ -56,7 +54,10 @@ class MistralOnlyPipelineTests(unittest.TestCase):
             [
                 sys.executable,
                 "-c",
-                "import config; print(config.IMMEDIATE_LLM_MODEL)",
+                (
+                    "from backend import config; "
+                    "print(config.IMMEDIATE_LLM_MODEL)"
+                ),
             ],
             cwd=os.path.dirname(os.path.dirname(__file__)),
             env=env,

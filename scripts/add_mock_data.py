@@ -6,7 +6,7 @@ from datetime import timedelta
 import uuid
 import json
 
-from config import now_pst
+from backend.config import now_pst
 
 # Project root is one directory above scripts/
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 
-from geocoding import (
+from backend.geocoding import (
     GeocodingCache,
     _build_query_variations,
     expand_abbreviations,
