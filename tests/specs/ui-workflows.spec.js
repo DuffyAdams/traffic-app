@@ -9,7 +9,11 @@ test("loads the incident feed and supports source filtering", async ({ page }) =
   await gotoApp(page);
 
   await expect(page.getByText("SIG Alert blocking two lanes near I-5 downtown.")).toBeVisible();
-  await expect(page.getByText("Road closure due to police activity in Hillcrest.")).toBeVisible();
+  await expect(
+    page.getByText(
+      "Police activity has closed Harbor Drive near the Convention Center.",
+    ),
+  ).toBeVisible();
 
   const sourceResponse = page.waitForResponse(
     (response) =>
@@ -21,7 +25,11 @@ test("loads the incident feed and supports source filtering", async ({ page }) =
   await page.getByRole("button", { name: "SDPD" }).click();
   await sourceResponse;
 
-  await expect(page.getByText("Road closure due to police activity in Hillcrest.")).toBeVisible();
+  await expect(
+    page.getByText(
+      "Police activity has closed Harbor Drive near the Convention Center.",
+    ),
+  ).toBeVisible();
   await expect(page.getByText("SIG Alert blocking two lanes near I-5 downtown.")).not.toBeVisible();
 });
 
@@ -33,9 +41,12 @@ test("supports diagnostics, search, and comment submission", async ({ page }) =>
   await expect(page.getByText("Today")).toBeVisible();
   await expect(page.getByRole("button", { name: "Week" })).toBeVisible();
 
-  await page.locator(".bar-wrapper").last().hover();
+  const latestActivityBar = page.locator(".bar-wrapper").last();
+  await latestActivityBar.hover();
   const activityTooltip = page.locator(".chart-tooltip");
   await expect(activityTooltip.locator(".tooltip-value")).toContainText(/incidents?$/);
+  await latestActivityBar.hover({ force: true });
+  await expect(activityTooltip).toBeVisible();
   const tooltipContrast = await activityTooltip.evaluate((tooltip) => {
     const channels = (color) => color.match(/[\d.]+/g).slice(0, 3).map(Number);
     const luminance = (color) => {
@@ -67,7 +78,11 @@ test("supports diagnostics, search, and comment submission", async ({ page }) =>
 
   await page.getByPlaceholder("Search incidents...").fill("North Park");
   await expect(page.getByText("Traffic accident with injuries near North Park.")).toBeVisible();
-  await expect(page.getByText("Road closure due to police activity in Hillcrest.")).not.toBeVisible();
+  await expect(
+    page.getByText(
+      "Police activity has closed Harbor Drive near the Convention Center.",
+    ),
+  ).not.toBeVisible();
 
   const northParkCard = page.locator(".post").filter({
     hasText: "Traffic accident with injuries near North Park.",

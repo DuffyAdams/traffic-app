@@ -48,10 +48,17 @@ test("returns stats in the frontend contract shape", async ({ request }) => {
 });
 
 test("supports like and comment mutations with basic guardrails", async ({ request }) => {
+  const incidentResponse = await request.get(
+    `${apiBaseURL}/api/incidents?limit=1`,
+  );
+  expect(incidentResponse.ok()).toBeTruthy();
+  const [incident] = await incidentResponse.json();
+  const initialLikes = incident.likes;
+
   const likeResponse = await request.post(`${apiBaseURL}/api/incidents/A-1001/like`);
   expect(likeResponse.ok()).toBeTruthy();
   const likePayload = await likeResponse.json();
-  expect(likePayload).toMatchObject({ likes: 1 });
+  expect(likePayload).toMatchObject({ likes: initialLikes + 1 });
 
   const duplicateLike = await request.post(`${apiBaseURL}/api/incidents/A-1001/like`);
   expect(duplicateLike.status()).toBe(400);
@@ -59,7 +66,7 @@ test("supports like and comment mutations with basic guardrails", async ({ reque
   const unlikeResponse = await request.delete(`${apiBaseURL}/api/incidents/A-1001/like`);
   expect(unlikeResponse.ok()).toBeTruthy();
   const unlikePayload = await unlikeResponse.json();
-  expect(unlikePayload).toMatchObject({ likes: 0 });
+  expect(unlikePayload).toMatchObject({ likes: initialLikes });
 
   const emptyComment = await request.post(`${apiBaseURL}/api/incidents/A-1001/comment`, {
     data: { username: "Casey", comment: "" },

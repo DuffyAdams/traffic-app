@@ -29,7 +29,9 @@ The repository has three main pieces:
 
 ## Screenshots
 
-| Dashboard | Map View | Analytics |
+The current dark-mode UI is shown below using deterministic local incident data.
+
+| Incident Feed | Map and Incident Log | Stats Panel |
 | --- | --- | --- |
 | <img src="screenshots/frontpage.png" alt="Traffic feed dashboard" height="260" /> | <img src="screenshots/map_screenshot.png" alt="Interactive map view" height="260" /> | <img src="screenshots/stats_screenshot.png" alt="Traffic statistics panel" height="260" /> |
 
@@ -45,6 +47,12 @@ The repository has three main pieces:
 - SQLite lifecycle: deterministic commit, rollback, and connection cleanup in [backend/sqlite_utils.py](backend/sqlite_utils.py)
 - Geocoding: cached Nominatim and ArcGIS lookups in [backend/geocoding.py](backend/geocoding.py)
 - LLM summaries: OpenRouter-backed client in [backend/llm.py](backend/llm.py)
+
+## Performance Opportunities
+
+1. **Virtualize the incident feed and recycle mini-map instances.** Cursor pagination limits each request, but every loaded card remains mounted. Rendering only the visible rows would reduce DOM size, layout work, memory use, and the number of active MapLibre canvases during long sessions.
+2. **Make live refreshes visibility-aware and conditional.** Pause the 20-second refresh loop while the tab is hidden, cancel superseded requests, and add ETag/`If-None-Match` responses or a small server-sent-events delta stream. This would reduce repeated JSON transfers, SQLite reads, and background mobile wakeups.
+3. **Precompute statistics rollups during scrape cycles.** Store per-source hourly and daily counters as incidents are updated, then serve `/api/incident_stats` from those rollups instead of repeatedly grouping the growing incidents table. This would keep dashboard response times stable as historical data accumulates.
 
 ## Requirements
 
